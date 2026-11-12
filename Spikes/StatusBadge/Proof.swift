@@ -103,19 +103,39 @@ private struct BadgeBoard: View {
                             try require(rgba[interior + 3] == 0, "Received must remain transparent inside its ring")
                             let ring = ((ordinary.height / 2) * ordinary.width + 1) * 4
                             try require(rgba[ring + 3] > 200, "Received outline is missing")
+                            let flat = ordinary.width / 2 * 4
+                            let line = CassiniTokens.lineEntry
+                            let rgb = dark ? line.darkRGB : line.lightRGB
+                            let expected = [Int((rgb >> 16) & 255), Int((rgb >> 8) & 255), Int(rgb & 255)]
+                            try require(rgba[flat + 3] == 255 && (0..<3).allSatisfy { abs(Int(rgba[flat + $0]) - expected[$0]) <= 1 },
+                                        "Received outline differs from token line")
                         }
                         let glyphWidth = kind.glyph == .dot ? 6 : kind.glyph == .spinner ? 10 : 11
                         let inkRGB = dark ? kind.ink.darkRGB : kind.ink.lightRGB
                         let ink = [Int((inkRGB >> 16) & 255), Int((inkRGB >> 8) & 255), Int(inkRGB & 255)]
-                        let hasGlyph = (0..<ordinary.height).contains { y in
-                            (16..<(16 + glyphWidth * 2)).contains { x in
-                                let offset = (y * ordinary.width + x) * 4
-                                return rgba[offset + 3] > 200 && (0..<3).allSatisfy { abs(Int(rgba[offset + $0]) - ink[$0]) <= 4 }
+                        func isInk(_ x: Int, _ y: Int) -> Bool {
+                            let offset = (y * ordinary.width + x) * 4
+                            return rgba[offset + 3] > 200 && (0..<3).allSatisfy { abs(Int(rgba[offset + $0]) - ink[$0]) <= 4 }
+                        }
+                        let hasGlyph = (0..<ordinary.height).contains { y in (16..<(16 + glyphWidth * 2)).contains { isInk($0,y) } }
+                        try require(hasGlyph, "Glyph missing or not in its own ink for \(kind)")
+                        if kind.glyph != .spinner {
+                            // Compare the glyph's ink mask, excluding the capsule background
+                            // whose left corner need not be symmetric within this crop.
+                            let symmetric = (0..<ordinary.height).allSatisfy { y in
+                                (0..<glyphWidth).allSatisfy { x in
+                                    isInk(16+x,y) == isInk(16+glyphWidth*2-1-x,y)
+                                }
+                            }
+                            try require(symmetric, "Asymmetric canvas glyph for \(kind)")
+                            for half in [16..<(16+glyphWidth-2), (16+glyphWidth+2)..<(16+glyphWidth*2)] {
+                                try require((0..<ordinary.height).contains { y in half.contains { isInk($0,y) } },
+                                            "Canvas glyph is missing a side for \(kind)")
                             }
                         }
-                        try require(hasGlyph, "Glyph missing or not in its own ink for \(kind)")
                         results.append(["kind": kind.rawValue, "dark": dark, "heightPixels": ordinary.height,
-                            "fill": kind.fill?.id ?? "none", "ink": kind.ink.id, "glyph": String(describing: kind.glyph), "selectionPixelsUnchanged": true])
+                            "fill": kind.fill?.id ?? "none", "ink": kind.ink.id, "glyph": String(describing: kind.glyph), "selectionPixelsUnchanged": true,
+                            "glyphSymmetryChecked": kind.glyph != .spinner, "outlineTokenPixelsChecked": kind == .received])
                     }
                     for after in [false, true] {
                         let cg = try image(BadgeBoard(after: after, dark: dark), dark: dark)
@@ -128,6 +148,6 @@ private struct BadgeBoard: View {
         }
         try JSONSerialization.data(withJSONObject: results, options: [.prettyPrinted, .sortedKeys])
             .write(to: output.appendingPathComponent("checks.json"))
-        print("All 14 badge/scheme cases pass: roles, 18pt height, token tint, transparent Received, selection-invariant pixels")
+        print("All 14 badge/scheme cases pass: roles, 18pt height, token tint/outline, symmetric static glyphs, transparent Received, selection-invariant pixels")
     }
 }

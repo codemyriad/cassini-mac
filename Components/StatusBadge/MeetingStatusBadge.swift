@@ -121,9 +121,9 @@ private struct BadgeGlyph: View {
                 context.stroke(mark, with: .color(ink), style: StrokeStyle(lineWidth: 1.9, lineCap: .round))
             case .incoming:
                 var arrow = Path()
-                arrow.move(to: CGPoint(x: 12, y: 4)); arrow.addLine(to: CGPoint(x: 12, y: 14))
-                arrow.move(to: CGPoint(x: 8, y: 10)); arrow.addLines([CGPoint(x: 12, y: 14), CGPoint(x: 16, y: 10)])
-                arrow.move(to: CGPoint(x: 4, y: 16)); arrow.addLines([CGPoint(x: 4, y: 19.5), CGPoint(x: 20, y: 19.5), CGPoint(x: 20, y: 16)])
+                arrow.addLines([CGPoint(x: 12, y: 4), CGPoint(x: 12, y: 14)])
+                arrow.addLines([CGPoint(x: 8, y: 10), CGPoint(x: 12, y: 14), CGPoint(x: 16, y: 10)])
+                arrow.addLines([CGPoint(x: 4, y: 16), CGPoint(x: 4, y: 19.5), CGPoint(x: 20, y: 19.5), CGPoint(x: 20, y: 16)])
                 context.stroke(arrow, with: .color(ink), style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
             case .dot: break // The badge uses an exact 6 pt Circle for the dot.
             }

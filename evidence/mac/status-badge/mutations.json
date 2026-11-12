@@ -6,5 +6,13 @@
   "inherited-ink": {
     "exitCode": 1,
     "expectedFailure": "Inherited selection foreground changed"
+  },
+  "missing-left-glyph": {
+    "exitCode": 1,
+    "expectedFailure": "Asymmetric canvas glyph for received"
+  },
+  "wrong-outline-token": {
+    "exitCode": 1,
+    "expectedFailure": "Received outline differs from token line"
   }
 }
