@@ -21,12 +21,14 @@ struct LibraryLaunchContext {
     var screenshot = false
     var screenshotDark = false
     var scansLibrary = true
+    var automaticallyConsidersTranscriptions = true
     static var screenshotDark: Bool { argument("-CassiniScreenshotScheme") == "dark" }
     static var current: Self {
         var context = Self()
         #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("--browser-capture-self-test") { context.scansLibrary = CaptureFixture.enabled }
+        if arguments.contains("--import-lifecycle-self-test") { context.automaticallyConsidersTranscriptions = false }
         if arguments.contains(where: { ["--recording-saving-self-test", "--parakeet-self-test", "--models-network-self-test", "--whistle-self-test", "--recording-self-test", "--recording-sink-self-test", "--export-self-test"].contains($0) }) ||
             ["window", "sheet"].contains(argument("-CassiniScreenshot") ?? "") {
             context.scansLibrary = false
@@ -209,7 +211,7 @@ final class LibraryStore {
                 } else if let key = selectionWhenAvailable, result.meetings.contains(where:{ $0.libraryKey == key }) {
                     selectedKey = key; selectionWhenAvailable = nil; selectionFolderWhenAvailable = nil
                 }
-                TranscriptionQueue.shared.consider(result.meetings,automatic:!context.screenshot && !MeetingRenameFixture.enabled && (!RecordingFixture.enabled || RecordingFixture.transcribes))
+                TranscriptionQueue.shared.consider(result.meetings,automatic:context.automaticallyConsidersTranscriptions && !context.screenshot && !MeetingRenameFixture.enabled && (!RecordingFixture.enabled || RecordingFixture.transcribes))
                 LegacyOpening.refreshTranscripts(result.meetings)
                 let validKeys = Set(meetings.map(\.libraryKey))
                 let surviving = selectedKeys.intersection(validKeys)
