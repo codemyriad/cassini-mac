@@ -1226,10 +1226,15 @@ final class LibraryBoards: XCTestCase {
     @MainActor func launch(_ name: String, fixture: String, extra: [String] = [], language:String="en-GB",locale:String="en_GB") throws -> XCUIApplication {
         let app = XCUIApplication()
         let root = try fixtureDirectory().appendingPathComponent("Library/" + fixture)
+        let dark = ProcessInfo.processInfo.environment["CASSINI_SCREENSHOT_SCHEME"] == "dark"
         app.launchEnvironment["CASSINI_HOSTED_SCREENSHOTS"] = "1"
         app.launchArguments = ["-CassiniScreenshot", name, "-CassiniFixture", root.path,
                                "-CassiniNow", "2026-10-27T13:18:00Z", "-ApplePersistenceIgnoreState", "YES",
-                               "-AppleLanguages", "(\(language))", "-AppleLocale", locale, "-AppleInterfaceStyle", "Light", "-AppleAccentColor", "4"]
+                               "-AppleLanguages", "(\(language))", "-AppleLocale", locale, "-AppleInterfaceStyle", dark ? "Dark" : "Light", "-AppleAccentColor", "4"]
+        if dark { app.launchArguments += ["-CassiniScreenshotScheme", "dark"] }
+        if !extra.contains("-CassiniSettingsID") && !extra.contains("-CassiniCaptureID") && !extra.contains("-CassiniDefaultsID") {
+            app.launchArguments += ["-CassiniDefaultsID", UUID().uuidString]
+        }
         app.launchArguments += extra
         if extra.contains("--fixture-library-recording"), !extra.contains("-CassiniDiskFree") {
             app.launchArguments += ["-CassiniDiskFree",String(20 << 30),"-CassiniDiskTotal",String(100 << 30)]

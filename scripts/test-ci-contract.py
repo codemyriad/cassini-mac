@@ -88,8 +88,12 @@ class NativeSpectrogramScheduling(unittest.TestCase):
         body = (ROOT/'.github/workflows/ux-boards.yml').read_text()
         jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)',body.split('\njobs:\n',1)[1],re.M|re.S))
         boards, native, diagnostics = jobs['boards'], jobs['spectrogram'], jobs['spectrogram_diagnostics']
-        self.assertIn('timeout-minutes: 45',boards)
+        self.assertIn('timeout-minutes: 55',boards)
         self.assertIn('timeout-minutes: 35',boards)
+        self.assertIn('timeout-minutes: 9',boards)
+        self.assertIn('needs: [build]\n',boards)
+        self.assertIn('TEST_RUNNER_CASSINI_SCREENSHOT_SCHEME: dark',boards)
+        self.assertIn('--dark build/ux-attachments-dark',boards)
         self.assertNotIn('test-spectrogram-app.py',boards)
         self.assertNotIn("release: 'true'",boards)
         self.assertNotIn('needs: [boards]',native)
@@ -968,8 +972,11 @@ class ReleaseOffTheCriticalPath(unittest.TestCase):
         self.assertIn('scripts/check-parakeet-bundle.py build/Build/Products/Release/Cassini.app',
                       (self.WORKFLOWS/'ci-build-release.yml').read_text())
         waiting = {name for name, body in jobs.items() if 'build_release' in body and name != 'build_release'}
-        self.assertEqual(waiting, {'parakeet','boards'})
-        self.assertIn("needs.build_release.result == 'success'", jobs['boards'])
+        self.assertEqual(waiting, {'parakeet', 'spectrogram'})
+        self.assertNotIn('build_release', jobs['boards'])
+        self.assertIn('mode: boards', jobs['boards'])
+        self.assertIn("needs.build_release.result == 'success'", jobs['spectrogram'])
+        self.assertIn('mode: spectrogram', jobs['spectrogram'])
         self.assertIn("needs.build_release.result == 'success'", jobs['parakeet'])
         for workflow in self.WORKFLOWS.glob('*.yml'):
             with self.subTest(workflow=workflow.name):
@@ -1007,56 +1014,175 @@ class Measurements(unittest.TestCase):
 
 class PullRequestFourJobBudget(unittest.TestCase):
     """Retrospective 2026-11-11 §1: normal PR pushes execute <= 4 macOS jobs (3 M4-first + 1
-    hosted login-session smoke), ui-shots labeled PRs add UX Library boards + build_release for
-    UI board screenshots without Intel/ux-shot fan-out, main pushes add only build_release (5
-    macOS jobs), and nightly, workflow_dispatch and full-ci labeled PRs execute the full
-    Intel/screenshot/boards suite without duplicating the consolidated PR jobs."""
+    hosted login-session smoke), ui-shots labeled PRs add UX Library boards (Debug-only, without
+    build_release or Intel/ux-shot fan-out), main pushes add only build_release (5 macOS jobs),
+    and nightly, workflow_dispatch and full-ci labeled PRs execute the full Intel/screenshot/
+    boards/spectrogram suite with boards decoupled from Release."""
 
     @staticmethod
-    def eval_job_if(expr, outputs, build_ok=True, release_ok=True, changes_ok=True):
+    def parse_needs(body):
+        inline = re.search(r'^    needs:\s*\[([^\]]*)\]\s*$', body, re.M)
+        if inline:
+            return [x.strip() for x in inline.group(1).split(',') if x.strip()]
+        single = re.search(r'^    needs:\s*(\w+)\s*$', body, re.M)
+        if single:
+            return [single.group(1)]
+        block = re.search(r'^    needs:\s*\n((?:    -\s*\w+\s*\n)+)', body, re.M)
+        if block:
+            return re.findall(r'^    -\s*(\w+)\s*$', block.group(1), re.M)
+        return []
+
+    @staticmethod
+    def eval_job_if(expr, outputs, build_ok=True, release_result='success', changes_ok=True, job_needs=()):
+        results = {
+            'changes': 'success' if changes_ok else 'failure',
+            'build': 'success' if build_ok else 'failure',
+            'build_release': release_result,
+        }
         if expr is None:
-            return build_ok
+            return all(results[dep] == 'success' for dep in job_needs)
+        has_always = 'always()' in expr
+        if not has_always and any(results[dep] != 'success' for dep in job_needs):
+            return False
         py = expr.strip().removeprefix('${{').removesuffix('}}').strip()
         py = py.replace('!cancelled()', 'True').replace('always()', 'True')
         py = py.replace('&&', ' and ').replace('||', ' or ').replace('!=', ' != ')
         needs = SimpleNamespace(
             changes=SimpleNamespace(
-                result='success' if changes_ok else 'failure',
+                result=results['changes'],
                 outputs=SimpleNamespace(**{k: str(v).lower() for k, v in outputs.items()}),
             ),
-            build=SimpleNamespace(result='success' if build_ok else 'failure'),
-            build_release=SimpleNamespace(result='success' if release_ok else 'skipped'),
+            build=SimpleNamespace(result=results['build']),
+            build_release=SimpleNamespace(result=results['build_release']),
         )
         return bool(eval(py, {'__builtins__': {}}, {'needs': needs}))
 
-    def active_ci_jobs(self, event, changed, labels=()):
+    def active_ci_jobs(self, event, changed, labels=(), release_failed=False):
         selected = {
             **changes.select(event, 'base', PATHS, changed, labels=labels),
             **changes.execution_tier(event, labels),
         }
         ci = (ROOT/'.github/workflows/ci.yml').read_text()
         jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)', ci.split('\njobs:\n', 1)[1], re.M | re.S))
-        release_runs = False
+        release_result = 'skipped'
         active = []
         for name, body in jobs.items():
             if name == 'changes':
                 continue
+            job_needs = self.parse_needs(body)
             cond_match = re.search(r'^    if: (.+)$', body, re.M)
             cond = cond_match.group(1) if cond_match else None
             if name == 'build':
-                if self.eval_job_if(cond, selected):
+                if self.eval_job_if(cond, selected, job_needs=job_needs):
                     active.append('build:arm64')
                     if selected['full_ci']:
                         active.append('build:x86_64')
                 continue
             if name == 'build_release':
-                release_runs = self.eval_job_if(cond, selected)
-                if release_runs:
+                if self.eval_job_if(cond, selected, job_needs=job_needs):
+                    release_result = 'failure' if release_failed else 'success'
                     active.append('build_release')
                 continue
-            if self.eval_job_if(cond, selected, release_ok=release_runs):
+            if self.eval_job_if(cond, selected, release_result=release_result, job_needs=job_needs):
                 active.append(name)
         return active
+
+    def test_caller_dependency_graph_decouples_boards_from_release_and_gates_spectrogram(self):
+        ci = (ROOT/'.github/workflows/ci.yml').read_text()
+        caller_jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)', ci.split('\njobs:\n', 1)[1], re.M | re.S))
+        caller_needs = {name: self.parse_needs(body) for name, body in caller_jobs.items()}
+        self.assertEqual(caller_needs, {
+            'changes': [],
+            'build': ['changes'],
+            'build_release': ['changes', 'build'],
+            'kit': ['build'],
+            'ux_workers': ['changes', 'build'],
+            'ux_app': ['changes', 'build'],
+            'native_sink': ['changes', 'build'],
+            'shot': ['changes', 'build'],
+            'boards': ['changes', 'build'],
+            'spectrogram': ['changes', 'build', 'build_release'],
+            'whistle': ['changes', 'build'],
+            'package_tests': ['changes', 'build'],
+            'parakeet': ['changes', 'build', 'build_release'],
+            'browser_setup': ['changes', 'build'],
+        })
+
+        def transitive(job):
+            seen = set()
+            stack = list(caller_needs[job])
+            while stack:
+                dep = stack.pop()
+                if dep not in seen:
+                    seen.add(dep)
+                    stack.extend(caller_needs[dep])
+            return seen
+
+        self.assertEqual(transitive('boards'), {'changes', 'build'})
+        self.assertEqual(
+            {name for name in caller_jobs if 'build_release' in transitive(name)},
+            {'spectrogram', 'parakeet'},
+        )
+        self.assertRegex(caller_jobs['boards'], r'(?m)^      products_ready: true\n      mode: boards$')
+        self.assertRegex(caller_jobs['spectrogram'], r'(?m)^      products_ready: true\n      mode: spectrogram$')
+
+        callee_text = (ROOT/'.github/workflows/ux-boards.yml').read_text()
+        callee_jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)', callee_text.split('\njobs:\n', 1)[1], re.M | re.S))
+        callee_needs = {name: self.parse_needs(body) for name, body in callee_jobs.items()}
+        self.assertEqual(callee_needs, {
+            'build': [],
+            'release': ['build'],
+            'boards': ['build'],
+            'spectrogram': ['build', 'release'],
+            'spectrogram_diagnostics': ['build', 'release'],
+        })
+
+        def active_callee_jobs(products_ready, mode, build_ok=True, release_ok=True):
+            ran = {}
+            out = []
+            for jname, jbody in callee_jobs.items():
+                cond_match = re.search(r'^    if: (.+)$', jbody, re.M)
+                expr = cond_match.group(1) if cond_match else None
+                if expr is None:
+                    ok = True
+                else:
+                    py = expr.strip().removeprefix('${{').removesuffix('}}').strip()
+                    py = py.replace('!cancelled()', 'True').replace('always()', 'True')
+                    py = re.sub(r'!inputs\.(\w+)', r'(not inputs.\1)', py)
+                    py = py.replace('&&', ' and ').replace('||', ' or ').replace('!=', ' != ')
+                    inputs = SimpleNamespace(products_ready=products_ready, mode=mode)
+                    needs_ns = SimpleNamespace(
+                        build=SimpleNamespace(result=ran.get('build', 'skipped')),
+                        release=SimpleNamespace(result=ran.get('release', 'skipped')),
+                    )
+                    has_always = 'always()' in expr
+                    deps_ok = all(ran.get(d) == 'success' for d in callee_needs[jname])
+                    ok = (has_always or deps_ok) and bool(eval(py, {'__builtins__': {}}, {'inputs': inputs, 'needs': needs_ns}))
+                if ok:
+                    if jname == 'build':
+                        ran[jname] = 'success' if build_ok else 'failure'
+                    elif jname == 'release':
+                        ran[jname] = 'success' if release_ok else 'failure'
+                    else:
+                        ran[jname] = 'success'
+                    out.append(jname)
+                else:
+                    ran[jname] = 'skipped'
+            return out
+
+        self.assertEqual(active_callee_jobs(True, 'boards'), ['boards'])
+        self.assertEqual(active_callee_jobs(True, 'spectrogram'), ['spectrogram', 'spectrogram_diagnostics'])
+        self.assertEqual(active_callee_jobs(True, 'invalid'), [])
+        self.assertEqual(active_callee_jobs(False, 'boards'), ['build', 'boards'])
+        for default_mode in ['', 'all']:
+            self.assertEqual(
+                active_callee_jobs(False, default_mode, release_ok=True),
+                ['build', 'release', 'boards', 'spectrogram', 'spectrogram_diagnostics'],
+            )
+            self.assertEqual(
+                active_callee_jobs(False, default_mode, release_ok=False),
+                ['build', 'release', 'boards'],
+            )
 
     def test_execution_tier_and_label_parsing_fail_open_on_malformed_input(self):
         self.assertEqual(changes.parse_labels(''), ())
@@ -1067,7 +1193,7 @@ class PullRequestFourJobBudget(unittest.TestCase):
                 changes.parse_labels(bad)
         self.assertEqual(changes.execution_tier('pull_request'), {'full_ci': False, 'ui_shots': False, 'release_build': False})
         self.assertEqual(changes.execution_tier('pull_request', ('bug',)), {'full_ci': False, 'ui_shots': False, 'release_build': False})
-        self.assertEqual(changes.execution_tier('pull_request', ('ui-shots',)), {'full_ci': False, 'ui_shots': True, 'release_build': True})
+        self.assertEqual(changes.execution_tier('pull_request', ('ui-shots',)), {'full_ci': False, 'ui_shots': True, 'release_build': False})
         self.assertEqual(changes.execution_tier('pull_request', ('full-ci',)), {'full_ci': True, 'ui_shots': False, 'release_build': True})
         self.assertEqual(changes.execution_tier('pull_request', ('ui-shots', 'full-ci')), {'full_ci': True, 'ui_shots': True, 'release_build': True})
         self.assertEqual(changes.execution_tier('push'), {'full_ci': False, 'ui_shots': False, 'release_build': True})
@@ -1087,7 +1213,7 @@ class PullRequestFourJobBudget(unittest.TestCase):
             out = Path(folder)/'github_output'
             for env_vars, expected_full, expected_ui_shots, expected_release in [
                 ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': '[]'}, 'false', 'false', 'false'),
-                ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': '["ui-shots"]'}, 'false', 'true', 'true'),
+                ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': '["ui-shots"]'}, 'false', 'true', 'false'),
                 ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': '["full-ci"]'}, 'true', 'false', 'true'),
                 ({'EVENT_NAME': 'pull_request', 'PR_BASE': '', 'PR_LABELS': 'corrupt-json'}, 'true', 'false', 'true'),
                 ({'EVENT_NAME': 'push', 'PR_BASE': '', 'PR_LABELS': 'null'}, 'false', 'false', 'true'),
@@ -1111,7 +1237,7 @@ class PullRequestFourJobBudget(unittest.TestCase):
             self.assertEqual(parsed_ui['shot'], 'false')
             self.assertEqual(parsed_ui['ui_shots'], 'true')
             self.assertEqual(parsed_ui['full_ci'], 'false')
-            self.assertEqual(parsed_ui['release_build'], 'true')
+            self.assertEqual(parsed_ui['release_build'], 'false')
 
     def test_pr_push_runs_at_most_four_macos_jobs_and_main_push_adds_only_release(self):
         pr_all = self.active_ci_jobs('pull_request', ['Sources/CassiniKit/Reader.swift'])
@@ -1123,16 +1249,21 @@ class PullRequestFourJobBudget(unittest.TestCase):
         self.assertLessEqual(len(pr_docs), 4)
 
         for changed in [['Sources/CassiniKit/Reader.swift'], ['README.md']]:
-            with self.subTest(ui_shots_changed=changed):
-                pr_ui_shots = self.active_ci_jobs('pull_request', changed, labels=('ui-shots',))
-                self.assertEqual(pr_ui_shots, ['build:arm64', 'build_release', 'kit', 'ux_workers', 'ux_app', 'boards'])
+            for release_failed in [False, True]:
+                with self.subTest(ui_shots_changed=changed, release_failed=release_failed):
+                    pr_ui_shots = self.active_ci_jobs('pull_request', changed, labels=('ui-shots',), release_failed=release_failed)
+                    self.assertEqual(pr_ui_shots, ['build:arm64', 'kit', 'ux_workers', 'ux_app', 'boards'])
 
         main_push = self.active_ci_jobs('push', ['README.md'])
         self.assertEqual(main_push, ['build:arm64', 'build_release', 'kit', 'ux_workers', 'ux_app'])
 
         expected_full = [
             'build:arm64', 'build:x86_64', 'build_release', 'kit',
-            'native_sink', 'shot', 'boards', 'whistle', 'package_tests', 'parakeet', 'browser_setup',
+            'native_sink', 'shot', 'boards', 'spectrogram', 'whistle', 'package_tests', 'parakeet', 'browser_setup',
+        ]
+        expected_full_release_failed = [
+            'build:arm64', 'build:x86_64', 'build_release', 'kit',
+            'native_sink', 'shot', 'boards', 'whistle', 'package_tests', 'browser_setup',
         ]
         for event, labels in [
             ('schedule', ()),
@@ -1142,6 +1273,10 @@ class PullRequestFourJobBudget(unittest.TestCase):
         ]:
             with self.subTest(event=event, labels=labels):
                 self.assertEqual(self.active_ci_jobs(event, ['README.md'], labels=labels), expected_full)
+                self.assertEqual(
+                    self.active_ci_jobs(event, ['README.md'], labels=labels, release_failed=True),
+                    expected_full_release_failed,
+                )
 
     def test_consolidated_pr_jobs_preserve_every_arm64_proof_and_bundle_isolation(self):
         workers = ci_job('ux_workers')
