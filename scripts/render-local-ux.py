@@ -21,6 +21,7 @@ parser.add_argument('--output',type=Path,required=True)
 parser.add_argument('--listening',choices=['playing','finished'])
 parser.add_argument('--speaker')
 parser.add_argument('--scheme',choices=['light','dark'],default=os.environ.get('CASSINI_SCREENSHOT_SCHEME') or 'light')
+parser.add_argument('--accent',default=os.environ.get('CASSINI_SCREENSHOT_ACCENT') or '')
 args = parser.parse_args()
 assert not args.listening or args.board == 'meeting', 'Listening preview requires the meeting fixture'
 assert not args.speaker or args.listening, 'Speaker selection requires a listening preview'
@@ -35,7 +36,8 @@ with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
                '--env','CASSINI_LOCAL_WORKFLOW_TESTS=1','--env','CASSINI_HOSTED_SCREENSHOTS=1','--args',
                '-CassiniScreenshot',args.board,'-CassiniRenderID',render_id,'-CassiniFixture',str(fixture),'-CassiniNow','2026-10-27T13:18:00Z',
                '-ApplePersistenceIgnoreState','YES','-AppleLanguages','(en-GB)','-AppleLocale','en_GB',
-               '-AppleInterfaceStyle','Dark' if args.scheme == 'dark' else 'Light','-AppleAccentColor','4']
+               '-AppleInterfaceStyle','Dark' if args.scheme == 'dark' else 'Light']
+    if args.accent: command += ['-AppleAccentColor',args.accent]
     if args.scheme == 'dark': command += ['-CassiniScreenshotScheme','dark']
     if args.listening: command += ['-CassiniListeningPreview',args.listening]
     if args.speaker: command += ['-CassiniListeningSpeaker',args.speaker]
