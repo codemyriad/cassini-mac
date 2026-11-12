@@ -1033,11 +1033,12 @@ class PullRequestFourJobBudget(unittest.TestCase):
         return []
 
     @staticmethod
-    def eval_job_if(expr, outputs, build_ok=True, release_result='success', changes_ok=True, job_needs=()):
+    def eval_job_if(expr, outputs, build_ok=True, release_result='success', changes_ok=True, boards_result='skipped', event='pull_request', job_needs=()):
         results = {
             'changes': 'success' if changes_ok else 'failure',
             'build': 'success' if build_ok else 'failure',
             'build_release': release_result,
+            'boards': boards_result,
         }
         if expr is None:
             return all(results[dep] == 'success' for dep in job_needs)
@@ -1054,10 +1055,12 @@ class PullRequestFourJobBudget(unittest.TestCase):
             ),
             build=SimpleNamespace(result=results['build']),
             build_release=SimpleNamespace(result=results['build_release']),
+            boards=SimpleNamespace(result=results['boards']),
         )
-        return bool(eval(py, {'__builtins__': {}}, {'needs': needs}))
+        github = SimpleNamespace(event_name=event)
+        return bool(eval(py, {'__builtins__': {}}, {'needs': needs, 'github': github}))
 
-    def active_ci_jobs(self, event, changed, labels=(), release_failed=False):
+    def active_ci_jobs(self, event, changed, labels=(), release_failed=False, include_ubuntu=False, boards_failed=False):
         selected = {
             **changes.select(event, 'base', PATHS, changed, labels=labels),
             **changes.execution_tier(event, labels),
@@ -1065,26 +1068,38 @@ class PullRequestFourJobBudget(unittest.TestCase):
         ci = (ROOT/'.github/workflows/ci.yml').read_text()
         jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)', ci.split('\njobs:\n', 1)[1], re.M | re.S))
         release_result = 'skipped'
+        boards_result = 'skipped'
         active = []
         for name, body in jobs.items():
             if name == 'changes':
                 continue
+            is_ubuntu = 'runs-on: ubuntu-latest' in body
             job_needs = self.parse_needs(body)
             cond_match = re.search(r'^    if: (.+)$', body, re.M)
             cond = cond_match.group(1) if cond_match else None
             if name == 'build':
-                if self.eval_job_if(cond, selected, job_needs=job_needs):
+                if self.eval_job_if(cond, selected, event=event, job_needs=job_needs):
                     active.append('build:arm64')
                     if selected['full_ci']:
                         active.append('build:x86_64')
                 continue
             if name == 'build_release':
-                if self.eval_job_if(cond, selected, job_needs=job_needs):
+                if self.eval_job_if(cond, selected, event=event, job_needs=job_needs):
                     release_result = 'failure' if release_failed else 'success'
                     active.append('build_release')
                 continue
-            if self.eval_job_if(cond, selected, release_result=release_result, job_needs=job_needs):
-                active.append(name)
+            if self.eval_job_if(
+                cond,
+                selected,
+                release_result=release_result,
+                boards_result=boards_result,
+                event=event,
+                job_needs=job_needs,
+            ):
+                if name == 'boards':
+                    boards_result = 'failure' if boards_failed else 'success'
+                if include_ubuntu or not is_ubuntu:
+                    active.append(name)
         return active
 
     def test_caller_dependency_graph_decouples_boards_from_release_and_gates_spectrogram(self):
@@ -1101,6 +1116,7 @@ class PullRequestFourJobBudget(unittest.TestCase):
             'native_sink': ['changes', 'build'],
             'shot': ['changes', 'build'],
             'boards': ['changes', 'build'],
+            'shots_diff': ['boards'],
             'spectrogram': ['changes', 'build', 'build_release'],
             'whistle': ['changes', 'build'],
             'package_tests': ['changes', 'build'],
@@ -1119,6 +1135,7 @@ class PullRequestFourJobBudget(unittest.TestCase):
             return seen
 
         self.assertEqual(transitive('boards'), {'changes', 'build'})
+        self.assertEqual(transitive('shots_diff'), {'changes', 'build', 'boards'})
         self.assertEqual(
             {name for name in caller_jobs if 'build_release' in transitive(name)},
             {'spectrogram', 'parakeet'},
@@ -1277,6 +1294,34 @@ class PullRequestFourJobBudget(unittest.TestCase):
                     self.active_ci_jobs(event, ['README.md'], labels=labels, release_failed=True),
                     expected_full_release_failed,
                 )
+
+    def test_shots_diff_runs_on_ubuntu_only_for_pull_requests_after_successful_boards(self):
+        diff_job = ci_job('shots_diff')
+        changes_job = ci_job('changes')
+        self.assertIn('runs-on: ubuntu-latest\n', diff_job)
+        self.assertIn('timeout-minutes: 10\n', diff_job)
+        self.assertIn('permissions:\n      contents: read\n      actions: read\n', diff_job)
+        self.assertNotIn(': write', diff_job)
+        self.assertNotIn('continue-on-error', diff_job)
+        self.assertNotIn('|| true', diff_job)
+        self.assertIn('Pillow==11.3.0', diff_job)
+        self.assertIn(' -I scripts/pr-shots.py diff', diff_job)
+        self.assertIn('--layout mac', diff_job)
+        self.assertIn('--base-workflow ci.yml', diff_job)
+        self.assertIn('--base-artifact ux-boards', diff_job)
+        self.assertIn('--allow-escape-sequences', diff_job)
+        self.assertIn('name: pr-shots\n', diff_job)
+        self.assertIn('env -u GITHUB_STEP_SUMMARY "$RUNNER_TEMP/pr-shots-venv/bin/python3" -I scripts/pr-shots.py --self-test', changes_job)
+        self.assertIn('env -u GITHUB_STEP_SUMMARY "$RUNNER_TEMP/pr-shots-venv/bin/python3" -I scripts/test-pr-shots.py', changes_job)
+
+        self.assertNotIn('shots_diff', self.active_ci_jobs('pull_request', ['Cassini/Library/LibraryView.swift'], include_ubuntu=True))
+        self.assertIn('shots_diff', self.active_ci_jobs('pull_request', ['README.md'], labels=('ui-shots',), include_ubuntu=True))
+        self.assertIn('shots_diff', self.active_ci_jobs('pull_request', ['README.md'], labels=('ui-shots',), release_failed=True, include_ubuntu=True))
+        self.assertNotIn('shots_diff', self.active_ci_jobs('pull_request', ['README.md'], labels=('ui-shots',), boards_failed=True, include_ubuntu=True))
+        self.assertIn('shots_diff', self.active_ci_jobs('pull_request', ['README.md'], labels=('full-ci',), include_ubuntu=True))
+        for non_pr_event in ['push', 'schedule', 'workflow_dispatch']:
+            with self.subTest(event=non_pr_event):
+                self.assertNotIn('shots_diff', self.active_ci_jobs(non_pr_event, ['README.md'], include_ubuntu=True))
 
     def test_consolidated_pr_jobs_preserve_every_arm64_proof_and_bundle_isolation(self):
         workers = ci_job('ux_workers')

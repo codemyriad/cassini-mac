@@ -1230,7 +1230,10 @@ final class LibraryBoards: XCTestCase {
         app.launchEnvironment["CASSINI_HOSTED_SCREENSHOTS"] = "1"
         app.launchArguments = ["-CassiniScreenshot", name, "-CassiniFixture", root.path,
                                "-CassiniNow", "2026-10-27T13:18:00Z", "-ApplePersistenceIgnoreState", "YES",
-                               "-AppleLanguages", "(\(language))", "-AppleLocale", locale, "-AppleInterfaceStyle", dark ? "Dark" : "Light", "-AppleAccentColor", "4"]
+                               "-AppleLanguages", "(\(language))", "-AppleLocale", locale, "-AppleInterfaceStyle", dark ? "Dark" : "Light"]
+        if let accent = ProcessInfo.processInfo.environment["CASSINI_SCREENSHOT_ACCENT"], !accent.isEmpty {
+            app.launchArguments += ["-AppleAccentColor", accent]
+        }
         if dark { app.launchArguments += ["-CassiniScreenshotScheme", "dark"] }
         if !extra.contains("-CassiniSettingsID") && !extra.contains("-CassiniCaptureID") && !extra.contains("-CassiniDefaultsID") {
             app.launchArguments += ["-CassiniDefaultsID", UUID().uuidString]
