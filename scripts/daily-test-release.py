@@ -105,11 +105,17 @@ def developer_notes(base,head):
                      (base+'..'+head) if base else head]).splitlines()
     entries=[];seen=set()
     for sha in commits:
+        matched=False
         for pr in gh([f'repos/{REPO}/commits/{sha}/pulls']):
-            if pr.get('merged_at') and pr['base']['ref']=='main' and pr['merge_commit_sha']==sha and pr['number'] not in seen:
+            if pr.get('merged_at') and pr['base']['ref']=='main' and pr['merge_commit_sha']==sha:
+                matched=True
+                if pr['number'] in seen:continue
                 seen.add(pr['number'])
                 title=release_title(pr['title'])
                 entries.append(f'- {title} ([#{pr["number"]}](https://github.com/{REPO}/pull/{pr["number"]}))')
+        if not matched:
+            subject=command(['git','-C',SOURCE,'show','-s','--format=%s',sha]).strip() or 'Commit '+sha[:8]
+            entries.append(f'- {release_title(subject)} ([{sha[:8]}](https://github.com/{REPO}/commit/{sha}))')
     return '\n'.join([f'Source: `{head}`','',*(entries or ['No merged PR titles in this main update.'])])+'\n'
 
 

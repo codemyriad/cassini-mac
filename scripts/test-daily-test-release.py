@@ -67,6 +67,16 @@ class DailyPolicy(unittest.TestCase):
         self.assertEqual(body,'Source: `'+('a'*40)+'`\n\n- '+literal+' ([#7](https://github.com/'+daily.REPO+'/pull/7))\n')
         self.assertEqual(daily.release_title(' \n\u202e\x1b'),'` Untitled pull request `')
 
+    def test_direct_commit_subjects_are_folded_developer_changes_only(self):
+        sha='a'*40;subject='CI D95 #123 Internal.swift'
+        def git(args,**kwargs):return sha+'\n' if 'log' in args else subject+'\n'
+        with patch.object(daily,'command',side_effect=git),patch.object(daily,'gh',return_value=[]):
+            developer=daily.developer_notes(None,sha)
+        notes=daily.ReleaseNotes('The Library opens normally.',developer)
+        self.assertIn(subject,notes.github().split('<details>',1)[1])
+        self.assertNotIn(subject,notes.user);self.assertNotIn(subject,notes.html())
+        self.assertIn('/commit/'+sha,developer)
+
     def test_number_reserves_failed_builds_and_existing_immutable_beta_tags(self):
         releases=[{'tag_name':'v0.1.0-beta.9'},{'tag_name':'v1.0.0-beta.100'}]
         self.assertEqual(daily.next_build('0.1.0',1,releases,{}),10)
