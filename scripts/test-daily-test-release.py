@@ -198,7 +198,7 @@ class DailyExecution(unittest.TestCase):
                 (output/name).write_bytes(data);digest=hashlib.sha256(data).hexdigest()
                 (output/'test-release.json').write_text(json.dumps(dict(channel='nightly',commit='a'*40,version='0.1.0',build=2,notarized=True,updatesEnabled=False,dmg=name,bytes=len(data),sha256=digest)))
                 (output/'SHA256SUMS').write_text(digest+'  '+name+'\n')
-                user=daily.ReleaseNotes('A clearer Library.','developer notes #123')
+                user=daily.ReleaseNotes('A clearer Library.','CI D95 #123 Internal.swift developer PR title')
                 (output/'user-release-notes.txt').write_text(user.user+'\n')
                 (output/'user-release-notes.html').write_text(user.html())
                 assets=[dict(name=p.name,size=p.stat().st_size) for p in output.iterdir()]
@@ -211,6 +211,13 @@ class DailyExecution(unittest.TestCase):
                     self.assertEqual(len(edits),int(complete))
                     if edits:self.assertIn('--prerelease',edits[0]);self.assertIn('--latest=false',edits[0])
                     self.assertFalse(any('--clobber' in c.args[0] for c in tool.call_args_list))
+                    self.assertEqual((output/'user-release-notes.txt').read_text(),user.user+'\n')
+                    for token in ['CI','D95','#123','Internal.swift','developer PR title']:
+                        self.assertNotIn(token,(output/'user-release-notes.html').read_text())
+                    self.assertIn(user.developer,(output/'nightly-notes.md').read_text().split('<details>',1)[1])
+                    upload=next(c.args[0] for c in tool.call_args_list if c.args[0][1:3]==['release','upload'])
+                    self.assertIn(output/'user-release-notes.txt',upload);self.assertIn(output/'user-release-notes.html',upload)
+
 
 class OwnedBuildCleanup(unittest.TestCase):
     def test_timeout_stops_only_its_new_process_group(self):
