@@ -192,7 +192,7 @@ private struct ListeningTicks: View, Equatable {
         Canvas { context,size in
             for x in timeline.marks(duration:duration,track:track) {
                 let mark = CGRect(x:CGFloat(x)-1.5,y:size.height/2-4,width:3,height:8)
-                context.fill(Path(roundedRect:mark,cornerRadius:1),with:.color(.accentColor))
+                context.fill(Path(roundedRect:mark,cornerRadius:1),with:.color(CassiniTheme.accent))
             }
         }
     }

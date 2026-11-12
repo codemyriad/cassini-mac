@@ -46,6 +46,9 @@ targets:
         buildPhase: resources
       - path: Cassini/Resources/Localization
         buildPhase: resources
+      - path: Cassini/Resources/Brand
+        type: folder
+        buildPhase: resources
       - path: Cassini/Resources/UX
         type: folder
         buildPhase: resources

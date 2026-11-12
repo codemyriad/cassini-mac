@@ -86,20 +86,30 @@ struct TransferStatusBanner: View {
 
     @ViewBuilder
     private func card<Content: View>(warning: Bool, @ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 16) {
+        let base = HStack(spacing: 16) {
             content()
         }
         .padding(14)
-        .foregroundStyle(warning ? LibraryTheme.amber : Color(nsColor: .labelColor))
+        .foregroundStyle(warning ? CassiniTheme.warnInk : (CassiniTheme.toastUsesInverse ? CassiniTheme.onInverse : CassiniTheme.ink))
         .background {
             if warning {
-                RoundedRectangle(cornerRadius: 8).fill(LibraryTheme.amberTint)
+                RoundedRectangle(cornerRadius: 8).fill(CassiniTheme.warnTint)
+            } else if CassiniTheme.toastUsesInverse {
+                RoundedRectangle(cornerRadius: 8).fill(CassiniTheme.inverse)
             } else {
                 RoundedRectangle(cornerRadius: 8).fill(.regularMaterial)
             }
         }
-        .shadow(radius: 6)
-        .accessibilityElement(children: .contain)
+        if CassiniTheme.toastUsesInverse {
+            base
+                .tint(warning ? nil : CassiniTheme.inverseAccent)
+                .shadow(color: CassiniTheme.shadow, radius: 6, y: 2)
+                .accessibilityElement(children: .contain)
+        } else {
+            base
+                .shadow(radius: 6)
+                .accessibilityElement(children: .contain)
+        }
     }
 }
 
@@ -166,17 +176,17 @@ struct MeetingExportSheet: View {
         VStack(alignment:.leading,spacing:20) {
             VStack(alignment:.leading,spacing:6) {
                 Text(UXText.text("export.title",["title":meeting.title ?? UXText.text("library.untitled")])).font(.system(size:20,weight:.bold))
-                Text(UXText.text("export.subtitle")).foregroundStyle(LibraryTheme.dim)
+                Text(UXText.text("export.subtitle")).foregroundStyle(CassiniTheme.ink2)
             }
             VStack(spacing:0) {
                 option(.cassini,title:"export.cassiniFile.label",description:"export.cassiniFile.description")
                 Divider()
                 option(.markdown,title:"export.markdown.label",description:"export.markdown.description")
-            }.background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
-                .clipShape(RoundedRectangle(cornerRadius:8)).overlay { RoundedRectangle(cornerRadius:8).stroke(Color.secondary.opacity(0.25)) }
+            }.background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
+                .clipShape(RoundedRectangle(cornerRadius:8)).overlay { RoundedRectangle(cornerRadius:8).stroke(CassiniTheme.cardStroke) }
                 .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("export.formatGroup.a11y"))
             VStack(alignment:.leading,spacing:6) {
-                Text(UXText.text("export.speakerNames.heading")).font(.system(size:11.5,weight:.bold)).foregroundStyle(LibraryTheme.dim)
+                Text(UXText.text("export.speakerNames.heading")).font(.system(size:11.5,weight:.bold)).foregroundStyle(CassiniTheme.ink2)
                 ScrollView { speakerNames.lineSpacing(5).fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,alignment:.leading) }
                     .frame(maxHeight:130).fixedSize(horizontal:false,vertical:true)
             }
@@ -185,10 +195,10 @@ struct MeetingExportSheet: View {
                 template("export.saveTo",token:"folder",value:Text(coordinator.directory.lastPathComponent).fontWeight(.semibold))
                 Spacer()
                 Button(UXText.text("common.choose")) { coordinator.chooseDirectory() }.buttonStyle(.plain)
-                    .fontWeight(.semibold).padding(.horizontal,14).frame(height:30).background(LibraryTheme.chip,in:RoundedRectangle(cornerRadius:6))
+                    .fontWeight(.semibold).padding(.horizontal,14).frame(height:30).background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:6))
                     .accessibilityIdentifier("export-choose-folder")
                     .disabled(coordinator.working)
-            }.padding(14).background(LibraryTheme.chip.opacity(0.65),in:RoundedRectangle(cornerRadius:7))
+            }.padding(14).background(CassiniTheme.chipFill.opacity(0.65),in:RoundedRectangle(cornerRadius:7))
             if let failure = coordinator.failure {
                 HStack(alignment:.firstTextBaseline,spacing:10) {
                     Image(systemName:"exclamationmark.triangle.fill").accessibilityHidden(true)
@@ -198,17 +208,17 @@ struct MeetingExportSheet: View {
                         Button(UXText.text("common.tryAgain")) { coordinator.perform() }.disabled(coordinator.working)
                             .accessibilityIdentifier("export-try-again")
                     }
-                }.padding(12).foregroundStyle(LibraryTheme.amber).background(LibraryTheme.amberTint,in:RoundedRectangle(cornerRadius:7))
+                }.padding(12).foregroundStyle(CassiniTheme.warnInk).background(CassiniTheme.warnTint,in:RoundedRectangle(cornerRadius:7))
                     .accessibilityElement(children:.contain).accessibilityIdentifier("export-failed")
             }
             HStack(spacing:10) {
                 Spacer()
                 if coordinator.working { ProgressView().controlSize(.small) }
                 Button(UXText.text("common.cancel")) { coordinator.cancel() }.keyboardShortcut(.cancelAction)
-                    .buttonStyle(.plain).fontWeight(.semibold).padding(.horizontal,18).frame(height:36).background(LibraryTheme.chip,in:RoundedRectangle(cornerRadius:6))
+                    .buttonStyle(.plain).fontWeight(.semibold).padding(.horizontal,18).frame(height:36).background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:6))
                 Button(UXText.text("export.exportButton")) { coordinator.perform() }.keyboardShortcut(.defaultAction)
                     .buttonStyle(.plain).fontWeight(.semibold).padding(.horizontal,18).frame(height:36)
-                    .foregroundStyle(.white).background(Color.accentColor,in:RoundedRectangle(cornerRadius:6))
+                    .foregroundStyle(CassiniTheme.onAccent).background(CassiniTheme.accentStrong,in:RoundedRectangle(cornerRadius:6))
                     .disabled(coordinator.working).accessibilityIdentifier("export-confirm")
             }
         }.font(.system(size:13)).padding(26).frame(width:540)
@@ -219,13 +229,13 @@ struct MeetingExportSheet: View {
             ExportRadio(selected:coordinator.kind == kind,label:UXText.text(title)) { coordinator.kind = kind }.frame(width:20,height:20)
             VStack(alignment:.leading,spacing:3) {
                 Text(UXText.text(title)).fontWeight(.semibold)
-                Text(UXText.text(description)).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
+                Text(UXText.text(description)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
             }.frame(maxWidth:.infinity,alignment:.leading)
             if kind == .cassini, let bytes = coordinator.estimatedBytes {
-                Text(LibraryFormat.size(bytes:bytes,approximate:true)).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
+                Text(LibraryFormat.size(bytes:bytes,approximate:true)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
             }
         }.padding(.horizontal,16).frame(minHeight:55)
-            .background(coordinator.kind == kind ? Color.accentColor.opacity(0.10) : Color.clear)
+            .background(coordinator.kind == kind ? CassiniTheme.selectedOptionWash : Color.clear)
             .contentShape(Rectangle()).onTapGesture { if !coordinator.working && (kind != .cassini || !meeting.audioFiles.isEmpty) { coordinator.kind = kind } }
             .disabled(coordinator.working || (kind == .cassini && meeting.audioFiles.isEmpty))
             .accessibilityElement(children:.contain).accessibilityIdentifier(kind == .cassini ? "export-cassini" : "export-markdown")

@@ -81,7 +81,7 @@ enum TranscriptBuilder {
         let note = NSMutableParagraphStyle()
         note.paragraphSpacing = 6
         out.append(NSAttributedString(string: "Click any word to play from there.\n", attributes: [
-            .font: noteFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: note,
+            .font: noteFont, .foregroundColor: CassiniTheme.nsInk2, .paragraphStyle: note,
         ]))
 
         let header = NSMutableParagraphStyle()
@@ -103,12 +103,12 @@ enum TranscriptBuilder {
                 .baselineOffset: 1.5, .paragraphStyle: header,
             ]))
             out.append(NSAttributedString(string: "  " + label(turn.speaker), attributes: [
-                .font: nameFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: header,
+                .font: nameFont, .foregroundColor: CassiniTheme.nsInk, .paragraphStyle: header,
             ])) }
             let others = turn.over.map(label)
             let over = others.isEmpty ? "" : " " + UXText.text("meeting.turn.over",["names":LibraryFormat(locale:UXText.locale,language:UXText.language).list(others)])
             out.append(NSAttributedString(string: "  " + formatClock(turn.startMs) + over, attributes: [
-                .font: timeFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: header,
+                .font: timeFont, .foregroundColor: CassiniTheme.nsInk2, .paragraphStyle: header,
                 .cassiniSeek: turn.startMs, .cursor: NSCursor.pointingHand,
                 .toolTip: "Play from \(formatClock(turn.startMs))",
             ]))
@@ -127,12 +127,12 @@ enum TranscriptBuilder {
                     let w = timeline.words[wordIndex]
                     let loc = out.length
                     var attrs: [NSAttributedString.Key: Any] = [
-                        .font: bodyFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: body,
+                        .font: bodyFont, .foregroundColor: CassiniTheme.nsInk, .paragraphStyle: body,
                         .kern: -0.075, .cassiniWord: wordIndex, .cursor: NSCursor.pointingHand,
                     ]
                     if w.lowConfidenceSpeaker {
                         attrs[.underlineStyle] = NSUnderlineStyle.patternDot.rawValue | NSUnderlineStyle.single.rawValue
-                        attrs[.underlineColor] = NSColor.tertiaryLabelColor
+                        attrs[.underlineColor] = CassiniTheme.nsInk3
                     }
                     out.append(NSAttributedString(string: bodyText[k], attributes: attrs))
                     layout.wordRanges[wordIndex] = NSRange(location: loc, length: out.length - loc)
@@ -163,11 +163,11 @@ enum TranscriptBuilder {
         let marker = "\u{E000}"
         let template = UXText.text("meeting.turn.aside",["name":label(j.speaker),"text":marker]).components(separatedBy:marker)
         out.append(NSAttributedString(string: "(" + template[0], attributes: [
-            .font: chipNameFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: style,
+            .font: chipNameFont, .foregroundColor: CassiniTheme.nsInk, .paragraphStyle: style,
             .cassiniChip: chipIndex, .cursor: NSCursor.pointingHand, .baselineOffset: 0.5,
         ]))
         out.append(NSAttributedString(string: words + template.dropFirst().joined(separator:marker) + ")", attributes: [
-            .font: chipFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: style,
+            .font: chipFont, .foregroundColor: CassiniTheme.nsInk2, .paragraphStyle: style,
             .cassiniChip: chipIndex, .cursor: NSCursor.pointingHand, .baselineOffset: 0.5,
             .toolTip: "\(label(j.speaker)) at \(formatClock(j.startMs)): \(j.words.map { timeline.words[$0].text }.joined(separator: " "))",
         ]))

@@ -20,7 +20,7 @@ struct WhatIsRecordedView: View {
         VStack(alignment:.leading,spacing:18) {
             VStack(alignment:.leading,spacing:6) {
                 Text(UXText.text("whatIsRecorded.title")).font(.system(size:20,weight:.bold)).accessibilityAddTraits(.isHeader)
-                Text(UXText.text("whatIsRecorded.subtitle")).foregroundStyle(LibraryTheme.dim)
+                Text(UXText.text("whatIsRecorded.subtitle")).foregroundStyle(CassiniTheme.ink2)
             }
             VStack(spacing:0) {
                 ForEach(CaptureChoice.allCases,id:\.self) { item in
@@ -28,12 +28,12 @@ struct WhatIsRecordedView: View {
                     Button { apply(item) } label: {
                         HStack(spacing:14) {
                             ZStack {
-                                Circle().stroke(item == choice ? Color.accentColor : .secondary,lineWidth:1).frame(width:17,height:17)
-                                if item == choice { Circle().fill(Color.accentColor).frame(width:10,height:10) }
+                                Circle().stroke(item == choice ? CassiniTheme.accent : CassiniTheme.secondaryInk,lineWidth:1).frame(width:17,height:17)
+                                if item == choice { Circle().fill(CassiniTheme.accent).frame(width:10,height:10) }
                             }.accessibilityHidden(true)
                             VStack(alignment:.leading,spacing:2) {
                                 Text(item.title).fontWeight(.semibold)
-                                Text(item.caption).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim)
+                                Text(item.caption).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
                             }
                             Spacer(minLength:0)
                         }.padding(.horizontal,16).frame(minHeight:53).contentShape(Rectangle())
@@ -41,26 +41,26 @@ struct WhatIsRecordedView: View {
                         .accessibilityLabel(item.title).accessibilityAddTraits(item == choice ? .isSelected : [])
                         .accessibilityIdentifier("capture-choice-" + item.rawValue)
                 }
-            }.background(Color(nsColor:.textBackgroundColor),in:RoundedRectangle(cornerRadius:8))
-                .overlay { RoundedRectangle(cornerRadius:8).stroke(Color.secondary.opacity(0.25)) }
+            }.background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
+                .overlay { RoundedRectangle(cornerRadius:8).stroke(CassiniTheme.cardStroke) }
                 .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("whatIsRecorded.choices.a11y"))
             VStack(alignment:.leading,spacing:8) {
-                Text(UXText.text("whatIsRecorded.othersHeard.heading")).font(.system(size:11.5,weight:.bold)).foregroundStyle(LibraryTheme.dim)
+                Text(UXText.text("whatIsRecorded.othersHeard.heading")).font(.system(size:11.5,weight:.bold)).foregroundStyle(CassiniTheme.ink2)
                 HStack(alignment:.top,spacing:14) {
-                    Image(systemName:model.others && !model.othersUnavailable ? "checkmark" : "speaker.slash").fontWeight(.semibold).foregroundStyle(Color.accentColor).frame(width:14).padding(.top,2).accessibilityHidden(true)
+                    Image(systemName:model.others && !model.othersUnavailable ? "checkmark" : "speaker.slash").fontWeight(.semibold).foregroundStyle(CassiniTheme.accentInk).frame(width:14).padding(.top,2).accessibilityHidden(true)
                     VStack(alignment:.leading,spacing:4) {
                         Text(model.othersPathTitle).fontWeight(.bold)
-                        Text(model.othersPathBody).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).lineSpacing(3).fixedSize(horizontal:false,vertical:true)
+                        Text(model.othersPathBody).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).lineSpacing(3).fixedSize(horizontal:false,vertical:true)
                     }
                     Spacer(minLength:0)
-                }.padding(16).frame(maxWidth:.infinity,alignment:.leading).background(LibraryTheme.chip,in:RoundedRectangle(cornerRadius:8))
+                }.padding(16).frame(maxWidth:.infinity,alignment:.leading).background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:8))
             }
             if let failedChoice {
                 HStack(alignment:.top) {
                     Text(UXText.text("whatIsRecorded.changeFailed")).fixedSize(horizontal:false,vertical:true)
                     Spacer(minLength:8)
                     Button(UXText.text("common.tryAgain")) { apply(failedChoice) }.disabled(working)
-                }.foregroundStyle(LibraryTheme.dim).accessibilityIdentifier("capture-choice-failed")
+                }.foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("capture-choice-failed")
             }
             if let permissionSide { CapturePermissionNotice(side:permissionSide,refusal:permissionRefusal) }
             HStack { Spacer(); Button(UXText.text("common.done")) { dismiss() }.buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.defaultAction).disabled(working) }

@@ -55,7 +55,7 @@ struct RecordingStatusLabel: View {
     @State private var elapsedMs: Int64 = 0
     var body: some View {
         HStack(spacing:5) {
-            Circle().fill(LibraryTheme.red).frame(width:8,height:8)
+            Circle().fill(CassiniTheme.recordInk).frame(width:8,height:8)
             Text(LibraryFormat.liveBadge(elapsedMs)).monospacedDigit().fontWeight(.semibold)
         }.accessibilityLabel(UXText.text("hidden.status",["liveBig":LibraryFormat.liveBig(elapsedMs)]))
             .accessibilityIdentifier("recording-menu-bar")
@@ -84,11 +84,11 @@ struct RecordingStatusMenu: View {
                 #endif
                 VStack(alignment:.leading,spacing:4) {
                     Text(payload.header).fontWeight(.bold)
-                    Text(payload.title).font(.system(size:12)).foregroundStyle(LibraryTheme.dim).lineLimit(2)
+                    Text(payload.title).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2).lineLimit(2)
                 }.padding(.horizontal,6)
                 ForEach(Array(payload.levels.enumerated()),id:\.offset) { _,level in
                     HStack(spacing:8) {
-                        Text(level.label).fontWeight(level.silent ? .semibold : .regular).foregroundStyle(level.silent ? LibraryTheme.amber : Color.primary)
+                        Text(level.label).fontWeight(level.silent ? .semibold : .regular).foregroundStyle(level.silent ? CassiniTheme.warnInk : CassiniTheme.primaryInk)
                             .frame(width:120,alignment:.leading)
                         RecordingLevelMeter(level:level.value,silent:level.silent,label:level.label).frame(height:4)
                     }.padding(.horizontal,6)
@@ -97,10 +97,10 @@ struct RecordingStatusMenu: View {
                 ForEach(payload.actions) { item in action(item) }
                 if let lines = payload.sourceLines {
                     Divider()
-                    ForEach(Array(lines.enumerated()),id:\.offset) { _,line in Text(line).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).fixedSize(horizontal:false,vertical:true).padding(.horizontal,6) }
+                    ForEach(Array(lines.enumerated()),id:\.offset) { _,line in Text(line).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true).padding(.horizontal,6) }
                 }
-                if let line = RecordingOverview.diskLine { Divider(); Text(line).font(.system(size:11.5)).foregroundStyle(LibraryTheme.amber).fixedSize(horizontal:false,vertical:true).padding(.horizontal,6) }
-                if let line = payload.noSleep { Divider(); Text(line).font(.system(size:11.5)).foregroundStyle(LibraryTheme.dim).padding(.horizontal,6).accessibilityIdentifier("recording-no-sleep") }
+                if let line = RecordingOverview.diskLine { Divider(); Text(line).font(.system(size:11.5)).foregroundStyle(CassiniTheme.warnInk).fixedSize(horizontal:false,vertical:true).padding(.horizontal,6) }
+                if let line = payload.noSleep { Divider(); Text(line).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).padding(.horizontal,6).accessibilityIdentifier("recording-no-sleep") }
             }.font(.system(size:13)).padding(10).frame(width:300).accessibilityElement(children:.contain)
                 .accessibilityLabel(UXText.text("app.name")).accessibilityIdentifier("recording-menu-payload")
                 .accessibilityValue(fixturePayload(payload))
@@ -126,8 +126,8 @@ struct RecordingStatusMenu: View {
                 Text(item.title); Spacer()
                 if let shortcut = item.shortcut { Text(shortcut).font(.system(size:11.5)) }
             }.padding(.horizontal,6).frame(height:24).contentShape(Rectangle())
-        }.buttonStyle(.plain).foregroundStyle(hovered == item.id ? Color.white : Color.primary)
-            .background(hovered == item.id ? Color.accentColor : Color.clear,in:RoundedRectangle(cornerRadius:4))
+        }.buttonStyle(.plain).foregroundStyle(hovered == item.id ? CassiniTheme.onAccent : CassiniTheme.primaryInk)
+            .background(hovered == item.id ? CassiniTheme.accent : Color.clear,in:RoundedRectangle(cornerRadius:4))
             .onHover { over in hovered = over ? item.id : nil }.accessibilityIdentifier("recording-menu-" + item.id)
         if item.id == "stop" { button.keyboardShortcut(RecordingRuntime.shared.shortcut.choice.key,modifiers:RecordingRuntime.shared.shortcut.choice.modifiers) }
         else { button }
