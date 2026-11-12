@@ -135,6 +135,7 @@ final class LocalCompanionInstall: XCTestCase {
         wait("Cassini is foreground before its Settings shortcut") {
             NSWorkspace.shared.frontmostApplication?.bundleURL?.resolvingSymlinksInPath().path == path
         }
+        XCTAssertTrue(app.menuBars.menuBarItems["Cassini talk"].waitForExistence(timeout: 10), app.debugDescription)
         // App-directed XCTest keys can stall before dispatch on hosted VMs.
         // Preserve Cmd-comma through the guide's existing trusted HID helper.
         key(0x2B,flags:.maskCommand)
