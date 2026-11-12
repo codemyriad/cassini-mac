@@ -634,7 +634,7 @@ final class LibraryBoards: XCTestCase {
         let client = window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch
         client.click(); XCTAssertTrue(window.descendants(matching:.any)["preview-transcribing"].waitForExistence(timeout:5))
         app.typeKey(.downArrow,modifierFlags:[])
-        let selectedBudget = NSPredicate { _,_ in !window.descendants(matching:.any)["preview-transcribing"].exists && self.text("Today, 09:00 · 52 min",in:window) }
+        let selectedBudget = NSPredicate { _,_ in !window.descendants(matching:.any)["preview-transcribing"].exists && self.text("Let’s start with the budget, since that is the one decision we need today.",in:window) }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:selectedBudget,object:nil)],timeout:5),.completed,"Down arrow moves selection across MeetingCard rows")
         app.typeKey(.upArrow,modifierFlags:[])
         XCTAssertTrue(window.descendants(matching:.any)["preview-transcribing"].waitForExistence(timeout:5),"Up arrow restores selection to the previous MeetingCard row")

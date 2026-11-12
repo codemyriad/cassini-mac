@@ -301,7 +301,6 @@ struct LibraryView: View {
                                     if store.selectedKeys.count <= 1 && trash.canTrash(meeting) { Divider(); trashButton(meeting) }
                                 }
                                 .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
                                 .listRowInsets(EdgeInsets(top: halfGap, leading: 0, bottom: halfGap, trailing: 0))
                                 .accessibilityIdentifier("meeting-" + meeting.libraryKey)
                         }
@@ -312,7 +311,7 @@ struct LibraryView: View {
                 }
                 if !store.meetings.isEmpty, store.meetings.allSatisfy({ $0.state.origin == .received }) {
                     Text(UXText.text("received.libraryHint")).font(.system(size:11.5)).foregroundStyle(cardInk2)
-                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                        .listRowSeparator(.hidden)
                 }
             }
             .listStyle(.sidebar)
