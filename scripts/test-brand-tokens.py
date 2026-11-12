@@ -34,7 +34,14 @@ class BrandTokenSyncTests(unittest.TestCase):
         return base
 
     def test_real_repository_passes(self) -> None:
-        self.assertEqual(checker.verify(ROOT), 50)
+        self.assertEqual(checker.verify(ROOT), 53)
+        doc = json.loads((ROOT / 'Cassini/Resources/Brand/tokens.json').read_text(encoding='utf-8'))
+        self.assertEqual(len(doc['tokens']), 53)
+        self.assertEqual(doc.get('exceptions'), [])
+        for block in ('tokens', 'derived'):
+            for tid, spec in doc.get(block, {}).items():
+                self.assertEqual(spec.get('status'), 'decided', tid)
+                self.assertNotIn('check', spec, tid)
 
     def test_camel_case_keeps_digits(self) -> None:
         self.assertEqual(checker.camel_case('ink-2'), 'ink2')
@@ -42,6 +49,8 @@ class BrandTokenSyncTests(unittest.TestCase):
         self.assertEqual(checker.camel_case('avatar-6'), 'avatar6')
         self.assertEqual(checker.camel_case('error-fill'), 'errorFill')
         self.assertEqual(checker.camel_case('card-rest'), 'cardRest')
+        self.assertEqual(checker.camel_case('sidebar-mac'), 'sidebarMac')
+        self.assertEqual(checker.camel_case('field-line'), 'fieldLine')
 
     def test_sha256_mismatch_fails(self) -> None:
         base = self.make_tree()
@@ -61,7 +70,7 @@ class BrandTokenSyncTests(unittest.TestCase):
             checker.verify(base)
 
     def test_light_or_dark_hex_drift_fails(self) -> None:
-        for old, new in [('#007999', '#007998'), ('#83CDDF', '#83CDDE'), ('#070B1173', '#070B1172'), ('#FAFAF7', '#FAFAF6')]:
+        for old, new in [('#093351', '#093350'), ('#83CDDF', '#83CDDE'), ('#070B1173', '#070B1172'), ('#FAFAFB', '#FAFAFA')]:
             with self.subTest(old=old, new=new):
                 base = self.make_tree()
                 swift = base / 'Cassini/Theme/CassiniTokens.swift'
@@ -97,7 +106,7 @@ class BrandTokenSyncTests(unittest.TestCase):
         upstream_path.write_text(json.dumps(pin, indent=2) + '\n', encoding='utf-8')
         swift = base / 'Cassini/Theme/CassiniTokens.swift'
         swift.write_text(checker.render_swift(base), encoding='utf-8')
-        self.assertEqual(checker.verify(base), 50)
+        self.assertEqual(checker.verify(base), 53)
         injected = swift.read_text(encoding='utf-8').replace(
             '    static let entries: [Entry] = [',
             '    static let futureRoleEntry = Entry(id: "future-role", swiftName: "futureRole", light: "#112233", dark: "#445566")\n'

@@ -163,14 +163,25 @@ def verify(root: Path = ROOT) -> int:
         raise ValueError(f'CassiniTokens.upstreamCommit must equal {commit}')
 
     active_tokens: dict[str, tuple[str, str]] = {}
+    base_active_count = 0
+    derived_active_count = 0
     forbidden_tokens: set[str] = set()
     for block_name in ('tokens', 'derived'):
         for token_id, spec in token_doc.get(block_name, {}).items():
+            if 'check' in spec:
+                raise ValueError(f'Provisional check key must not appear on token {token_id!r}')
             status = spec.get('status')
             if status in {'decided', 'placeholder'}:
                 active_tokens[token_id] = (spec['light'].upper(), spec['dark'].upper())
+                if block_name == 'tokens':
+                    base_active_count += 1
+                else:
+                    derived_active_count += 1
             else:
                 forbidden_tokens.add(token_id)
+
+    if base_active_count != 53:
+        raise ValueError(f'Expected 53 active colours in tokens block, got {base_active_count}')
 
     parsed_entries: dict[str, tuple[str, str, str, str]] = {}
     for prop_prefix, token_id, swift_name, light, dark in ENTRY_RE.findall(swift_text):
@@ -229,12 +240,12 @@ def verify(root: Path = ROOT) -> int:
             )
 
     _scan_colour_literals(root, allow_pre_w1_compat=bool(unapplied_ids))
-    return len(active_tokens)
+    return base_active_count
 
 
 def main() -> int:
     count = verify(ROOT)
-    print(f'Verified {count} brand tokens (light + dark), generator parity, and literal check')
+    print(f'Verified {count} brand colours (+ derived roles, light + dark), generator parity, and literal check')
     return 0
 
 
