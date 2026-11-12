@@ -113,3 +113,18 @@ Native arm64 app and Screenshots builds pass. A local UI run hit the existing
 250-versus280 title geometry and later overlapped a newly started runner job;
 the owned local test process was interrupted, and that run is not counted as a
 clean pass. Current exact-head CI remains required. No geometry bound changed.
+
+## Overnight CI integration
+
+Mainbac7cd4 is merged normally, including the four-job PR policy and native
+Meeting title alignment.395 affected Swift Testing cases,21 XCTest cases,
+65 CI contracts and native app/Screenshots builds pass. Editing and playback
+production code retains the ten existing production mutation proofs.
+
+The static screenshot fixture deliberately rejects editing: its naming button
+is present and disabled. Header-button editor open/dismissal belongs to the
+existing editable rename fixture, before the full clear/merge/undo/reopen flow.
+This corrects the preceding candidate's mistaken enabled-state expectation for
+the screenshot fixture. No shared-Aqua UI run or new runtime pass is claimed.
+Readiness requires complete new four-job CI; optional nightly/UI-label checks
+follow main's policy.

@@ -205,6 +205,15 @@ final class LibraryBoards: XCTestCase {
         let readable=NSPredicate {_,_ in read.exists && read.isEnabled}
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:readable,object:nil)],timeout:10),.completed,app.debugDescription)
         read.click()
+        let nameSpeakers = window.buttons["name-the-speakers"]
+        XCTAssertTrue(nameSpeakers.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(nameSpeakers.isEnabled)
+        nameSpeakers.click()
+        let nameField = app.textFields["speaker-name-field"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 10), app.debugDescription)
+        app.typeKey(.escape, modifierFlags: [])
+        let dismissed = NSPredicate { _,_ in !nameField.exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: dismissed, object: nil)], timeout: 10), .completed)
         let marta=window.buttons["speaker-name-marta"]
         XCTAssertTrue(marta.waitForExistence(timeout:10),app.debugDescription);marta.click()
         let field=app.textFields["speaker-name-field"],save=app.buttons["speaker-save-name"]
@@ -1134,13 +1143,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(text("Today, 11:30 · 47 min", in: window))
         let nameSpeakers = window.buttons["name-the-speakers"]
         XCTAssertTrue(nameSpeakers.exists)
-        XCTAssertTrue(nameSpeakers.isEnabled)
-        nameSpeakers.click()
-        let nameField = app.textFields["speaker-name-field"]
-        XCTAssertTrue(nameField.waitForExistence(timeout: 10), app.debugDescription)
-        app.typeKey(.escape, modifierFlags: [])
-        let dismissed = NSPredicate { _,_ in !nameField.exists }
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: dismissed, object: nil)], timeout: 10), .completed)
+        XCTAssertFalse(nameSpeakers.isEnabled, "The static screenshot fixture is read-only")
         XCTAssertEqual(title.frame.minX - window.frame.minX, 280, accuracy: 16)
         capture(window, name: "meeting")
         for value in ["00:03:12", "00:47:05"] { XCTAssertTrue(text(value, in: window), value) }

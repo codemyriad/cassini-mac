@@ -2,7 +2,7 @@
   "uxPin": "febfcc0bbd7db4b06096e87f5490d6773ab9224e",
   "main": "f506b17",
   "affectedTests": 395,
-  "ciContracts": 58,
+  "ciContracts": 65,
   "longInputWords": 122760,
   "longInputThreadCpuMs": 160.704,
   "mutationProductionSHA256": {
@@ -89,15 +89,15 @@
     "Sources/CassiniPlayback/SpeakerSample.swift": "643159bdc6ab4cafdee734f6496cc30245d2f80fe0c065c6064dc2f25e66f5b5",
     "Cassini/Meeting/MeetingRenameCoordinator.swift": "25404cb2f547bcc00a451218cbc421f6e08dc5126a4122d1ed2b856b35406e14",
     "Cassini/Meeting/MeetingNavigation.swift": "d4c9c29f86badde9ea5e4a43d5eb054f80de8fd5cf822e5fa9b399c407bf01f3",
-    "Cassini/Meeting/MeetingView.swift": "a5e7baae7d833c003661c3e82d5d48b9ee2bfceec6b466b9eb1c305183639c5a",
+    "Cassini/Meeting/MeetingView.swift": "a7a5119a06346baf54a8579b4b4bed6e40dd39b48fe615c7aba7396e7686ee93",
     "Cassini/Meeting/ListeningBar.swift": "74cde0bfbc4a7fa7397f3b10f94ebb2bc3a3ce7fd8e6aa67124f7e9225f45c9f",
     "Cassini/Meeting/SpeakerEditorView.swift": "9f031bd355b77282790c60ee90f1b3c548bd634296e767546d643c5383366566",
-    "Cassini/Library/LibraryView.swift": "5fd72f629cc82c46527410ba5f00b7598166b4341723dcaffd4265ba74752598",
-    "Tests/CassiniLibraryTests/SpeakerEditsTests.swift": "472ba07994b85f47ba2538fa739744db33b482b7567017ab935d2db3aba78d57",
+    "Cassini/Library/LibraryView.swift": "e57165fb97c0f0ba5f2133bc01375d0c01e1000d0ab5550b87346b4e190b2669",
+    "Tests/CassiniLibraryTests/SpeakerEditsTests.swift": "37d12afd56992dc0da7e289ec8105886c1e11a110fa761b77493c991c37d7afb",
     "Tests/CassiniPlaybackTests/SpeakerSampleTests.swift": "6169a128480cf0e47fb7c4f3be9139cc24bc597ad9275874157b7e880a8a966d",
     "Tests/CassiniExportTests/D70SpeakerMergesExportTests.swift": "8a73100d2cdd03cc663c7858a963561b4d0e9db00cc66927d1c4c748b0ed51e4",
     "Tests/CassiniSearchTests/SearchTests.swift": "47745e86c2f70740ffe91632dd442ff514e22155987459be641d1321429bd15a",
-    "UITests/LibraryBoards.swift": "b6f051d968f0b094ccc4eb0675faa20446053b26ea9fa7421d932e83be7a89e7"
+    "UITests/LibraryBoards.swift": "633a0ac9bba99017c49735413dc9c36a76f05d7f2615b2a0c05dcf4b08cf3edd"
   },
   "native": {
     "compiled": "Debug arm64 app and Screenshots bundle; Xcode 16.4, generated fixtures/project",
@@ -107,6 +107,7 @@
   "longInputTimingIsDiagnosticOnly": true,
   "noCpuGateFocusedTests": 11,
   "affectedXCTest": 21,
-  "nativeBuildAfterMain": "App and Screenshots test bundle passed",
-  "nativeUIAfterMain": "CI43126142609:53/54 boards pass including naming clear merge undo reopen; sole failure obsolete Name the speakers must be absent assertion. Fixed to exercise header button/editor. Local native build passes; local UI geometry failure and subsequent runner overlap are not clean passes."
+  "nativeBuildAfterMain": "Debug arm64 app and Screenshots test bundle passed",
+  "nativeUIAfterMain": "No new shared-Aqua run; static screenshot asserts read-only disabled control, editable naming flow opens/dismisses header editor. Prior complete naming/clear/merge/undo/reopen passed. Four-job exact-head CI pending.",
+  "mainMerged": "bac7cd4"
 }
