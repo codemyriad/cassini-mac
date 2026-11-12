@@ -1,0 +1,11 @@
+--- a/Components/BadgeLabels/BadgeLabelPresenter.swift
++++ b/Components/BadgeLabels/BadgeLabelPresenter.swift
+@@ -75,7 +75,7 @@
+                              ["liveBadge": LibraryFormat.liveBadge(fields.liveMs ?? 0, locale: locale, language: language)])
+             }
+             if fields.lifecycle == .saving { return badge("saving", "saving", "neutral", "spinner") }
+-            if [.queued, .running].contains(fields.transcript) {
++            if fields.transcript == .running {
+                 guard let eta = fields.etaMinutes, eta >= 0 else {
+                     return badge("transcribing", "transcribing.noEta", "neutral", "spinner")
+                 }

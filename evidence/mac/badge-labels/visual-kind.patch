@@ -1,0 +1,10 @@
+--- a/Components/BadgeLabels/CatalogStatusBadge.swift
++++ b/Components/BadgeLabels/CatalogStatusBadge.swift
+@@ -14,6 +14,6 @@
+     }
+
+     static func visualKind(_ modelKind: String) -> StatusBadgeKind? {
+-        StatusBadgeKind(rawValue: modelKind == "needsAttention" ? "attention" : modelKind)
++        StatusBadgeKind(rawValue: modelKind == "needsAttention" ? "received" : modelKind)
+     }
+ }

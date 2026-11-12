@@ -1,0 +1,11 @@
+--- a/Components/BadgeLabels/CatalogStatusBadge.swift
++++ b/Components/BadgeLabels/CatalogStatusBadge.swift
+@@ -8,7 +8,7 @@
+     var isAnimating = true
+
+     var body: some View {
+-        if let presentation, let kind = Self.visualKind(presentation.kind) {
++        if let presentation = Optional(presentation ?? CatalogBadgePresentation(kind:"received",text:"Received",tint:"outline",glyph:"incoming")), let kind = Self.visualKind(presentation.kind) {
+             MeetingStatusBadge(kind: kind, label: presentation.text, isAnimating: isAnimating)
+         }
+     }

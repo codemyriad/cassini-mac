@@ -1,0 +1,111 @@
+{
+  "repository": "codemyriad/cassini-ux",
+  "commit": "793209cb3425bece7143178458fddd94b691e12d",
+  "scope": "Standalone W2.2; live app catalog/model unchanged until host integration",
+  "files": {
+    "strings.json": {
+      "path": "strings/strings.json",
+      "sha256": "7ec404fad17f96a29ec1ee03612736710db2dba0fb964bbc6153a3ed00b97699"
+    },
+    "states-vectors.json": {
+      "path": "vectors/states/states-vectors.json",
+      "sha256": "2857b5af75191714b04b9974aebe7903b41e9dd96857c6b79c969bac0ae2ce67"
+    },
+    "format-vectors.json": {
+      "path": "vectors/format/format-vectors.json",
+      "sha256": "561e2acb1f44473904d87280447ea98e45f8185ae399a47084bec50f82595960"
+    },
+    "STATUS-BADGES.md": {
+      "path": "contract/STATUS-BADGES.md",
+      "sha256": "eecbb0bddf22571055a87816a19631c2f1bf4f1320d146714ec7d4d1723755ab"
+    },
+    "library-expected/empty.json": {
+      "path": "vectors/library-vectors/expected/empty.json",
+      "sha256": "0c7dfde7b4bdd114c0758ca55b269edd6ee1cda636a0b4d1d2d077a35b7dd178"
+    },
+    "library-expected/first-record.json": {
+      "path": "vectors/library-vectors/expected/first-record.json",
+      "sha256": "0c7dfde7b4bdd114c0758ca55b269edd6ee1cda636a0b4d1d2d077a35b7dd178"
+    },
+    "library-expected/main.json": {
+      "path": "vectors/library-vectors/expected/main.json",
+      "sha256": "7f5020acf49c66f710f028c150a15718d47da36ab71988733042edbfe40c8a2d"
+    },
+    "library-expected/r1-discovery.json": {
+      "path": "vectors/library-vectors/expected/r1-discovery.json",
+      "sha256": "17dea0af5157118dd95147195522d81083f33bff1dac3cd944f50180f190a7b3"
+    },
+    "library-expected/r2-whole-document.json": {
+      "path": "vectors/library-vectors/expected/r2-whole-document.json",
+      "sha256": "f220c0f7612b9af24b0db6e2d1777146446857bd4adb8268e233198b8544c5d4"
+    },
+    "library-expected/r3-transcript-precedence.json": {
+      "path": "vectors/library-vectors/expected/r3-transcript-precedence.json",
+      "sha256": "59fe2214aa8492ff1d72558b3b08f7cd8cc3fada713b9f727c740fbb8aebd2f4"
+    },
+    "library-expected/r4-capture-history.json": {
+      "path": "vectors/library-vectors/expected/r4-capture-history.json",
+      "sha256": "5c093dbeb6e74099381580b18a4bdd7c7169a3c39720f30cdd1a325b55f89f66"
+    },
+    "library-expected/r5-display-duration.json": {
+      "path": "vectors/library-vectors/expected/r5-display-duration.json",
+      "sha256": "da997bc2a5f406d9af762b4acd1c144ffc75de1eee6d20b88e405639bd2f29af"
+    },
+    "library-expected/r6-title-start-order.json": {
+      "path": "vectors/library-vectors/expected/r6-title-start-order.json",
+      "sha256": "dac83fa2a66f084c363f3fe525b73a9ad9a26c8b3fb60f886531f2bfbe96f973"
+    },
+    "library-expected/r7-speaking-order.json": {
+      "path": "vectors/library-vectors/expected/r7-speaking-order.json",
+      "sha256": "d5064edd10330a2301dde2036770b70f85d2f08db8e28c0231f202171499cb17"
+    },
+    "library-expected/r8-consecutive-quote.json": {
+      "path": "vectors/library-vectors/expected/r8-consecutive-quote.json",
+      "sha256": "684da672bcb73418a5243d093aa682a93c8b856d6af9cd90156e2fd293fa86c7"
+    },
+    "library-expected/r9-received-once.json": {
+      "path": "vectors/library-vectors/expected/r9-received-once.json",
+      "sha256": "296890651d48b3809b13b5bb59ac4018045cfb3cd642ebdccecbf5c69f5d65b7"
+    },
+    "library-expected/received-only.json": {
+      "path": "vectors/library-vectors/expected/received-only.json",
+      "sha256": "85cfce2282d4cc0113dc4c9113f8db32eaac7555788671838be6f0fb0a8e2709"
+    },
+    "library-expected/t8-control-others-spoke.json": {
+      "path": "vectors/library-vectors/expected/t8-control-others-spoke.json",
+      "sha256": "28f0a68a6355cbadd8c5252e15eb33ecf86c03bf9640d99336af0fb30f013ed4"
+    },
+    "library-expected/t8-failed-referenced-words.json": {
+      "path": "vectors/library-vectors/expected/t8-failed-referenced-words.json",
+      "sha256": "7f6e4296b7a117f116c021f65c9e6e611e620500b137536e614df3727756644b"
+    },
+    "library-expected/t8-low-audio-silent.json": {
+      "path": "vectors/library-vectors/expected/t8-low-audio-silent.json",
+      "sha256": "8c18748f8d778a2209870e9484262eb7116ecdce780d48fb5201106092628419"
+    },
+    "library-expected/t8-none-referenced-words.json": {
+      "path": "vectors/library-vectors/expected/t8-none-referenced-words.json",
+      "sha256": "111f5a44d2db94a8faaefd635b5c3f6520af0d9280839e90a327c62493ae6c56"
+    },
+    "library-expected/t8-others-never-captured.json": {
+      "path": "vectors/library-vectors/expected/t8-others-never-captured.json",
+      "sha256": "8c18748f8d778a2209870e9484262eb7116ecdce780d48fb5201106092628419"
+    },
+    "library-expected/t8-others-silent.json": {
+      "path": "vectors/library-vectors/expected/t8-others-silent.json",
+      "sha256": "bc6e0c69dd2abbb8c95fdd2f5631cade47a97141fd335bfd87cad9596c42b007"
+    },
+    "library-expected/t8-others-transcription-failed.json": {
+      "path": "vectors/library-vectors/expected/t8-others-transcription-failed.json",
+      "sha256": "2ec338c00b841d99bfc9886313914d92360b5d135c75d9d630af48ff92ab436b"
+    },
+    "library-expected/t8-retry-failed-stale-silent.json": {
+      "path": "vectors/library-vectors/expected/t8-retry-failed-stale-silent.json",
+      "sha256": "2ec338c00b841d99bfc9886313914d92360b5d135c75d9d630af48ff92ab436b"
+    },
+    "library-expected/t8-silent-per-source.json": {
+      "path": "vectors/library-vectors/expected/t8-silent-per-source.json",
+      "sha256": "87e2d5b35a7eb25181830289d8b8029a17c3fab877f100949a96dabe41a7770d"
+    }
+  }
+}
