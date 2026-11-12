@@ -1,0 +1,11 @@
+--- a/scripts/release.py
++++ b/scripts/release.py
+@@ -343,7 +343,7 @@
+     run(['xcrun', 'stapler', 'validate', app], timeout=180)
+     dmg = output/('Cassini-talk-'+args.version+('-test.'+str(args.build) if test_release else '')+'.dmg')
+     if test_release:
+-        run([ROOT/'scripts/heavy.sh',sys.executable,ROOT/'scripts/release-resources.py','3',image_tools,ROOT/'scripts/build-dmg.py',app,dmg],timeout=4500,env=heavy_environment())
++        run([ROOT/'scripts/heavy.sh',sys.executable,ROOT/'scripts/release-resources.py','3',image_tools,ROOT/'scripts/build-dmg.py',app,dmg],timeout=900,env=heavy_environment())
+     else:
+         build_dmg(image_tools, app, dmg)
+     run(['codesign', '--sign', identity, '--keychain', keychain, '--timestamp', dmg], timeout=180)

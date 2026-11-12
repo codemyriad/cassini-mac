@@ -5,11 +5,36 @@ import os
 from pathlib import Path
 import plistlib
 import socket
+import shutil
 import subprocess
 import sys
 
 def installed_python(path=None):
     """Use an installed interpreter; preserve stable Homebrew/Xcode symlinks."""
+    if path is None:
+        runtime=Path(sys.executable).resolve()
+        candidates=[]
+        # macOS framework launchers may expose a versioned Cellar binary in
+        # sys.executable. Prefer a stable entrypoint for that exact runtime.
+        found=shutil.which('python3')
+        if found:candidates.append(Path(found))
+        if 'Cellar' in runtime.parts:
+            index=runtime.parts.index('Cellar')
+            prefix=Path(*runtime.parts[:index]);formula=runtime.parts[index+1]
+            bin_dir=prefix/'opt'/formula/'bin'
+            candidates.extend([bin_dir/'python3',*sorted(bin_dir.glob('python3.*'))])
+        candidates.extend(Path(p) for p in ['/opt/homebrew/bin/python3','/usr/local/bin/python3','/usr/bin/python3'])
+        for candidate in candidates:
+            if not candidate.is_file() or not os.access(candidate,os.X_OK):continue
+            same=candidate.resolve()==runtime
+            if not same:
+                try:
+                    probe=subprocess.run([str(candidate),'-c','import os,sys; print(os.path.realpath(sys.executable))'],
+                                         capture_output=True,text=True,timeout=30)
+                    same=probe.returncode==0 and probe.stdout.strip()==str(runtime)
+                except (OSError,subprocess.TimeoutExpired):continue
+            if same:
+                path=candidate;break
     python=Path(os.path.abspath(Path(path or sys.executable).expanduser()))
     if not python.is_file() or not os.access(python,os.X_OK):
         raise ValueError('Select an installed Python executable with --python')
@@ -44,10 +69,13 @@ def install(python=None):
     subprocess.run(['git','-C',str(source),'checkout','--detach','--force','origin/main'],check=True)
     script=source/'scripts/daily-test-release.py'
     if not script.is_file():raise SystemExit('Merge the pipeline PR into main before installing')
+    runtime_paths=[python.parent]
+    libexec=python.parent.parent/'libexec/bin'
+    if libexec.is_dir():runtime_paths.append(libexec)
     agent=Path.home()/'Library/LaunchAgents'/(label+'.plist');agent.parent.mkdir(parents=True,exist_ok=True)
     agent.write_bytes(plistlib.dumps(dict(Label=label,ProgramArguments=[str(python),str(script)],
         RunAtLoad=True,StartInterval=60,
-        EnvironmentVariables={'PATH':str(python.parent)+':/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'},
+        EnvironmentVariables={'PATH':':'.join(map(str,runtime_paths))+':/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'},
         StandardOutPath=str(base/'scheduler.log'),StandardErrorPath=str(base/'scheduler-error.log'))))
     # Minute pulses discover manual requests and catch up a missed Berlin slot;
     # state deduplicates each09:00/14:00/20:00 attempt. No sleep/retry loop.

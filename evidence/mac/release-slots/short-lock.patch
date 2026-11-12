@@ -4,8 +4,8 @@
      stats=run(['vm_stat'],timeout=30).decode()
      swap=re.search(r'^Swapouts:\s+(\d+)',stats,re.M)
      if not swap:raise ValueError('Cannot inspect swap before a heavy release phase')
--    return dict(os.environ,CASSINI_LOCK_MINUTES='60',CASSINI_RELEASE_SWAPOUTS=swap.group(1))
-+    return dict(os.environ,CASSINI_LOCK_MINUTES='5',CASSINI_RELEASE_SWAPOUTS=swap.group(1))
+-    return dict(os.environ,CASSINI_PYTHON=sys.executable,CASSINI_LOCK_MINUTES='60',CASSINI_RELEASE_SWAPOUTS=swap.group(1))
++    return dict(os.environ,CASSINI_PYTHON=sys.executable,CASSINI_LOCK_MINUTES='5',CASSINI_RELEASE_SWAPOUTS=swap.group(1))
 
 
  def release(args):

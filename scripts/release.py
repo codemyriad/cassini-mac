@@ -279,7 +279,7 @@ def heavy_environment():
     stats=run(['vm_stat'],timeout=30).decode()
     swap=re.search(r'^Swapouts:\s+(\d+)',stats,re.M)
     if not swap:raise ValueError('Cannot inspect swap before a heavy release phase')
-    return dict(os.environ,CASSINI_LOCK_MINUTES='60',CASSINI_RELEASE_SWAPOUTS=swap.group(1))
+    return dict(os.environ,CASSINI_PYTHON=sys.executable,CASSINI_LOCK_MINUTES='60',CASSINI_RELEASE_SWAPOUTS=swap.group(1))
 
 
 def release(args):
@@ -318,7 +318,7 @@ def release(args):
     with (output/'build.log').open('wb') as log:
         if test_release:
             command = [ROOT/'scripts/heavy.sh', sys.executable, ROOT/'scripts/release-resources.py', '15', *command]
-        result = subprocess.run(list(map(str,command)), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=heavy_environment() if test_release else None)  # no-secret-argv
+        result = subprocess.run(list(map(str,command)), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=heavy_environment() if test_release else dict(os.environ,CASSINI_PYTHON=sys.executable))  # no-secret-argv
     if result.returncode:
         raise RuntimeError('Release build failed; inspect build.log')
     # Xcode's internal product/executable paths stay stable for developer tools.
@@ -343,7 +343,7 @@ def release(args):
     run(['xcrun', 'stapler', 'validate', app], timeout=180)
     dmg = output/('Cassini-talk-'+args.version+('-test.'+str(args.build) if test_release else '')+'.dmg')
     if test_release:
-        run([ROOT/'scripts/heavy.sh',sys.executable,ROOT/'scripts/release-resources.py','3',image_tools,ROOT/'scripts/build-dmg.py',app,dmg],timeout=900,env=heavy_environment())
+        run([ROOT/'scripts/heavy.sh',sys.executable,ROOT/'scripts/release-resources.py','3',image_tools,ROOT/'scripts/build-dmg.py',app,dmg],timeout=4500,env=heavy_environment())
     else:
         build_dmg(image_tools, app, dmg)
     run(['codesign', '--sign', identity, '--keychain', keychain, '--timestamp', dmg], timeout=180)

@@ -50,4 +50,4 @@ assert all((root / name).read_bytes() == data for name, data in original.items()
     'tests': count, 'mutations': results, 'restored': True,
     'sourceSHA256': {name: hashlib.sha256(data).hexdigest() for name, data in original.items()}
 }, indent=2) + '\n')
-print(f'Seven production regressions fail assertions; all {count} restored policy tests pass')
+print(f'{len(cases)} production regressions fail assertions; all {count} restored policy tests pass')

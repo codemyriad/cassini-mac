@@ -2,8 +2,9 @@
 
 After this PR is merged, run `python3 scripts/install-daily-test-release.py` on
 drmeyers, using an installed Python3.9+ with venv and zoneinfo. The installer
-defaults to its running interpreter; `--python /absolute/path/to/python` selects
-another installed runtime. It preserves stable Homebrew/Xcode symlink paths.
+defaults to a stable entrypoint for its running interpreter; `--python /absolute/path/to/python` selects
+another installed runtime. It recovers stable Homebrew opt/bin or system launcher paths when framework
+launchers expose a versioned Cellar binary; explicit paths preserve symlinks.
 The agent and release helpers use that same interpreter, without a specific
 Homebrew formula or a bare-python PATH assumption. It installs only main into a private dedicated checkout and starts a
 local LaunchAgent. It does not install a GitHub self-hosted signing runner or move
@@ -13,7 +14,8 @@ The agent checks for due09:00/14:00/20:00 Europe/Berlin slots, including DST and
 missed wakes, and for successful `Request Mac test release` workflow_dispatch
 requests on main. Minute pulses discover requests; each slot/request is consumed
 once after main passes CI admission. Red or running CI leaves both pending;
-the next minute pulse checks again without signing. A green unchanged main
+the next minute pulse checks again without signing. Waiting notifications are
+deduplicated per slot, manual request and main SHA, then cleared on green admission. A green unchanged main
 consumes the slot as a skip; failed admitted builds wait for the next slot. Manual workflow status records a request,
 not the result of signing. Results/skips and one-line failures go to
 `~/dev/cassini-coordination/NOTIFICATIONS-MAC-TEST-RELEASES.log`; private state,
@@ -35,7 +37,9 @@ updates and contain no public feed URL.
 
 Existing local signing/notary credentials are reused. Build and DMG creation take
 the shared heavy lock separately (60-minute acquisition bound, matching the iOS
-archive that shares the host); network/notary
+archive that shares the host); the DMG wrapper allows75minutes including
+its60-minute lock wait and10-minute image task. The complete signed job has a
+6-hour bound covering both lock waits, both notarizations and build time. Network/notary
 waits hold no heavy lock. Build admission requires25GiB free, preserving a10GiB
 reserve; DMG admission requires13GiB and both reject memory pressure/growing swap.
 Outputs stay on drmeyers's internal disk while DrMeyers2 is unavailable. Successful

@@ -206,7 +206,10 @@ def publish(tag,version,build,sha,output,release_notes):
 def signed_build(args,env,log):
     process=subprocess.Popen(args,cwd=SOURCE,env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
     try:
-        return process.wait(timeout=10800)
+        # Six hours covers two 60m lock waits, two notarizations (600s
+        # submit + 2800s wait + 360s staple/validate each), 600s DMG,
+        # 3600s compilation and 900s setup/signing margin: 19820s.
+        return process.wait(timeout=21600)
     except subprocess.TimeoutExpired:
         # Stop only this invocation's process group, including its heavy-lock
         # wrapper. Never leave a compiler holding the shared lock after timeout.
@@ -279,6 +282,7 @@ def tick(now):
     slot=due_slot(now)
     stage='request check'
     job=None
+    manual=None
     try:
         request=gh([f'repos/{REPO}/actions/workflows/{REQUEST}/runs?branch=main&event=workflow_dispatch&status=completed&per_page=1'])['workflow_runs']
         manual=next((r['id'] for r in request if r['conclusion']=='success' and r['head_branch']=='main'
@@ -297,7 +301,13 @@ def tick(now):
             state.pop('slot',None);state['request']=0;atomic(state_file,state)
             os.execv(sys.executable,[sys.executable,str(Path(__file__).resolve())])
         if not main_is_green(head):
-            report('[Mac] daily test release skipped: latest main CI is not green');return
+            pending=dict(slot=slot,request=manual or state.get('request',0),head=head)
+            if state.get('pending_ci')!=pending:
+                report('[Mac] daily test release waiting: latest main CI is not green')
+            state['pending_ci']=pending;atomic(state_file,state)
+            return
+        state.pop('pending_ci',None)
+        atomic(state_file,state)
         stage='failed output cleanup'
         prune_failed_builds()
         stage='release history'
@@ -351,7 +361,7 @@ def tick(now):
         report(f'[Mac] nightly {version} beta.{build} published from main {head[:8]}')
         shutil.rmtree(job) # Only this invocation's successful job output.
     except Exception as error:
-        identity=stage+':'+type(error).__name__+':'+slot+':'+str(state.get('request',0))
+        identity=stage+':'+type(error).__name__+':'+slot+':'+str(manual or state.get('request',0))
         state.update(phase='failed')
         if state.get('failure')!=identity:
             cause=str(error).replace('\n',' ')[:180] if isinstance(error,(ValueError,RuntimeError)) else type(error).__name__

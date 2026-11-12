@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Bundle the exact reviewed runtime files, public key and GPL text; no tests."""
 from pathlib import Path
-import argparse, hashlib, json, shutil, stat, subprocess
+import argparse, hashlib, json, shutil, stat, subprocess, sys
 
 ROOT = Path(__file__).resolve().parent.parent
 
 def reviewed_files():
-    subprocess.run(['python3', str(ROOT/'browser-protocol/verify.py'), '--pinned', str(ROOT/'BrowserExtension')], check=True)
+    subprocess.run([sys.executable, str(ROOT/'browser-protocol/verify.py'), '--pinned', str(ROOT/'BrowserExtension')], check=True)
     files = {}
     for line in (ROOT/'browser-protocol/SHA256SUMS').read_text().splitlines():
         digest, relative = line.split('  ',1)
