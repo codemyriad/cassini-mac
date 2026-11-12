@@ -6,6 +6,10 @@ on:
         type: boolean
         default: true
         description: Include optional model golden fixtures in their separate artifact
+      include_intel:
+        type: boolean
+        default: true
+        description: Build the x86_64 SwiftPM product row in addition to arm64
 permissions:
   contents: read
 jobs:
@@ -13,12 +17,7 @@ jobs:
     name: Build products (${{ matrix.arch }}, Xcode 16.4)
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            arch: arm64
-          - runner: macos-15-intel
-            arch: x86_64
+      matrix: ${{ inputs.include_intel && fromJSON('{"include":[{"runner":"macos-15","arch":"arm64"},{"runner":"macos-15-intel","arch":"x86_64"}]}') || fromJSON('{"include":[{"runner":"macos-15","arch":"arm64"}]}') }}
     # Trusted runs build both architectures on the rented Apple Silicon Macs: the x86_64 row is
     # cross-compiled there (same Xcode, same target triple). Hosted runners stay the fallback.
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_MAC_RUNNER || matrix.runner }}
