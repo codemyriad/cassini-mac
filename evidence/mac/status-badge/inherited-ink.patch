@@ -1,0 +1,11 @@
+--- a/Components/StatusBadge/MeetingStatusBadge.swift
++++ b/Components/StatusBadge/MeetingStatusBadge.swift
+@@ -61,7 +61,7 @@
+             glyph.accessibilityHidden(true)
+             Text(label).font(.system(size: Metrics.font, weight: .semibold))
+                 .monospacedDigit().fixedSize(horizontal: true, vertical: true)
+-                .foregroundStyle(color(kind.ink))
++                // Inherit parent ink (regression)
+         }
+         .padding(.horizontal, Metrics.horizontalPadding)
+         .frame(height: Metrics.height)

@@ -1,0 +1,166 @@
+{
+  "architecture": "arm64",
+  "proofSHA256": "b4fcc932b8b09b8bc62f692d3941e31e826b80c9ccdc8e007cea7a91f3bd752b",
+  "rendererSHA256": "5be86862328613a3878faefc39cdc28a6a7896212e0aa519a53201255de276e2",
+  "tokensCommit": "c2f77c119671fb7c643f5ee024f245f23269e122",
+  "tokensSHA256": "ecc1821865892a5c85a05f49ae523be893601c5ab0a2f2fc2f2be16a6d6a9651",
+  "baselineCommit": "f22a163906d2aaedfba60e2974de8986c56f6ec0",
+  "baselineSourceSHA256": "e57165fb97c0f0ba5f2133bc01375d0c01e1000d0ab5550b87346b4e190b2669",
+  "componentSHA256": "c6eff1f2551bdabf93a35b97e54152d16a5d9f51084079d8aa85e7252e095ee8",
+  "checks": [
+    {
+      "dark": false,
+      "fill": "record-tint",
+      "glyph": "dot",
+      "glyphSymmetryChecked": true,
+      "heightPixels": 36,
+      "ink": "record-ink",
+      "kind": "recording",
+      "outlineTokenPixelsChecked": false,
+      "selectionPixelsUnchanged": true
+    },
+    {
+      "dark": false,
+      "fill": "neutral-tint",
+      "glyph": "spinner",
+      "glyphSymmetryChecked": false,
+      "heightPixels": 36,
+      "ink": "ink-2",
+      "kind": "importing",
+      "outlineTokenPixelsChecked": false,
+      "selectionPixelsUnchanged": true
+    },
+    {
+      "dark": false,
+      "fill": "neutral-tint",
+      "glyph": "spinner",
+      "glyphSymmetryChecked": false,
+      "heightPixels": 36,
+      "ink": "ink-2",
+      "kind": "saving",
+      "outlineTokenPixelsChecked": false,
+      "selectionPixelsUnchanged": true
+    },
+    {
+      "dark": false,
+      "fill": "neutral-tint",
+      "glyph": "spinner",
+      "glyphSymmetryChecked": false,
+      "heightPixels": 36,
+      "ink": "ink-2",
+      "kind": "transcribing",
+      "outlineTokenPixelsChecked": false,
+      "selectionPixelsUnchanged": true
+    },
+    {
+      "dark": false,
+      "fill": "warn-tint",
+      "glyph": "alert",
+      "glyphSymmetryChecked": true,
+      "heightPixels": 36,
+      "ink": "warn-ink",
+      "kind": "attention",
+      "outlineTokenPixelsChecked": false,
+      "selectionPixelsUnchanged": true
+    },
+    {
+      "dark": false,
+      "fill": "warn-tint",
+      "glyph": "alert",
+      "glyphSymmetryChecked": true,
+      "heightPixels": 36,
+      "ink": "warn-ink",
+      "kind": "interrupted",
+      "outlineTokenPixelsChecked": false,
+      "selectionPixelsUnchanged": true
+    },
+    {
+      "dark": false,
+      "fill": "none",
+      "glyph": "incoming",
+      "glyphSymmetryChecked": true,
+      "heightPixels": 36,
+      "ink": "ink-2",
+      "kind": "received",
+      "outlineTokenPixelsChecked": true,
+      "selectionPixelsUnchanged": true
+    },
+    {
+      "dark": true,
+      "fill": "record-tint",
+      "glyph": "dot",
+      "glyphSymmetryChecked": true,
+      "heightPixels": 36,
+      "ink": "record-ink",
+      "kind": "recording",
+      "outlineTokenPixelsChecked": false,
+      "selectionPixelsUnchanged": true
+    },
+    {
+      "dark": true,
+      "fill": "neutral-tint",
+      "glyph": "spinner",
+      "glyphSymmetryChecked": false,
+      "heightPixels": 36,
+      "ink": "ink-2",
+      "kind": "importing",
+      "outlineTokenPixelsChecked": false,
+      "selectionPixelsUnchanged": true
+    },
+    {
+      "dark": true,
+      "fill": "neutral-tint",
+      "glyph": "spinner",
+      "glyphSymmetryChecked": false,
+      "heightPixels": 36,
+      "ink": "ink-2",
+      "kind": "saving",
+      "outlineTokenPixelsChecked": false,
+      "selectionPixelsUnchanged": true
+    },
+    {
+      "dark": true,
+      "fill": "neutral-tint",
+      "glyph": "spinner",
+      "glyphSymmetryChecked": false,
+      "heightPixels": 36,
+      "ink": "ink-2",
+      "kind": "transcribing",
+      "outlineTokenPixelsChecked": false,
+      "selectionPixelsUnchanged": true
+    },
+    {
+      "dark": true,
+      "fill": "warn-tint",
+      "glyph": "alert",
+      "glyphSymmetryChecked": true,
+      "heightPixels": 36,
+      "ink": "warn-ink",
+      "kind": "attention",
+      "outlineTokenPixelsChecked": false,
+      "selectionPixelsUnchanged": true
+    },
+    {
+      "dark": true,
+      "fill": "warn-tint",
+      "glyph": "alert",
+      "glyphSymmetryChecked": true,
+      "heightPixels": 36,
+      "ink": "warn-ink",
+      "kind": "interrupted",
+      "outlineTokenPixelsChecked": false,
+      "selectionPixelsUnchanged": true
+    },
+    {
+      "dark": true,
+      "fill": "none",
+      "glyph": "incoming",
+      "glyphSymmetryChecked": true,
+      "heightPixels": 36,
+      "ink": "ink-2",
+      "kind": "received",
+      "outlineTokenPixelsChecked": true,
+      "selectionPixelsUnchanged": true
+    }
+  ]
+}

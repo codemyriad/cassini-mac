@@ -1,0 +1,18 @@
+[
+  {
+    "name": "no-outline",
+    "expectedFailure": "Received outline is missing"
+  },
+  {
+    "name": "inherited-ink",
+    "expectedFailure": "Inherited selection foreground changed"
+  },
+  {
+    "name": "missing-left-glyph",
+    "expectedFailure": "Asymmetric canvas glyph for received"
+  },
+  {
+    "name": "wrong-outline-token",
+    "expectedFailure": "Received outline differs from token line"
+  }
+]
