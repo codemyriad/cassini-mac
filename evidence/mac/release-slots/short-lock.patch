@@ -6,6 +6,6 @@
      if not swap:raise ValueError('Cannot inspect swap before a heavy release phase')
 -    return dict(os.environ,CASSINI_LOCK_MINUTES='60',CASSINI_RELEASE_SWAPOUTS=swap.group(1))
 +    return dict(os.environ,CASSINI_LOCK_MINUTES='5',CASSINI_RELEASE_SWAPOUTS=swap.group(1))
- 
- 
+
+
  def release(args):
