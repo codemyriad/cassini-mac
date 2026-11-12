@@ -218,8 +218,8 @@ jobs:
   # Normal PRs and main pushes consolidate the three headless arm64 worker/control suites plus
   # headless board/spectrogram oracle checks into one self-hosted M4-first job, and the four
   # disposable-hosted login-session smoke checks into one hosted macos-15 job (<= 4 macOS jobs
-  # per PR push; 5 on main push with build_release). Nightly, workflow_dispatch, and full-ci
-  # labeled PRs run the full standalone/Intel/GUI workflows below instead.
+  # per PR push; 6 on main push with build_release and UX Library boards baseline). Nightly,
+  # workflow_dispatch, and full-ci labeled PRs run the full standalone/Intel/GUI workflows below.
   ux_workers:
     name: UX workers and conformance
     needs: [changes, build]
@@ -601,6 +601,7 @@ jobs:
           --base-artifact ux-boards \
           --tolerance 6 \
           --out build/pr-shots
+        python3 -I scripts/report-pr-shots-baseline.py build/pr-shots/changes.json
     - uses: actions/upload-artifact@v5
       with:
         retention-days: 14
