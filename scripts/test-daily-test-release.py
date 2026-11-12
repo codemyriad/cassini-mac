@@ -4,6 +4,7 @@
 from datetime import datetime,timezone
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -176,6 +177,34 @@ class DailyExecution(unittest.TestCase):
             build.assert_not_called()
             self.assertIn('main unchanged',(base/'inbox').read_text())
 
+    def test_local_and_remote_success_choose_the_newer_real_git_ancestor(self):
+        class NotesReached(BaseException):pass
+        for local_index,remote_index in [(0,1),(1,0)]:
+            with self.subTest(local=local_index,remote=remote_index),tempfile.TemporaryDirectory() as directory:
+                base,calls,build=self.context(directory);source=base/'source'
+                def git(*args):
+                    return subprocess.check_output(['git','-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgsign=false',*args],cwd=source,text=True).strip()
+                git('init','-q','-b','main');heads=[]
+                for index in range(3):
+                    (source/'change').write_text(str(index));git('add','.');git('commit','-qm','fixture')
+                    heads.append(git('rev-parse','HEAD'))
+                original=calls.side_effect
+                def command(args,**kwargs):
+                    if args[0]=='git' and 'merge-base' in args:
+                        return subprocess.check_output(list(map(str,args)),text=True).strip()
+                    return original(args,**kwargs)
+                calls.side_effect=command
+                daily.atomic(base/'state.json',{'last_success':heads[local_index],'build':9})
+                remote={'target_commitish':heads[remote_index]}
+                with patch.object(daily,'fetch_main',return_value=heads[2]),patch.object(daily,'main_is_green',return_value=True),patch.object(daily,'latest_nightly',return_value=remote),patch.object(daily,'notes',side_effect=NotesReached) as notes:
+                    reached=False
+                    try:daily.tick(datetime.fromisoformat('2026-11-11T08:00:00+00:00'))
+                    except NotesReached:reached=True
+                    except SystemExit:pass
+                self.assertTrue(reached,'A newer remote publication must not wedge the next release')
+                self.assertEqual(notes.call_args.args,(heads[1],heads[2]))
+                build.assert_not_called()
+
     def test_failed_build_is_not_retried_within_slot_but_next_slot_reports_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             base,_,build=self.context(directory)
@@ -200,7 +229,7 @@ class DailyExecution(unittest.TestCase):
 
     def test_incomplete_assets_never_publish_and_complete_upload_is_always_prerelease(self):
         import hashlib
-        for complete,user_text in [(False,'A clearer Library.'),(True,'A clearer Library.'),(True,'A'*500)]:
+        for complete,user_text,state in [(False,'A clearer Library.','uploaded'),(True,'A clearer Library.','uploaded'),(True,'A'*500,'uploaded'),(True,'A clearer Library.','starter'),(True,'A clearer Library.',None)]:
             with tempfile.TemporaryDirectory() as directory:
                 output=Path(directory);name='Cassini-talk-0.1.0-test.2.dmg';data=b'notarized fixture'
                 (output/name).write_bytes(data);digest=hashlib.sha256(data).hexdigest()
@@ -209,14 +238,19 @@ class DailyExecution(unittest.TestCase):
                 user=daily.ReleaseNotes(user_text,'CI D95 #123 Internal.swift developer PR title')
                 (output/'user-release-notes.txt').write_text(user.user)
                 (output/'user-release-notes.html').write_text(user.html())
-                assets=[dict(name=p.name,size=p.stat().st_size) for p in output.iterdir()]
+                assets=[dict(name=p.name,size=p.stat().st_size,state=state) for p in output.iterdir()]
                 if not complete:assets=assets[:1]
-                with patch.object(daily,'command') as tool,patch.object(daily,'gh',return_value=dict(draft=True,prerelease=True,assets=assets)):
-                    if complete:daily.publish('v0.1.0-beta.2','0.1.0',2,'a'*40,output,user)
+                view=['gh','release','view','v0.1.0-beta.2','-R',daily.REPO,'--json','isDraft,isPrerelease,assets']
+                def command(args,**kwargs):
+                    return json.dumps(dict(isDraft=True,isPrerelease=True,assets=assets)) if args==view else ''
+                publishable=complete and state=='uploaded'
+                with patch.object(daily,'command',side_effect=command) as tool,patch.object(daily,'gh',side_effect=AssertionError('Drafts must not use the published-tag REST endpoint')):
+                    if publishable:daily.publish('v0.1.0-beta.2','0.1.0',2,'a'*40,output,user)
                     else:
                         with self.assertRaises(ValueError):daily.publish('v0.1.0-beta.2','0.1.0',2,'a'*40,output,user)
                     edits=[c.args[0] for c in tool.call_args_list if c.args[0][1:3]==['release','edit']]
-                    self.assertEqual(len(edits),int(complete))
+                    self.assertEqual(len(edits),int(publishable))
+                    self.assertEqual(sum(c.args[0]==view for c in tool.call_args_list),1)
                     if edits:self.assertIn('--prerelease',edits[0]);self.assertIn('--latest=false',edits[0])
                     self.assertFalse(any('--clobber' in c.args[0] for c in tool.call_args_list))
                     self.assertEqual((output/'user-release-notes.txt').read_text(),user.user)

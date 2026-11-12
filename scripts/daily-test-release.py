@@ -193,9 +193,12 @@ def publish(tag,version,build,sha,output,release_notes):
     command(['gh','release','create',tag,'-R',REPO,'--target',sha,'--title',f'nightly — {version} beta.{build}',
              '--notes-file',note,'--draft','--prerelease','--latest=false'])
     command(['gh','release','upload',tag,'-R',REPO,dmg,output/'test-release.json',output/'SHA256SUMS',user_text,user_html],timeout=1200)
-    remote=gh([f'repos/{REPO}/releases/tags/{tag}'])
+    remote=json.loads(command(['gh','release','view',tag,'-R',REPO,'--json','isDraft,isPrerelease,assets']))
     expected={p.name:p.stat().st_size for p in [dmg,output/'test-release.json',output/'SHA256SUMS',user_text,user_html]}
-    if not remote['draft'] or not remote['prerelease'] or {a['name']:a['size'] for a in remote['assets']}!=expected:
+    assets=remote['assets']
+    if (not remote['isDraft'] or not remote['isPrerelease']
+            or len(assets)!=len(expected) or any(a.get('state')!='uploaded' for a in assets)
+            or {a['name']:a['size'] for a in assets}!=expected):
         raise ValueError('Draft test assets are incomplete')
     command(['gh','release','edit',tag,'-R',REPO,'--draft=false','--prerelease','--latest=false'])
 
@@ -257,8 +260,11 @@ def tick(now):
             local=state['last_success']
             if not re.fullmatch(r'[0-9a-f]{40}',local):raise ValueError('Invalid successful source commit')
             command(['git','-C',SOURCE,'merge-base','--is-ancestor',local,head])
-            if base:command(['git','-C',SOURCE,'merge-base','--is-ancestor',base,local])
-            base=local
+            if not base or subprocess.run(['git','-C',str(SOURCE),'merge-base','--is-ancestor',base,local],capture_output=True).returncode==0:
+                base=local
+            else:
+                # The publish response may have been lost before local state saved.
+                command(['git','-C',SOURCE,'merge-base','--is-ancestor',local,base])
         project=(SOURCE/'project.yml').read_text()
         version=re.search(r'MARKETING_VERSION: "([0-9]+(?:\.[0-9]+){1,2})"',project).group(1)
         version=nightly_version(version,releases)

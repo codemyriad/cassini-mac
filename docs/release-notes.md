@@ -20,7 +20,8 @@ separate hotfix branch.
 Before the first nightly, the last stable tag is the baseline; a separate hotfix
 branch uses its common ancestor with main. Failed/draft releases do not consume
 fragments. A successful local publication is also remembered if subsequent
-cleanup fails or the release listing is stale. All fragments at the published
+cleanup fails or the release listing is stale. If GitHub has a newer published
+nightly than local state, that newer tag remains the baseline. All fragments at the published
 SHA, including overflow, count as covered; retain them for stable curation.
 
 Preview without building, signing or publishing:

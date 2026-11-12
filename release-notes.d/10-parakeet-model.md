@@ -1,3 +1,3 @@
 kind: better
 ---
-Update Parakeet Ultra in Settings for new meetings. Cassini keeps your current model until the update is ready.
+Download the updated Parakeet Ultra in Settings. New meetings use Whistle until it is ready.
