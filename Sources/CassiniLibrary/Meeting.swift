@@ -65,7 +65,10 @@ public struct MeetingSpeaker: Sendable, Equatable {
     public var provenance: NameProvenance?
     public var colourIndex: Int
     public var label: String? = nil
-    public var displayName: String { name ?? label ?? "Speaker \(colourIndex + 1)" }
+    public var displayName:String { displayName(language:.system) }
+    public func displayName(language:CassiniLanguage,locale:Locale = .current) -> String {
+        name ?? label ?? LibraryLocalization.shared.text("common.speaker.unnamed",["n":String(colourIndex+1)],language:language,locale:locale)
+    }
 }
 public struct MeetingQuote: Codable, Equatable, Sendable {
     public var atMs: Int64
@@ -148,6 +151,7 @@ public struct LibraryMeeting: Sendable {
     }
     private var writtenItems: [LibraryTranscriptItem]? = nil
     /// D24: each merged-away speaker id mapped to its final target (empty without merges).
+    public var speakerMergeCount = 0
     public var mergedInto: [String: String] = [:] { didSet { transcriptTurns = [] } }
     /// Prepared snapshots can outlive a metadata merge (including a suspended
     /// preparation). Resolve against the current metadata when rendering them.

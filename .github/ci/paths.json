@@ -26,6 +26,7 @@
     "scripts/test-pr-shots.py",
     "scripts/test-recording-comfort.py",
     ".github/workflows/ux-boards.yml",
+    "scripts/generate-brand-tokens.py",
     "scripts/check-brand-tokens.py",
     "scripts/test-brand-tokens.py",
     "scripts/check-ux-copy.py",

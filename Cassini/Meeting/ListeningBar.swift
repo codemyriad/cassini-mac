@@ -40,7 +40,20 @@ struct ListeningBar: View {
                         Button(UXText.text("listen.again")) { model.playListeningAgain() }
                             .fixedSize().accessibilityIdentifier("listen-again")
                     }
-                    // Name… / Merge into… remain absent until the M4 naming sheet exists.
+                    Button(UXText.text("listen.name")) {
+                        MeetingRenameCoordinator.shared.showSpeaker(model.meeting,id:model.listen.speaker)
+                    }.disabled(!MeetingRenameCoordinator.shared.canEditSpeakers(model.meeting)).accessibilityIdentifier("listen-name")
+                    Menu(UXText.text("speakers.mergeInto")) {
+                        ForEach(model.meeting.speakers.filter {$0.id != model.listen.speaker},id:\.id) {other in
+                            Button(other.displayName) {
+                                let editor=MeetingRenameCoordinator.shared
+                                if let speaker=model.listen.speaker {
+                                    editor.mergeSpeaker(model.meeting,from:model.meeting.mergedInto[speaker] ?? speaker,into:other.id)
+                                }
+                            }
+                        }
+                    }.disabled(!MeetingRenameCoordinator.shared.canEditSpeakers(model.meeting) || model.meeting.speakers.count<2)
+                        .accessibilityIdentifier("listen-merge")
                     Button { model.stopListening() } label: { Image(systemName:"xmark").frame(width:24,height:28) }
                         .help(UXText.text("listen.stop")).accessibilityLabel(UXText.text("listen.stop"))
                         .accessibilityIdentifier("listen-stop")

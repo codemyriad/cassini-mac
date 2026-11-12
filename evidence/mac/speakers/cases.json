@@ -1,0 +1,52 @@
+[
+  {
+    "name": "name-bound",
+    "source": "Sources/CassiniLibrary/SpeakerEdits.swift",
+    "test": "invalidNamesNeverWrite"
+  },
+  {
+    "name": "explicit-clear",
+    "source": "Sources/CassiniLibrary/SpeakerEdits.swift",
+    "test": "explicitClearSuppressesAReceivedEmbeddedName"
+  },
+  {
+    "name": "fresh-queue-state",
+    "source": "Sources/CassiniLibrary/SpeakerEdits.swift",
+    "test": "freshQueueStateAndOutsideRootsRefuseEdits"
+  },
+  {
+    "name": "visible-ids",
+    "source": "Sources/CassiniLibrary/SpeakerEdits.swift",
+    "test": "mergeChainsUndoAndStaleIDsUseFreshMetadata"
+  },
+  {
+    "name": "merge-history",
+    "source": "Sources/CassiniLibrary/SpeakerEdits.swift",
+    "test": "mergeChainsUndoAndStaleIDsUseFreshMetadata"
+  },
+  {
+    "name": "undo-order",
+    "source": "Sources/CassiniLibrary/SpeakerEdits.swift",
+    "test": "mergeChainsUndoAndStaleIDsUseFreshMetadata"
+  },
+  {
+    "name": "longest-cap",
+    "source": "Sources/CassiniLibrary/SpeakerEdits.swift",
+    "test": "unionTalkTimeAndLongestCappedSample"
+  },
+  {
+    "name": "transport-cap",
+    "source": "Sources/CassiniPlayback/SpeakerSample.swift",
+    "test": "sampleStopsAtTheActualBoundaryAndRestoresPaused"
+  },
+  {
+    "name": "restore-position",
+    "source": "Sources/CassiniPlayback/SpeakerSample.swift",
+    "test": "sampleStopsAtTheActualBoundaryAndRestoresPaused"
+  },
+  {
+    "name": "audible-sample",
+    "source": "Sources/CassiniLibrary/SpeakerEdits.swift",
+    "test": "zeroDurationWordsCannotAnchorAnAudibleSample"
+  }
+]

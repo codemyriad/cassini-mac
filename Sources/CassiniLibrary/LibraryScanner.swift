@@ -223,6 +223,7 @@ public struct LibraryScanner: Sendable {
         // Known ids (GNOME parity): meeting.json speakers, the received file's speakers, and the words'.
         let known = Set((metadata?.speakers ?? []).map(\.id)).union(embeddedNames.keys).union(sorted.map(\.speaker))
         let merges = (metadata?.speakerMerges ?? []).map { SpeakerMerges.Entry(from: $0.from, into: $0.into) }
+        meeting.speakerMergeCount = merges.count
         meeting.mergedInto = SpeakerMerges.resolve(merges, known: known)
         let resolved = SpeakerMerges.apply(sorted, meeting.mergedInto)
         meeting.writtenTranscriptItems = sorted

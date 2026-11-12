@@ -1,15 +1,29 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Verify vendored brand/tokens.json pin, SHA-256, and Swift token sheet parity."""
+"""Verify vendored brand/tokens.json pin, generated CassiniTokens.swift parity, and zero stray colour literals."""
 from __future__ import annotations
 
+import base64
 import hashlib
+import importlib.util
 import json
+import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
+
+_GEN_SPEC = importlib.util.spec_from_file_location(
+    'generate_brand_tokens',
+    Path(__file__).resolve().parent / 'generate-brand-tokens.py',
+)
+assert _GEN_SPEC and _GEN_SPEC.loader
+_generator = importlib.util.module_from_spec(_GEN_SPEC)
+_GEN_SPEC.loader.exec_module(_generator)
+camel_case = _generator.camel_case
+render_swift = _generator.render_swift
 
 ENTRY_RE = re.compile(
     r'static let (\w+)Entry\s*=\s*Entry\(\s*'
@@ -18,11 +32,90 @@ ENTRY_RE = re.compile(
     r'light:\s*"(#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?)",\s*'
     r'dark:\s*"(#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?)"\s*\)'
 )
-HEX_RE = re.compile(r'#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?\b')
+UNAPPLIED_RE = re.compile(
+    r'static let unappliedDecidedTokens:\s*Set<String>\s*=\s*\[(.*?)\]',
+    re.S,
+)
+
+LITERAL_PATTERNS: list[tuple[str, re.Pattern[str], set[str]]] = [
+    (
+        'RGB Color/NSColor initializer',
+        re.compile(r'\b(?:NS)?Color\s*\(\s*(?:srgbRed|red|calibratedRed|deviceRed)\s*:'),
+        {'.swift'},
+    ),
+    (
+        '0xRRGGBB colour hex literal',
+        re.compile(r'\b0x[0-9A-Fa-f]{6}\b'),
+        {'.swift'},
+    ),
+    (
+        '#RRGGBB colour hex literal',
+        re.compile(r'#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?\b'),
+        {'.swift', '.html', '.css'},
+    ),
+    (
+        'platform system colour literal',
+        re.compile(
+            r'\b(?:NSColor\.)?system(?:Red|Orange|Yellow|Green|Mint|Teal|Cyan|Blue|Indigo|Purple|Pink|Brown|Gray)\b'
+            r'|(?<!\w)(?:Color)?\.(?:red|orange|yellow|green|mint|teal|cyan|blue|indigo|purple|pink|brown)\b'
+        ),
+        {'.swift'},
+    ),
+    (
+        'CSS rgb/hsl colour literal',
+        re.compile(r'\b(?:rgba?|hsla?)\s*\('),
+        {'.html', '.css'},
+    ),
+]
 
 
-def camel_case(token_id: str) -> str:
-    return re.sub(r'-([a-z0-9])', lambda m: m.group(1).upper(), token_id)
+def _verify_upstream_gh(commit: str, raw_tokens: bytes) -> None:
+    proc = subprocess.run(
+        ['gh', 'api', f'repos/codemyriad/cassini-ux/contents/brand/tokens.json?ref={commit}', '--jq', '.content'],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise ValueError(f'gh api upstream fetch failed for cassini-ux@{commit}: {proc.stderr.strip()}')
+    upstream_bytes = base64.b64decode(proc.stdout)
+    if upstream_bytes != raw_tokens:
+        raise ValueError(f'Vendored tokens.json differs from codemyriad/cassini-ux@{commit}')
+
+
+def _scan_colour_literals(root: Path, allow_pre_w1_compat: bool) -> None:
+    allowed_rel = {'Cassini/Theme/CassiniTokens.swift'}
+    if allow_pre_w1_compat:
+        allowed_rel.update({'Cassini/Theme/CassiniTheme.swift', 'Cassini/Resources/Cassini.html'})
+
+    skip_prefixes = (
+        'Sources/CassiniZstd/upstream/',
+        'Cassini/Resources/Licenses/',
+        'Cassini/Resources/Brand/',
+        'Cassini/Resources/UX/',
+    )
+
+    for folder_name in ('Cassini', 'Sources'):
+        folder = root / folder_name
+        if not folder.is_dir():
+            continue
+        for path in sorted(folder.rglob('*')):
+            if not path.is_file() or path.suffix not in {'.swift', '.html', '.css'}:
+                continue
+            rel = path.relative_to(root).as_posix()
+            if rel in allowed_rel or any(rel.startswith(prefix) for prefix in skip_prefixes):
+                continue
+            text = path.read_text(encoding='utf-8')
+            for lineno, line in enumerate(text.splitlines(), 1):
+                code = line.split('//', 1)[0] if path.suffix == '.swift' else line
+                for kind, rx, suffixes in LITERAL_PATTERNS:
+                    if path.suffix not in suffixes:
+                        continue
+                    match = rx.search(code)
+                    if match:
+                        raise ValueError(
+                            f'Forbidden {kind} {match.group(0)!r} outside CassiniTokens.swift at {rel}:{lineno}'
+                        )
 
 
 def verify(root: Path = ROOT) -> int:
@@ -30,6 +123,7 @@ def verify(root: Path = ROOT) -> int:
     tokens_path = brand_dir / 'tokens.json'
     upstream_path = brand_dir / 'UPSTREAM.json'
     swift_path = root / 'Cassini/Theme/CassiniTokens.swift'
+    theme_path = root / 'Cassini/Theme/CassiniTheme.swift'
 
     if not tokens_path.is_file():
         raise ValueError(f'Missing vendored token file: {tokens_path}')
@@ -37,6 +131,8 @@ def verify(root: Path = ROOT) -> int:
         raise ValueError(f'Missing upstream pin file: {upstream_path}')
     if not swift_path.is_file():
         raise ValueError(f'Missing Swift token sheet: {swift_path}')
+    if not theme_path.is_file():
+        raise ValueError(f'Missing Swift theme file: {theme_path}')
 
     pin = json.loads(upstream_path.read_text(encoding='utf-8'))
     if pin.get('repository') != 'cassini-ux' or pin.get('path') != 'brand/tokens.json':
@@ -49,6 +145,9 @@ def verify(root: Path = ROOT) -> int:
     digest = hashlib.sha256(raw_tokens).hexdigest()
     if digest != pin.get('sha256', '').lower():
         raise ValueError(f'tokens.json SHA-256 mismatch: got {digest}, UPSTREAM.json has {pin.get("sha256")}')
+
+    if os.environ.get('CASSINI_VERIFY_UPSTREAM_GH') == '1':
+        _verify_upstream_gh(commit, raw_tokens)
 
     token_doc = json.loads(raw_tokens.decode('utf-8'))
     if token_doc.get('schema') != 'cassini-ux/brand-tokens@1':
@@ -65,14 +164,13 @@ def verify(root: Path = ROOT) -> int:
 
     active_tokens: dict[str, tuple[str, str]] = {}
     forbidden_tokens: set[str] = set()
-    for token_id, spec in token_doc.get('tokens', {}).items():
-        status = spec.get('status')
-        if status in {'decided', 'placeholder'}:
-            active_tokens[token_id] = (spec['light'].upper(), spec['dark'].upper())
-        else:
-            forbidden_tokens.add(token_id)
-    for derived_id in token_doc.get('derived', {}):
-        forbidden_tokens.add(derived_id)
+    for block_name in ('tokens', 'derived'):
+        for token_id, spec in token_doc.get(block_name, {}).items():
+            status = spec.get('status')
+            if status in {'decided', 'placeholder'}:
+                active_tokens[token_id] = (spec['light'].upper(), spec['dark'].upper())
+            else:
+                forbidden_tokens.add(token_id)
 
     parsed_entries: dict[str, tuple[str, str, str, str]] = {}
     for prop_prefix, token_id, swift_name, light, dark in ENTRY_RE.findall(swift_text):
@@ -91,13 +189,6 @@ def verify(root: Path = ROOT) -> int:
     if missing or extra:
         raise ValueError(f'Token set mismatch: missing={missing}, extra={extra}')
 
-    entries_block = re.search(r'static let entries:\s*\[Entry\]\s*=\s*\[(.*?)\]', swift_text, re.S)
-    if not entries_block:
-        raise ValueError('Missing `static let entries: [Entry]` in CassiniTokens.swift')
-    listed_entries = re.findall(r'\b(\w+)Entry\b', entries_block.group(1))
-    if len(listed_entries) != len(set(listed_entries)):
-        raise ValueError(f'Duplicate entries in CassiniTokens.entries: {listed_entries}')
-
     for token_id, (want_light, want_dark) in sorted(active_tokens.items()):
         swift_name, got_light, got_dark, prop_prefix = parsed_entries[token_id]
         expected_swift = camel_case(token_id)
@@ -108,27 +199,42 @@ def verify(root: Path = ROOT) -> int:
                 f'Token {token_id!r} drift: tokens.json=({want_light}, {want_dark}) '
                 f'vs CassiniTokens.swift=({got_light}, {got_dark})'
             )
-        if prop_prefix not in listed_entries:
-            raise ValueError(f'{prop_prefix}Entry missing from CassiniTokens.entries')
         if not re.search(rf'static let {re.escape(swift_name)}\s*=\s*{re.escape(prop_prefix)}Entry\.nsColor\b', swift_text):
             raise ValueError(f'Missing NSColor accessor CassiniTokens.ns.{swift_name}')
         if not re.search(rf'static let {re.escape(swift_name)}\s*=\s*{re.escape(prop_prefix)}Entry\.color\b', swift_text):
             raise ValueError(f'Missing Color accessor CassiniTokens.{swift_name}')
 
-    # Ensure no hex literals appear outside Entry(...) declarations, comments, or #if DEBUG self-tests.
-    non_entry = ENTRY_RE.sub('', swift_text)
-    non_entry = re.sub(r'#if DEBUG.*?#endif', '', non_entry, flags=re.S)
-    non_entry = re.sub(r'//.*', '', non_entry)
-    stray_hex = HEX_RE.findall(non_entry)
-    if stray_hex:
-        raise ValueError(f'Hex literal hard-coded outside CassiniTokens Entry table: {stray_hex}')
+    expected_swift_text = render_swift(root)
+    if swift_text != expected_swift_text:
+        raise ValueError(
+            'CassiniTokens.swift differs from scripts/generate-brand-tokens.py output; '
+            'regenerate instead of editing by hand'
+        )
 
+    theme_text = theme_path.read_text(encoding='utf-8')
+    unapplied_match = UNAPPLIED_RE.search(theme_text)
+    if not unapplied_match:
+        raise ValueError('Missing `static let unappliedDecidedTokens: Set<String>` in CassiniTheme.swift')
+    unapplied_ids = set(re.findall(r'"([^"]+)"', unapplied_match.group(1)))
+    unknown_unapplied = sorted(unapplied_ids - set(active_tokens))
+    if unknown_unapplied:
+        raise ValueError(f'Unknown token IDs in CassiniTheme.unappliedDecidedTokens: {unknown_unapplied}')
+
+    for token_id in sorted(set(active_tokens) - unapplied_ids):
+        swift_name = camel_case(token_id)
+        ref_re = re.compile(rf'\bCassiniTokens\.(?:ns\.)?{re.escape(swift_name)}(?:Entry)?\b')
+        if not ref_re.search(theme_text):
+            raise ValueError(
+                f'Active token {token_id!r} is not in unappliedDecidedTokens and is not wired in CassiniTheme.swift'
+            )
+
+    _scan_colour_literals(root, allow_pre_w1_compat=bool(unapplied_ids))
     return len(active_tokens)
 
 
 def main() -> int:
     count = verify(ROOT)
-    print(f'Verified {count} brand tokens (light + dark) and UPSTREAM.json SHA-256 pin')
+    print(f'Verified {count} brand tokens (light + dark), generator parity, and literal check')
     return 0
 
 
