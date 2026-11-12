@@ -1098,6 +1098,15 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(title.isHittable, window.debugDescription)
         XCTAssertTrue(text("Client call, Rossi & Partners", in: window))
         XCTAssertTrue(text("Today, 11:30 · 47 min", in: window))
+        let nameSpeakers = window.buttons["name-the-speakers"]
+        XCTAssertTrue(nameSpeakers.exists)
+        XCTAssertTrue(nameSpeakers.isEnabled)
+        nameSpeakers.click()
+        let nameField = app.textFields["speaker-name-field"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 10), app.debugDescription)
+        app.typeKey(.escape, modifierFlags: [])
+        let dismissed = NSPredicate { _,_ in !nameField.exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: dismissed, object: nil)], timeout: 10), .completed)
         XCTAssertEqual(title.frame.minX - window.frame.minX, 280, accuracy: 16)
         capture(window, name: "meeting")
         for value in ["00:03:12", "00:47:05"] { XCTAssertTrue(text(value, in: window), value) }
@@ -1113,7 +1122,6 @@ final class LibraryBoards: XCTestCase {
             XCTAssertTrue(row.waitForExistence(timeout:5),speaker)
             XCTAssertTrue(row.label.contains(provenance),row.label)
         }
-        XCTAssertFalse(window.buttons["Name the speakers"].exists)
         XCTAssertFalse(window.buttons["Inspector"].exists)
         XCTAssertEqual(window.frame.width, 1120, accuracy: 0.1)
         XCTAssertEqual(window.frame.height, 720, accuracy: 0.1)

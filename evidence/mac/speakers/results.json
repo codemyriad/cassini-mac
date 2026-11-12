@@ -97,7 +97,7 @@
     "Tests/CassiniPlaybackTests/SpeakerSampleTests.swift": "6169a128480cf0e47fb7c4f3be9139cc24bc597ad9275874157b7e880a8a966d",
     "Tests/CassiniExportTests/D70SpeakerMergesExportTests.swift": "8a73100d2cdd03cc663c7858a963561b4d0e9db00cc66927d1c4c748b0ed51e4",
     "Tests/CassiniSearchTests/SearchTests.swift": "47745e86c2f70740ffe91632dd442ff514e22155987459be641d1321429bd15a",
-    "UITests/LibraryBoards.swift": "46e5e12239425b7a9f2bd298ff9089cd13099efa1ee4392ebb726337d6ec4941"
+    "UITests/LibraryBoards.swift": "b6f051d968f0b094ccc4eb0675faa20446053b26ea9fa7421d932e83be7a89e7"
   },
   "native": {
     "compiled": "Debug arm64 app and Screenshots bundle; Xcode 16.4, generated fixtures/project",
@@ -108,5 +108,5 @@
   "noCpuGateFocusedTests": 11,
   "affectedXCTest": 21,
   "nativeBuildAfterMain": "App and Screenshots test bundle passed",
-  "nativeUIAfterMain": "pending CI; local Aqua account busy with runner job"
+  "nativeUIAfterMain": "CI43126142609:53/54 boards pass including naming clear merge undo reopen; sole failure obsolete Name the speakers must be absent assertion. Fixed to exercise header button/editor. Local native build passes; local UI geometry failure and subsequent runner overlap are not clean passes."
 }

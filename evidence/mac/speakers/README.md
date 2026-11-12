@@ -102,3 +102,14 @@ undo/reopen and listening flows passed; earlier geometry/retry preconditions
 are not counted as passes. Completed old CI logs show artifact download
 failures (404/HTML response) and stale-client SIGSEGV, before the merged cache
 fix. No unchanged run was retried to hide those failures.
+
+## Final board expectation
+
+CI43126142609 passed53 of54 native board cases, including full naming/clear/
+merge/undo/reopen. Its sole failure was the obsolete requirement that the
+D24 Name the speakers control be absent. The board now requires the enabled
+identified control, opens its real editor and dismisses it before continuing.
+Native arm64 app and Screenshots builds pass. A local UI run hit the existing
+250-versus280 title geometry and later overlapped a newly started runner job;
+the owned local test process was interrupted, and that run is not counted as a
+clean pass. Current exact-head CI remains required. No geometry bound changed.
