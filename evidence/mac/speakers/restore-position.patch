@@ -1,0 +1,5 @@
+--- a/Sources/CassiniPlayback/SpeakerSample.swift
++++ b/Sources/CassiniPlayback/SpeakerSample.swift
+@@ -26 +26 @@
+-        playback.seek(meeting,toMs:position)
++        playback.seek(meeting,toMs:0)

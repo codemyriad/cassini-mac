@@ -18,6 +18,7 @@ EXPECTED_BOARDS = frozenset((
     'settings-parakeet-recommendation-fr-FR', 'settings-parakeet-recommendation-pt-PT',
     'companion-setup', 'what-is-recorded', 'trash', 'trash-meeting', 'trash-after', 'rename',
     'recording-details', 'recording-details-many', 'listening-bar-finished', 'listening-transcript-highlight',
+    'library-seven-speakers', 'meeting-seven-speakers', 'speaker-error',
 ))
 
 

@@ -193,6 +193,98 @@ final class LibraryBoards: XCTestCase {
         window.sheets.buttons["Done"].click()
         XCTAssertTrue(window.buttons["recording-change-sources"].exists)
     }
+    @MainActor func testSpeakerNamesClearMergeUndoAndReopen() throws {
+        let fixtureID=UUID().uuidString
+        let args=["--fixture-library-rename","-CassiniRenameID",fixtureID]
+        let app=try launch("library",fixture:"main",extra:args);defer {app.terminate()}
+        let window=app.windows["cassini-library-window"]
+        let read=window.buttons["preview-read-transcript"]
+        app.typeKey(.escape,modifierFlags:[])
+        let budget=window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
+        XCTAssertTrue(budget.waitForExistence(timeout:20),app.debugDescription);budget.click()
+        let readable=NSPredicate {_,_ in read.exists && read.isEnabled}
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:readable,object:nil)],timeout:10),.completed,app.debugDescription)
+        read.click()
+        let nameSpeakers = window.buttons["name-the-speakers"]
+        XCTAssertTrue(nameSpeakers.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(nameSpeakers.isEnabled)
+        nameSpeakers.click()
+        let nameField = app.textFields["speaker-name-field"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 10), app.debugDescription)
+        app.typeKey(.escape, modifierFlags: [])
+        let dismissed = NSPredicate { _,_ in !nameField.exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: dismissed, object: nil)], timeout: 10), .completed)
+        let marta=window.buttons["speaker-name-marta"]
+        XCTAssertTrue(marta.waitForExistence(timeout:10),app.debugDescription);marta.click()
+        let field=app.textFields["speaker-name-field"],save=app.buttons["speaker-save-name"]
+        XCTAssertTrue(field.waitForExistence(timeout:10),app.debugDescription)
+        field.click();app.typeKey("a",modifierFlags:.command);field.typeText(" Ada ");save.click()
+        let named=NSPredicate {_,_ in !field.exists && marta.exists && marta.label.contains("Ada")}
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:named,object:nil)],timeout:10),.completed,app.debugDescription)
+        XCTAssertTrue(window.buttons["speaker-listen-marta"].exists,"The independent row Play target remains available")
+        let editableCaption=window.descendants(matching:.any).matching(identifier:"speaker-caption-marta").firstMatch
+        XCTAssertTrue(editableCaption.exists)
+        XCTAssertGreaterThanOrEqual(editableCaption.frame.width,185,"Play stays on the name/share line so editable captions keep full row width")
+        marta.click();XCTAssertTrue(field.waitForExistence(timeout:10))
+        field.click();app.typeKey("a",modifierFlags:.command);field.typeText(String(repeating:"x",count:65))
+        XCTAssertFalse(save.isEnabled,"Overlong names cannot be saved")
+        app.typeKey(.escape,modifierFlags:[])
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate {_,_ in !field.exists},object:nil)],timeout:10),.completed)
+        XCTAssertTrue(marta.label.contains("Ada"),"Cancel leaves the saved name intact")
+        marta.click();XCTAssertTrue(field.waitForExistence(timeout:10))
+        field.click();app.typeKey("a",modifierFlags:.command);app.typeKey(.delete,modifierFlags:[]);save.click()
+        let cleared=NSPredicate {_,_ in !field.exists && marta.exists && !marta.label.contains("Ada")}
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:cleared,object:nil)],timeout:10),.completed,app.debugDescription)
+        let dario=window.buttons["speaker-name-dario"]
+        XCTAssertTrue(dario.exists);dario.click();XCTAssertTrue(field.waitForExistence(timeout:10))
+        app.descendants(matching:.any).matching(identifier:"speaker-merge-menu").firstMatch.click();app.menuItems["Speaker 3"].click()
+        let merged=NSPredicate {_,_ in !field.exists && !dario.exists && window.buttons["speaker-name-guest"].exists}
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:merged,object:nil)],timeout:10),.completed,app.debugDescription)
+        window.buttons["meeting-more-actions"].click();app.menuItems["Undo merge"].click()
+        XCTAssertTrue(dario.waitForExistence(timeout:10),app.debugDescription)
+        app.terminate()
+        let reopened=try launch("library",fixture:"main",extra:args);defer {reopened.terminate()}
+        let again=reopened.windows["cassini-library-window"]
+        reopened.typeKey(.escape,modifierFlags:[])
+        let budgetAgain=again.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
+        XCTAssertTrue(budgetAgain.waitForExistence(timeout:20));budgetAgain.click()
+        let readAgain=again.buttons["preview-read-transcript"]
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate {_,_ in readAgain.exists && readAgain.isEnabled},object:nil)],timeout:10),.completed)
+        readAgain.click()
+        XCTAssertTrue(again.buttons["speaker-name-dario"].waitForExistence(timeout:10))
+        XCTAssertFalse(again.buttons["speaker-name-marta"].label.contains("Ada"),"The clear and Undo survive reopening")
+    }
+
+    @MainActor func testSevenSpeakersAndSpeakerErrorBoards() throws {
+        let fixtureID = UUID().uuidString
+        let meetingDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("CassiniRenameFixture-" + fixtureID, isDirectory: true)
+            .appendingPathComponent("root/Recording-a0000000-0000-4000-8000-000000000001", isDirectory: true)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: meetingDir.path) }
+        let args = ["--fixture-library-rename", "--fixture-library-seven-speakers", "-CassiniRenameID", fixtureID]
+        let app = try launch("library", fixture: "main", extra: args); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        app.typeKey(.escape, modifierFlags: [])
+        let budget = window.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", "Budget review", "Budget review")).firstMatch
+        XCTAssertTrue(budget.waitForExistence(timeout: 20), app.debugDescription); budget.click()
+        let read = window.buttons["preview-read-transcript"]
+        let previewReady = NSPredicate { _, _ in read.exists && read.isEnabled && self.text("Speaker 7", in: window) }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: previewReady, object: nil)], timeout: 10), .completed, app.debugDescription)
+        capture(window, name: "library-seven-speakers")
+        read.click()
+        let marta = window.buttons["speaker-name-marta"], guest = window.buttons["speaker-name-guest"]
+        XCTAssertTrue(marta.waitForExistence(timeout: 10) && guest.waitForExistence(timeout: 10), app.debugDescription)
+        capture(window, name: "meeting-seven-speakers")
+        marta.click()
+        let field = app.textFields["speaker-name-field"], save = app.buttons["speaker-save-name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10), app.debugDescription)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: meetingDir.path)
+        field.click(); app.typeKey("a", modifierFlags: .command); field.typeText("Ada"); save.click()
+        let errorLine = app.staticTexts["speaker-change-error"]
+        XCTAssertTrue(errorLine.waitForExistence(timeout: 10), app.debugDescription)
+        capture(window, name: "speaker-error")
+    }
+
     @MainActor func testRenameFromFileAndWindowTitle() throws {
         let app = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString])
         defer { app.terminate() }
@@ -327,8 +419,11 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:last,object:nil)],timeout:5),.completed)
         app.typeKey(.downArrow,modifierFlags:[.option,.shift,.command])
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate { _,_ in self.text("Turn 1 of 2 · 00:02:55",in:window) },object:nil)],timeout:5),.completed)
-        XCTAssertFalse(bar.buttons["Name…"].exists)
-        XCTAssertFalse(bar.buttons["Merge into…"].exists)
+        let name=bar.buttons["listen-name"]
+        let merge=bar.descendants(matching:.any).matching(identifier:"listen-merge").firstMatch
+        XCTAssertTrue(name.exists && merge.exists)
+        XCTAssertFalse(name.isEnabled,"The screenshot's read-only fixture cannot be renamed")
+        XCTAssertFalse(merge.isEnabled,"The screenshot's read-only fixture cannot be merged")
         window.buttons["meeting-export"].click()
         XCTAssertTrue(window.sheets.firstMatch.waitForExistence(timeout:10))
         app.typeKey(.escape,modifierFlags:[])
@@ -1040,7 +1135,9 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: readable, object: nil)], timeout: 40), .completed, app.debugDescription)
         window.buttons["preview-read-transcript"].click()
         XCTAssertTrue(waitForPresent(window.buttons["meeting-back"],timeout: 10))
-        XCTAssertTrue(text("Me", in: window), app.debugDescription)
+        let me=window.buttons["speaker-name-me"]
+        XCTAssertTrue(me.waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(me.label.hasPrefix("Me,"),me.label)
         XCTAssertFalse(window.buttons["meeting-write-down"].exists)
     }
     @MainActor func testQuitPausesWritingDownAndResumesOnRelaunch() throws {
@@ -1077,17 +1174,27 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(title.isHittable, window.debugDescription)
         XCTAssertTrue(text("Client call, Rossi & Partners", in: window))
         XCTAssertTrue(text("Today, 11:30 · 47 min", in: window))
+        let nameSpeakers = window.buttons["name-the-speakers"]
+        XCTAssertTrue(nameSpeakers.exists)
+        XCTAssertFalse(nameSpeakers.isEnabled, "The static screenshot fixture is read-only")
         XCTAssertEqual(title.frame.minX - window.frame.minX, 280, accuracy: 16)
         capture(window, name: "meeting")
-        for value in ["43%", "36%", "21%", "00:03:12", "00:47:05"] { XCTAssertTrue(text(value, in: window), value) }
+        for value in ["Marta", "Giulia Rossi", "Speaker 3", "43%", "36%", "21%", "00:03:12", "00:47:05"] {
+            XCTAssertTrue(text(value, in: window), value)
+        }
         // D70 combines provenance and turn timing, and the narrow visual text
-        // may truncate. Check each real speaker row's complete accessible label.
+        // may truncate. Read-only speaker rows stay plain content (not dimmed
+        // disabled buttons) while keeping Play on the name/share line so the
+        // caption keeps the full row width.
         for (speaker,provenance) in [("marta","Named by you"),("giulia","Recognised from saved voices"),("guest","Not named yet")] {
+            XCTAssertFalse(window.buttons["speaker-name-" + speaker].exists,"Read-only speaker rows must not render as disabled buttons")
             let row = window.descendants(matching:.any).matching(identifier:"speaker-row-" + speaker).firstMatch
             XCTAssertTrue(row.waitForExistence(timeout:5),speaker)
             XCTAssertTrue(row.label.contains(provenance),row.label)
+            let caption = window.descendants(matching:.any).matching(identifier:"speaker-caption-" + speaker).firstMatch
+            XCTAssertTrue(caption.exists,speaker)
+            XCTAssertGreaterThanOrEqual(caption.frame.width,185,"Caption keeps full row width without an outer Play column")
         }
-        XCTAssertFalse(window.buttons["Name the speakers"].exists)
         XCTAssertFalse(window.buttons["Inspector"].exists)
         XCTAssertEqual(window.frame.width, 1120, accuracy: 0.1)
         XCTAssertEqual(window.frame.height, 720, accuracy: 0.1)

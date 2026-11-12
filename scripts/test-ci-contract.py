@@ -1580,9 +1580,11 @@ class PullRequestFourJobBudget(unittest.TestCase):
     def test_brand_token_sync_checks_gate_ci_and_ux_boards(self):
         changes_job = ci_job('changes')
         boards = (ROOT / '.github/workflows/ux-boards.yml').read_text()
+        self.assertIn('python3 -I scripts/generate-brand-tokens.py --check', changes_job)
         self.assertIn('python3 -I scripts/check-brand-tokens.py', changes_job)
         self.assertIn('python3 -I scripts/test-brand-tokens.py', changes_job)
         self.assertIn('python3 -I scripts/check-brand-tokens.py', boards)
+        self.assertIn('scripts/generate-brand-tokens.py', PATHS['boards'])
         self.assertIn('scripts/check-brand-tokens.py', PATHS['boards'])
         self.assertIn('scripts/test-brand-tokens.py', PATHS['boards'])
 

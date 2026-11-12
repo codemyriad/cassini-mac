@@ -60,7 +60,7 @@ class ExportUXBoardsTests(unittest.TestCase):
             doc = exporter.export_boards(self.light, self.out, self.dark)
         self.assertEqual((doc['app'], doc['runner']['image_os'], doc['runner']['image_version']), ('mac', 'macos15', '20261110.1'))
         shots = doc['shots']
-        self.assertEqual(len(shots), 54)
+        self.assertEqual(len(shots), len(exporter.EXPECTED_BOARDS) * 2)
         self.assertEqual({s['path'] for s in shots if s['scheme'] == 'light'}, {f'{n}.png' for n in exporter.EXPECTED_BOARDS})
         self.assertEqual({s['path'] for s in shots if s['scheme'] == 'dark'}, {f'dark/{n}.png' for n in exporter.EXPECTED_BOARDS})
         by_screen: dict[tuple[str, str, str], set[str]] = {}

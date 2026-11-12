@@ -78,14 +78,18 @@ struct LibrarySearchView: View {
                         let others = meeting.overlappingSpeakerIDs(turn.over,excluding:turn.speaker)
                         HStack(alignment:.top,spacing:16) {
                             VStack(alignment:.leading,spacing:4) {
-                                if hit.showsSpeakerHeader(at:index) { HStack(spacing:5) {
-                                    Text(name(turn.speaker,meeting:meeting)).fontWeight(.semibold)
-                                    if meeting.speaker(for:turn.speaker)?.provenance == .recognised {
-                                        Text(UXText.text("common.autoTag")).font(.system(size:10)).padding(.horizontal,4)
-                                            .overlay(RoundedRectangle(cornerRadius:4).stroke(CassiniTheme.tagStroke))
-                                            .help(UXText.text("common.autoTag.tooltip"))
-                                    }
-                                }.fixedSize() }
+                                if hit.showsSpeakerHeader(at:index) {
+                                    let turnSpeaker = meeting.speaker(for:turn.speaker)
+                                    HStack(spacing:5) {
+                                        Text(name(turn.speaker,meeting:meeting)).fontWeight(.semibold)
+                                            .foregroundStyle(index == hit.turn ? CassiniTheme.speakerInk(turnSpeaker) : CassiniTheme.ink2)
+                                        if turnSpeaker?.provenance == .recognised {
+                                            Text(UXText.text("common.autoTag")).font(.system(size:10)).padding(.horizontal,4)
+                                                .overlay(RoundedRectangle(cornerRadius:4).stroke(CassiniTheme.tagStroke))
+                                                .help(UXText.text("common.autoTag.tooltip"))
+                                        }
+                                    }.fixedSize()
+                                }
                                 if index == hit.turn { Text(LibraryFormat.position(hit.positionMs)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).monospacedDigit() }
                                 if !others.isEmpty { Text(UXText.text("meeting.turn.over",["names":LibraryFormat(locale:UXText.locale,language:UXText.language).list(others.map { name($0,meeting:meeting) })])).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2) }
                             }.frame(width:110,alignment:.leading)
@@ -156,7 +160,11 @@ struct LibrarySearchField: NSViewRepresentable {
         let field = FocusableSearchField(); field.delegate = context.coordinator; field.controlSize = large ? .large : .regular
         field.font = NSFont.systemFont(ofSize:13)
         field.onClick = onClick
-        field.placeholderString = UXText.text("search.field.placeholder"); field.setAccessibilityLabel(UXText.text("search.field.a11y"))
+        field.placeholderAttributedString = NSAttributedString(
+            string: UXText.text("search.field.placeholder"),
+            attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: CassiniTheme.nsInk3]
+        )
+        field.setAccessibilityLabel(UXText.text("search.field.a11y"))
         field.setAccessibilityIdentifier("library-search-field")
         if let cell = field.cell as? NSSearchFieldCell { cell.cancelButtonCell?.target = context.coordinator; cell.cancelButtonCell?.action = #selector(Coordinator.cancel) }
         return field

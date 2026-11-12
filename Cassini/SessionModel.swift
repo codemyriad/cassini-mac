@@ -131,12 +131,11 @@ final class SessionModel {
 
     var hasQuery: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
 
-    /// Speaker colors: app-local palette while L-14 is open.
-    static let palette: [NSColor] = CassiniTheme.legacySpeakerPalette
-
     func color(for speakerId: String) -> NSColor {
-        guard let i = speakers.firstIndex(where: { $0.id == speakerId }) else { return CassiniTheme.nsInk2 }
-        return SessionModel.palette[i % SessionModel.palette.count]
+        guard let i = speakers.firstIndex(where: { $0.id == speakerId }) else {
+            return CassiniTheme.nsSpeakerInk(colourIndex: 0, unnamed: true)
+        }
+        return CassiniTheme.nsSpeakerInk(colourIndex: i, unnamed: speakers[i].label == nil)
     }
 
     func label(for speakerId: String) -> String {

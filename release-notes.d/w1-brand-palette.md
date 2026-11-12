@@ -1,3 +1,3 @@
 kind: better
 ---
-Cassini talk now uses a warmer Linen light look, a deeper dark look, and clearer teal highlights when playing or searching a transcript.
+Library, meetings and Search use a warmer light look, a deeper dark look, six distinct speaker colours and clearer highlights when playing or searching a transcript.

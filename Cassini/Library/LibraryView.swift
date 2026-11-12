@@ -119,12 +119,16 @@ struct LibraryView: View {
                 }
                 ToolbarItem(placement:.primaryAction) {
                     LibraryToolbarAction(title:"",label:UXText.text("meeting.moreActions"),identifier:"meeting-more-actions",style:.more,menu:{
-                        LibraryToolbarAction.menu([
-                            .init(title:UXText.text("details.menu"),identifier:"recording-details") { recordingDetails.show(detail.meeting) },
-                            .init(title:UXText.text("common.moveToTrash"),identifier:"move-to-trash",enabled:trash.canTrash(detail.meeting)) {
-                                store.selectedKey = detail.meeting.libraryKey
-                                trash.move(detail.meeting,undoManager:undoManager ?? NSApp.keyWindow?.undoManager)
-                            }])
+                        var entries:[LibraryToolbarAction.MenuEntry]=[
+                            .init(title:UXText.text("details.menu"),identifier:"recording-details") {recordingDetails.show(detail.meeting)}]
+                        if detail.meeting.speakerMergeCount>0 {
+                            entries.append(.init(title:UXText.text("meeting.undoMerge"),identifier:"undo-speaker-merge",enabled:rename.canEditSpeakers(detail.meeting)) {rename.undoSpeakerMerge(detail.meeting)})
+                        }
+                        entries.append(.init(title:UXText.text("common.moveToTrash"),identifier:"move-to-trash",enabled:trash.canTrash(detail.meeting)) {
+                            store.selectedKey=detail.meeting.libraryKey
+                            trash.move(detail.meeting,undoManager:undoManager ?? NSApp.keyWindow?.undoManager)
+                        })
+                        return LibraryToolbarAction.menu(entries)
                     }) { }
                 }
             } else {
@@ -156,10 +160,13 @@ struct LibraryView: View {
             if store.loaded { ScreenshotFixture.prepareLibrary(window) }
             #endif
         })
-        .sheet(isPresented:Binding(get:{ rename.presentation == .sheet },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
+         .sheet(isPresented:Binding(get:{ rename.presentation == .sheet || rename.presentation == .speakers },set:{ if !$0 { rename.cancel() } })) {
+            if rename.presentation == .speakers { SpeakerEditorView() } else { MeetingRenameView() }
+        }
         .sheet(isPresented:$exporter.showing) { if let meeting = exporter.meeting { MeetingExportSheet(meeting:meeting) } }
         .sheet(isPresented:$recordingDetails.showing) { RecordingDetailsSheet() }
         .overlay(alignment:.bottom) { MeetingExportNotice() }
+        .overlay(alignment:.bottom) { SpeakerEditFailureNotice() }
         #if DEBUG
         .overlay(alignment:.topLeading) {
             if RecordingFixture.enabled {
@@ -419,9 +426,9 @@ struct LibraryView: View {
                     HStack(spacing: 8) {
                         ForEach(meeting.speakers, id: \.id) { speaker in
                             HStack(spacing: 6) {
-                                Text(speaker.displayName)
+                                Text(speaker.displayName).fontWeight(.medium).foregroundStyle(CassiniTheme.speakerInk(speaker))
                                 if speaker.provenance == .recognised { autoTag }
-                            }.fixedSize().padding(.horizontal, 12).frame(height: 28).background(CassiniTheme.chipFill, in: Capsule())
+                            }.fixedSize().padding(.horizontal, 12).frame(height: 28).background(CassiniTheme.speakerWash(speaker), in: Capsule())
                         }
                     }
                 }.scrollIndicators(.hidden) }
@@ -454,10 +461,15 @@ struct LibraryView: View {
                         ForEach(Array(store.excerpt(meeting).enumerated()), id: \.offset) { _, turn in
                             HStack(alignment: .top, spacing: 16) {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    if !turn.continuation { HStack(spacing: 5) {
-                                        Text(meeting.speakers.first { $0.id == turn.speaker }?.displayName ?? UXText.text("common.speaker.unnamed", ["n": "1"])).fontWeight(.semibold)
-                                        if meeting.speakers.first(where: { $0.id == turn.speaker })?.provenance == .recognised { autoTag }
-                                    } }
+                                    if !turn.continuation {
+                                        let turnSpeaker = meeting.speaker(for: turn.speaker)
+                                        HStack(spacing: 5) {
+                                            Text(turnSpeaker?.displayName ?? UXText.text("common.speaker.unnamed", ["n": "1"]))
+                                                .fontWeight(.semibold)
+                                                .foregroundStyle(CassiniTheme.speakerInk(turnSpeaker))
+                                            if turnSpeaker?.provenance == .recognised { autoTag }
+                                        }
+                                    }
                                     Text(LibraryFormat.position(turn.startMs)).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.ink2).monospacedDigit()
                                     if !turn.over.isEmpty {
                                         Text(UXText.text("meeting.turn.over",["names":LibraryFormat(locale:UXText.locale,language:UXText.language).list(turn.over.map { meeting.speaker(for:$0)?.displayName ?? $0 })])).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
@@ -508,11 +520,11 @@ struct LibraryView: View {
     private func recordButton(big: Bool) -> some View {
         Button { sessionPlayback.stop(); RecordCoordinator.shared.request(parent: store.context.root) } label: {
             HStack(spacing: big ? 10 : 8) {
-                Circle().fill(big ? CassiniTheme.onRecord : CassiniTheme.recordInk).frame(width: big ? 12 : 10, height: big ? 12 : 10)
+                Circle().fill(CassiniTheme.onRecord).frame(width: big ? 12 : 10, height: big ? 12 : 10)
                 Text(UXText.text("common.record")).fontWeight(.semibold)
             }.padding(.horizontal, big ? 22 : 14).frame(height: big ? 44 : 34)
-                .foregroundStyle(big ? CassiniTheme.onRecord : CassiniTheme.ink)
-                .background(big ? CassiniTheme.record : CassiniTheme.chipFill, in: RoundedRectangle(cornerRadius: big ? 22 : 6))
+                .foregroundStyle(CassiniTheme.onRecord)
+                .background(CassiniTheme.record, in: RoundedRectangle(cornerRadius: big ? 22 : 6))
         }.buttonStyle(.plain).disabled(!RecordingOverview.canStart).accessibilityLabel(UXText.text("common.record")).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
     }
     private func play(_ meeting: LibraryMeeting) {
@@ -587,7 +599,7 @@ private final class LibraryToolbarActionView: NSView {
     override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); applyLayerFill() }
     private func applyLayerFill() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            let fill: NSColor = currentStyle == .stop ? CassiniTheme.nsRecord : [.record,.capsule].contains(currentStyle) ? CassiniTheme.nsChipFill : .clear
+            let fill: NSColor = [.stop,.record].contains(currentStyle) ? CassiniTheme.nsRecord : currentStyle == .capsule ? CassiniTheme.nsChipFill : .clear
             button.layer?.backgroundColor = fill.cgColor
         }
     }
@@ -602,7 +614,7 @@ private final class LibraryToolbarActionView: NSView {
         button.font = font; button.image = nil
         button.isBordered = value.style == .bordered; button.bezelStyle = .rounded
         button.imagePosition = .imageLeft
-        let tint: NSColor = value.style == .stop ? CassiniTheme.nsOnRecord : CassiniTheme.nsInk
+        let tint: NSColor = [.stop,.record].contains(value.style) ? CassiniTheme.nsOnRecord : CassiniTheme.nsInk
         button.attributedTitle = NSAttributedString(string:value.title,attributes:[.font:font,.foregroundColor:tint])
         applyLayerFill()
         let text = ceil((value.title as NSString).size(withAttributes:[.font:font]).width)
@@ -614,7 +626,7 @@ private final class LibraryToolbarActionView: NSView {
             size.width = 28
         case .record:
             button.image = NSImage(size:NSSize(width:18,height:10),flipped:false) { _ in
-                CassiniTheme.nsRecordInk.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:0,width:10,height:10)).fill(); return true
+                CassiniTheme.nsOnRecord.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:0,width:10,height:10)).fill(); return true
             }
             button.imageHugsTitle = true; size.width += 18
         default: break

@@ -12,6 +12,8 @@ struct MeetingTranscriptText: NSViewRepresentable {
         var id = 0
         var listeningWords: Set<Int> = []
         let after: Int, name: String, items: [LibraryTranscriptItem]
+        var speakerInk: NSColor? = nil
+        var speakerWash: NSColor? = nil
         /// D55.1 meeting.turn.aside: the visible text and accessible label.
         var label: String { "(" + UXText.text("meeting.turn.aside",["name":name,"text":items.map(\.text).joined(separator:" ")]) + ")" }
     }
@@ -92,12 +94,17 @@ struct MeetingTranscriptText: NSViewRepresentable {
             let start = aside.items.map(\.startMs).min() ?? 0, end = aside.items.map(\.endMs).max() ?? 0
             let playing = !aside.items.isEmpty && start <= positionMs && positionMs < end + 300
             let listening = !aside.listeningWords.isEmpty
-            let tint = listening ? CassiniTheme.nsAccent.withAlphaComponent(0.18) : playing ? CassiniTheme.nsAccent.withAlphaComponent(0.25) : CassiniTheme.nsInk.withAlphaComponent(0.07)
+            let tint = listening
+                ? CassiniTheme.nsAccent.withAlphaComponent(0.18)
+                : playing
+                    ? CassiniTheme.nsAccent.withAlphaComponent(0.25)
+                    : (aside.speakerWash ?? CassiniTheme.nsInk.withAlphaComponent(0.07))
             var plain: [NSAttributedString.Key:Any] = [.font: NSFont.systemFont(ofSize: 11.5), .paragraphStyle: paragraph,
                                                         .foregroundColor: CassiniTheme.nsInk, .backgroundColor: tint]
             if let first = aside.items.first { plain[.cassiniSeek] = Int(first.startMs); plain[.cursor] = NSCursor.pointingHand }
             if listening { plain[.cassiniListenCurrent] = true }
             var bold = plain; bold[.font] = NSFont.boldSystemFont(ofSize: 11.5)
+            if let speakerInk = aside.speakerInk { bold[.foregroundColor] = speakerInk }
             // The catalog orders the name and the words per language; the words stay seekable.
             let marker = "\u{E000}"
             let format = "(" + UXText.text("meeting.turn.aside",["name":aside.name,"text":marker]) + ")"

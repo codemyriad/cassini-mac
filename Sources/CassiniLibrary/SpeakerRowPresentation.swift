@@ -14,6 +14,7 @@ public struct SpeakerRowPresentation {
 
     public init(speaker: MeetingSpeaker, turns: [SpeakerTurn], percent: Int,
                 language: CassiniLanguage = .system, locale: Locale = .current) {
+        let name=speaker.displayName(language:language,locale:locale)
         let strings = LibraryLocalization.shared
         func text(_ id: String, _ values: [String:String] = [:]) -> String {
             strings.text(id,values,language:language,locale:locale)
@@ -35,12 +36,12 @@ public struct SpeakerRowPresentation {
         if let when {
             caption = provenance.map { text("speakers.row.caption",["provenance":$0,"when":when]) } ?? when
             captionSuffix = text("speakers.row.caption",["provenance":"","when":when])
-            accessibilityLabel = provenance.map { text("speakers.row.a11y",["name":speaker.displayName,"provenance":$0,"when":when]) }
-                ?? [speaker.displayName,when].joined(separator:", ")
-            playAccessibilityLabel = text("speakers.listen.a11y",["name":speaker.displayName,"when":when])
+            accessibilityLabel = provenance.map { text("speakers.row.a11y",["name":name,"provenance":$0,"when":when]) }
+                ?? [name,when].joined(separator:", ")
+            playAccessibilityLabel = text("speakers.listen.a11y",["name":name,"when":when])
         } else {
             caption = provenance; captionSuffix = nil
-            accessibilityLabel = ([speaker.displayName] + (provenance.map { [$0] } ?? [])).joined(separator:", ")
+            accessibilityLabel = ([name] + (provenance.map { [$0] } ?? [])).joined(separator:", ")
             playAccessibilityLabel = text("speakers.listen")
         }
         share = percent == 0 && turns.contains { $0.endMs > $0.startMs }
