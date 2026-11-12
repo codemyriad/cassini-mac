@@ -1,0 +1,11 @@
+--- a/Components/MeetingCard/MeetingCard.swift
++++ b/Components/MeetingCard/MeetingCard.swift
+@@ -57,7 +57,7 @@
+     init(dark: Bool, selected: Bool) {
+         ink = CassiniTokens.inkEntry.resolvedNSColor(dark: dark)
+         let surface = CassiniTokens.surfaceEntry.resolvedNSColor(dark: dark)
+-        fill = selected ? (dark ? Self.mix(ink, fraction: 0.06, into: surface) : surface)
++        fill = selected ? (dark ? Self.mix(ink, fraction: 0.06, into: surface) : CassiniTokens.accentEntry.resolvedNSColor(dark: dark))
+             : CassiniTokens.cardRestEntry.resolvedNSColor(dark: dark)
+         border = selected ? Self.mix(ink, fraction: dark ? 0.5 : 0.55, into: surface)
+             : CassiniTokens.lineEntry.resolvedNSColor(dark: dark)

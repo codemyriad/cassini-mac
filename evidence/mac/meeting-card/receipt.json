@@ -1,0 +1,50 @@
+{
+  "architecture": "arm64",
+  "proofSHA256": "cd2649282cfe04e5263976834d4e3aafc8b504441d8d8aaf31b299f80186c41a",
+  "rendererSHA256": "6c15083295ece6b660daaf2e543728e244dea57120edcf862ed53041e87dda48",
+  "tokensCommit": "c2f77c119671fb7c643f5ee024f245f23269e122",
+  "tokensSHA256": "ecc1821865892a5c85a05f49ae523be893601c5ab0a2f2fc2f2be16a6d6a9651",
+  "baselineCommit": "72d3704b756a89d431a1562e877cf1d1edd0836c",
+  "baselineSourceSHA256": "95c251ae8a8b9e6315f4558918f98e4df80e353b03c12c155be726125523f5dd",
+  "legacyFixtureSHA256": "9bbc36ba471b3ddb837a8927500527d4cf0b48d9c861649a1b6a1131c03b26fc",
+  "legacyRendererSHA256": "da16e37e9e2df3172050f60ea813dfde1b79522bb0fb0cbc84f00b421f0dad96",
+  "componentSHA256": "6cdaf71d38915902d94664a28278c2320ad8bc3c971ea17605ea23f910937ef0",
+  "checks": [
+    {
+      "borderPixels": true,
+      "dark": false,
+      "fillPixels": true,
+      "foregroundInvariant": true,
+      "insetPixels": true,
+      "selected": false,
+      "shadowPixels": true
+    },
+    {
+      "borderPixels": true,
+      "dark": false,
+      "fillPixels": true,
+      "foregroundInvariant": true,
+      "insetPixels": true,
+      "selected": true,
+      "shadowPixels": true
+    },
+    {
+      "borderPixels": true,
+      "dark": true,
+      "fillPixels": true,
+      "foregroundInvariant": true,
+      "insetPixels": true,
+      "selected": false,
+      "shadowPixels": true
+    },
+    {
+      "borderPixels": true,
+      "dark": true,
+      "fillPixels": true,
+      "foregroundInvariant": true,
+      "insetPixels": true,
+      "selected": true,
+      "shadowPixels": true
+    }
+  ]
+}

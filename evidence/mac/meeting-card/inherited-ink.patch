@@ -1,0 +1,11 @@
+--- a/Components/MeetingCard/MeetingCard.swift
++++ b/Components/MeetingCard/MeetingCard.swift
+@@ -29,7 +29,7 @@
+         let paint = MeetingCardPaint(dark: dark, selected: isSelected)
+         let shape = RoundedRectangle(cornerRadius: Metrics.radius)
+         content
+-            .foregroundStyle(Color(nsColor: paint.ink))
++            // Inherit caller ink (regression)
+             .frame(maxWidth: .infinity, alignment: .leading)
+             .padding(.horizontal, Metrics.horizontalPadding)
+             .padding(.vertical, Metrics.verticalPadding)
