@@ -18,6 +18,47 @@ spec = importlib.util.spec_from_file_location('spectro_harness',Path(__file__).w
 harness = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(harness)
 
+class HostAdmission(unittest.TestCase):
+    def test_rejected_host_cannot_mutate_settings_or_start_measurement(self):
+        for entry in [harness.measure,harness.run]:
+            with self.subTest(entry=entry.__name__), patch.object(harness,'check',side_effect=ValueError('unqualified')), patch.object(harness.subprocess,'run') as run:
+                with self.assertRaisesRegex(ValueError,'unqualified'):
+                    entry(Path('/private/probe.app'),Path('/private/output'),Path('/private/checker'))
+                run.assert_not_called()
+
+
+    def test_dedicated_runner_does_not_write_protected_preferences(self):
+        with patch.object(harness,'check',return_value='gui'), patch.object(harness,'measure') as measure, patch.object(harness.subprocess,'run') as run:
+            harness.run(Path('/private/probe.app'),Path('/private/output'),Path('/private/checker'),phase='budgets')
+            measure.assert_called_once()
+            run.assert_not_called()
+
+
+class PhaseDispatch(unittest.TestCase):
+    def test_diagnostics_cannot_run_on_the_persistent_gui_account(self):
+        with patch.object(harness,'check',return_value='gui'),patch.object(harness.subprocess,'run') as tool:
+            for phase in ['all','diagnostics']:
+                with self.assertRaisesRegex(ValueError,'disposable hosted'):
+                    harness.run(Path('/probe'),Path('/output'),Path('/checker'),phase=phase)
+            with self.assertRaisesRegex(ValueError,'disposable hosted'):
+                harness.diagnose(Path('/probe'),Path('/output'))
+            tool.assert_not_called()
+
+    def test_hosted_phases_execute_only_their_proofs_and_restore_preference(self):
+        for phase,expected in [('budgets',['budgets']),('diagnostics',['diagnostics']),('all',['budgets','diagnostics'])]:
+            calls=[]
+            with self.subTest(phase=phase),patch.object(harness,'check',return_value='hosted'),patch.object(harness,'measure',side_effect=lambda *args:calls.append('budgets')),patch.object(harness,'diagnose',side_effect=lambda *args:calls.append('diagnostics')),patch.object(harness.subprocess,'run',return_value=subprocess.CompletedProcess([],0,stdout='1')) as tools:
+                harness.run(Path('/probe'),Path('/output'),Path('/checker'),phase=phase)
+                self.assertEqual(calls,expected)
+                self.assertEqual(tools.call_args_list[-1].args[0],['defaults','write','com.apple.universalaccess','reduceMotion','-bool','true'])
+
+    def test_failed_budget_does_not_skip_required_legacy_diagnostics(self):
+        with patch.object(harness,'check',return_value='hosted'),patch.object(harness,'measure',side_effect=SystemExit('budget failed')),patch.object(harness,'diagnose') as diagnostics,patch.object(harness.subprocess,'run',return_value=subprocess.CompletedProcess([],0,stdout='0')):
+            with self.assertRaisesRegex(SystemExit,'budget failed'):
+                harness.run(Path('/probe'),Path('/output'),Path('/checker'))
+            diagnostics.assert_called_once()
+
+
 class MotionCompletion(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -129,14 +170,12 @@ class InstrumentationIsolation(unittest.TestCase):
         with self.assertRaises(ValueError):
             harness.probe_command(Path('/private/probe'), 'B', Path('/private/output'), allocations=True,profile=True)
 
-    def test_all_timed_cases_finish_before_motion_automation_starts(self):
+    def test_performance_phase_contains_no_instrumentation(self):
         body=ast.parse(inspect.getsource(harness.measure)).body[0].body
-        loop=next(i for i,node in enumerate(body) if isinstance(node,ast.For))
-        def has_motion(node):
-            return any(isinstance(child,ast.Call) and isinstance(child.func,ast.Name) and child.func.id=='record_motion' for child in ast.walk(node))
-        self.assertEqual(ast.literal_eval(body[loop].iter),'ABCDE')
-        self.assertFalse(any(has_motion(node) for node in body[:loop+1]))
-        self.assertTrue(any(has_motion(node) for node in body[loop+1:]))
+        loop=next(node for node in body if isinstance(node,ast.For))
+        self.assertEqual(ast.literal_eval(loop.iter),'ABCDE')
+        names={node.func.id for node in ast.walk(ast.parse(inspect.getsource(harness.measure))) if isinstance(node,ast.Call) and isinstance(node.func,ast.Name)}
+        self.assertTrue({'record_motion','record_profile'}.isdisjoint(names))
 
     def test_motion_is_a_separate_diagnostic_with_current_driver_readiness(self):
         # Real inert processes, with only the external UI driver substituted.

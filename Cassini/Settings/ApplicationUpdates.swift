@@ -55,7 +55,7 @@ import Sparkle
         if RecordingOverview.saving { result.insert(.saving) }
         if TranscriptionQueue.shared.isBusy { result.insert(.transcription) }
         if LibraryImportCoordinator.shared.isBusy { result.insert(.importing) }
-        if MeetingExportCoordinator.shared.isBusy { result.insert(.exporting) }
+        if MeetingExportCoordinator.shared.isBusy || BulkZipExportCoordinator.shared.isBusy { result.insert(.exporting) }
         if LibraryMoveCoordinator.shared.busy { result.insert(.moving) }
         if MeetingRenameCoordinator.shared.working { result.insert(.renaming) }
         if MeetingTrashCoordinator.shared.busy { result.insert(.trashing) }
