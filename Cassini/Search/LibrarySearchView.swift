@@ -5,7 +5,17 @@ import CassiniSearch
 
 struct LibrarySearchView: View {
     @State private var model = LibrarySearchModel.shared
+    @Environment(\.colorScheme) private var colorScheme
     let format: LibraryFormat
+    private var cardGround: Color {
+        Color(nsColor: CassiniTokens.groundEntry.resolvedNSColor(dark: colorScheme == .dark))
+    }
+    private var cardLine: Color {
+        Color(nsColor: CassiniTokens.lineEntry.resolvedNSColor(dark: colorScheme == .dark))
+    }
+    private var cardInk2: Color {
+        Color(nsColor: CassiniTokens.ink2Entry.resolvedNSColor(dark: colorScheme == .dark))
+    }
     var body: some View {
         HStack(spacing:0) {
             VStack(alignment:.leading,spacing:10) {
@@ -29,37 +39,37 @@ struct LibrarySearchView: View {
                         .modifier(SearchChip(active:model.own)).accessibilityAddTraits(model.own ? .isSelected : [])
                         .accessibilityIdentifier("search-own")
                 }
-                Text(model.count).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("search-count")
+                Text(model.count).font(.system(size:11.5)).foregroundStyle(cardInk2).accessibilityIdentifier("search-count")
                 ScrollView {
-                    LazyVStack(spacing:4) {
+                    LazyVStack(spacing:MeetingCard<EmptyView>.Metrics.interCardGap) {
                         ForEach(model.hits) { hit in if let meeting = model.meeting(hit) { row(hit,meeting:meeting) } }
-                    }
-                }.padding(.horizontal,-5)
-            }.padding(.horizontal,14).frame(width:460).background(CassiniTheme.sidebarGround)
+                    }.padding(.vertical,4).padding(.horizontal,4)
+                }.padding(.horizontal,-4)
+            }.padding(.horizontal,14).frame(width:460).background(cardGround)
                 .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("search.results.a11y"))
-            Divider()
+            Rectangle().fill(cardLine).frame(width:1).accessibilityHidden(true)
             if let hit = model.selected, let meeting = model.meeting(hit) { context(hit,meeting:meeting) }
             else { CassiniTheme.paneGround }
         }.onChange(of:model.query) { _,_ in model.refresh() }
     }
     private func row(_ hit: SearchHit, meeting: LibraryMeeting) -> some View {
-        let selected = model.selectedID == hit.id, dim = selected ? CassiniTheme.onAccentDim : CassiniTheme.ink2
+        let selected = model.selectedID == hit.id
         let excerpt = hit.excerpt
         return Button { model.selectedID = hit.id } label: {
-            VStack(alignment:.leading,spacing:5) {
-                HStack {
-                    Text(meeting.title ?? UXText.text("library.untitled")).fontWeight(.semibold).lineLimit(1)
-                    Spacer(minLength:4)
-                    Text(format.searchDate(meeting.meetingTime)).foregroundStyle(dim).lineLimit(1)
-                }.font(.system(size:11.5))
-                (Text("“") + marked(excerpt.text,spans:excerpt.spans,selected:selected) + Text("”"))
-                    .lineSpacing(4).fixedSize(horizontal:false,vertical:true)
-                Text(UXText.text("search.result.meta",["name":name(hit.speaker,meeting:meeting),"position":LibraryFormat.position(hit.positionMs)]))
-                    .font(.system(size:11.5)).foregroundStyle(dim)
-            }.padding(.horizontal,12).padding(.vertical,10).frame(maxWidth:.infinity,alignment:.leading)
-                .foregroundStyle(selected ? CassiniTheme.onAccent : CassiniTheme.ink)
-                .background(selected ? CassiniTheme.accentStrong : Color.clear,in:RoundedRectangle(cornerRadius:7))
-                .contentShape(Rectangle())
+            MeetingCard(isSelected: selected) {
+                VStack(alignment:.leading,spacing:4) {
+                    HStack {
+                        Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size:13,weight:.semibold)).lineLimit(1)
+                        Spacer(minLength:4)
+                        Text(format.searchDate(meeting.meetingTime)).font(.system(size:11.5)).foregroundStyle(cardInk2).lineLimit(1)
+                    }
+                    (Text("“") + marked(excerpt.text,spans:excerpt.spans,cardHighlight:true) + Text("”"))
+                        .font(.system(size:13)).lineSpacing(4).fixedSize(horizontal:false,vertical:true)
+                    Text(UXText.text("search.result.meta",["name":name(hit.speaker,meeting:meeting),"position":LibraryFormat.position(hit.positionMs)]))
+                        .font(.system(size:11.5)).monospacedDigit().foregroundStyle(cardInk2)
+                }
+            }
+            .contentShape(Rectangle())
         }.buttonStyle(.plain).disabled(model.searching).accessibilityIdentifier("search-hit-" + hit.id)
             .accessibilityAddTraits(selected ? .isSelected : [])
     }
@@ -115,14 +125,19 @@ struct LibrarySearchView: View {
     private func dateText(_ value: SearchDate) -> String {
         UXText.text(value == .any ? "search.filter.anyDate" : value == .today ? "search.filter.date.today" : value == .week ? "search.filter.date.week" : "search.filter.date.month")
     }
-    private func marked(_ text: String, spans: [SearchSpan], selected: Bool = false) -> Text {
+    private func marked(_ text: String, spans: [SearchSpan], cardHighlight: Bool = false) -> Text {
+        let dark = colorScheme == .dark
         let value = NSMutableAttributedString(string:text)
         for span in spans where span.start >= 0 && span.length > 0 && span.start + span.length <= value.length {
             var attrs: [NSAttributedString.Key: Any] = [
-                .backgroundColor: selected ? CassiniTheme.nsSelectedSearchHighlight : CassiniTheme.nsSearchHighlight,
+                .backgroundColor: cardHighlight
+                    ? CassiniTokens.highlightEntry.resolvedNSColor(dark: dark)
+                    : CassiniTheme.nsSearchHighlight,
                 .font: NSFont.systemFont(ofSize:13,weight:.semibold),
             ]
-            if !selected, let highlightInk = CassiniTheme.nsHighlightInk {
+            if cardHighlight {
+                attrs[.foregroundColor] = CassiniTokens.highlightInkEntry.resolvedNSColor(dark: dark)
+            } else if let highlightInk = CassiniTheme.nsHighlightInk {
                 attrs[.foregroundColor] = highlightInk
             }
             value.addAttributes(attrs,range:NSRange(location:span.start,length:span.length))

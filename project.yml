@@ -37,6 +37,9 @@ targets:
           - "Info.plist"
           - "Cassini.entitlements"
           - "Resources"
+      - path: Components/MeetingCard
+        excludes:
+          - "README.md"
       - path: Cassini/Assets.xcassets
         buildPhase: resources
       - path: COPYING

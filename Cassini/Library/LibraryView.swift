@@ -22,6 +22,7 @@ struct LibraryView: View {
     @State private var updates = ApplicationUpdates.shared
     @State private var speechModels = SpeechModelController.shared
     @State private var transcriptionQueue = TranscriptionQueue.shared
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
@@ -250,8 +251,18 @@ struct LibraryView: View {
         Text(UXText.text(search.visible ? "search.title" : "library.title")).font(.system(size: 15, weight: .bold))
             .accessibilityAddTraits(.isHeader).accessibilityIdentifier("library-toolbar-title")
     }
+    private var cardGround: Color {
+        Color(nsColor: CassiniTokens.groundEntry.resolvedNSColor(dark: colorScheme == .dark))
+    }
+    private var cardLine: Color {
+        Color(nsColor: CassiniTokens.lineEntry.resolvedNSColor(dark: colorScheme == .dark))
+    }
+    private var cardInk2: Color {
+        Color(nsColor: CassiniTokens.ink2Entry.resolvedNSColor(dark: colorScheme == .dark))
+    }
     private var split: some View {
-        HStack(spacing: 0) {
+        let halfGap = MeetingCard<EmptyView>.Metrics.interCardGap / 2
+        return HStack(spacing: 0) {
             List(selection: $store.selectedKeys) {
                 ForEach(store.groups, id: \.id) { group in
                     Section {
@@ -290,28 +301,26 @@ struct LibraryView: View {
                                     if store.selectedKeys.count <= 1 && trash.canTrash(meeting) { Divider(); trashButton(meeting) }
                                 }
                                 .listRowSeparator(.hidden)
-                                .listRowBackground(RoundedRectangle(cornerRadius: 7)
-                                    .fill(store.selectedKeys.contains(meeting.libraryKey) ? CassiniTheme.accentStrong : Color.clear)
-                                    .padding(.horizontal, 8))
-                                .listRowInsets(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
+                                .listRowBackground(Color.clear)
+                                .listRowInsets(EdgeInsets(top: halfGap, leading: 0, bottom: halfGap, trailing: 0))
                                 .accessibilityIdentifier("meeting-" + meeting.libraryKey)
                         }
                     } header: {
-                        Text(group.title).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2).textCase(nil)
+                        Text(group.title).font(.system(size: 11.5, weight: .bold)).foregroundStyle(cardInk2).textCase(nil)
                             .accessibilityIdentifier("library-day-header-" + (group.meetings.first?.libraryKey ?? "empty"))
                     }
                 }
                 if !store.meetings.isEmpty, store.meetings.allSatisfy({ $0.state.origin == .received }) {
-                    Text(UXText.text("received.libraryHint")).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                    Text(UXText.text("received.libraryHint")).font(.system(size:11.5)).foregroundStyle(cardInk2)
                         .listRowBackground(Color.clear).listRowSeparator(.hidden)
                 }
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
-            .background(CassiniTheme.sidebarGround)
+            .background(cardGround)
             .frame(minWidth: 400, maxWidth: 400)
             .accessibilityLabel(UXText.text("library.listPane.a11y"))
-            Divider()
+            Rectangle().fill(cardLine).frame(width: 1).accessibilityHidden(true)
             if let meeting = store.selected { preview(meeting) }
             else if store.selectedKeys.count > 1 {
                 VStack {
@@ -353,21 +362,20 @@ struct LibraryView: View {
     }
     private func row(_ meeting: LibraryMeeting) -> some View {
         let selected = store.selectedKeys.contains(meeting.libraryKey)
-        let dim = selected ? CassiniTheme.onAccentDim : CassiniTheme.ink2
-        return VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 8) {
-                Text(meeting.title ?? UXText.text("library.untitled")).fontWeight(.semibold).lineLimit(1)
-                Spacer(minLength: 2)
-                if let start = meeting.meetingTime { Text(store.format.rowTime(start)).font(.system(size: 11.5)).foregroundStyle(dim).monospacedDigit() }
+        return MeetingCard(isSelected: selected) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    Spacer(minLength: 2)
+                    if let start = meeting.meetingTime { Text(store.format.rowTime(start)).font(.system(size: 11.5)).foregroundStyle(cardInk2).monospacedDigit() }
+                }
+                HStack(spacing: 6) {
+                    if let badge = meeting.state.badge { badgePill(badge) }
+                    if let meta = rowMeta(meeting) { Text(meta).foregroundStyle(cardInk2).lineLimit(1) }
+                }.font(.system(size: 11.5))
+                if let line = rowSecondLine(meeting) { line.font(.system(size: 11.5)).foregroundStyle(cardInk2).lineLimit(1) }
             }
-            HStack(spacing: 6) {
-                if let badge = meeting.state.badge { badgePill(badge, selected: selected) }
-                if let meta = rowMeta(meeting) { Text(meta).foregroundStyle(dim).lineLimit(1) }
-            }.font(.system(size: 11.5))
-            if let line = rowSecondLine(meeting) { line.font(.system(size: 11.5)).foregroundStyle(dim).lineLimit(1) }
         }
-        .foregroundStyle(selected ? CassiniTheme.onAccent : CassiniTheme.ink)
-        .padding(.vertical, 1).frame(minHeight: 50, alignment: .top)
     }
     // R11: visible badge precedence also governs both row text lines.
     private func rowMeta(_ meeting: LibraryMeeting) -> String? {
@@ -385,15 +393,15 @@ struct LibraryView: View {
         default: return meeting.quote.map { Text("“") + Text(MeetingPresentation.pullQuote($0)) + Text("”") }
         }
     }
-    private func badgePill(_ badge: MeetingBadge, selected: Bool) -> some View {
+    private func badgePill(_ badge: MeetingBadge) -> some View {
         let tint = CassiniTheme.badgeInk(badge.tint)
         let wash = CassiniTheme.badgeWash(badge.tint)
         return HStack(spacing: 4) {
-            if badge.dot == true { Circle().fill(selected ? CassiniTheme.onAccent : tint).frame(width: 5, height: 5) }
+            if badge.dot == true { Circle().fill(tint).frame(width: 5, height: 5) }
             Text(badge.text).fontWeight(.semibold)
         }.padding(.horizontal, 7).padding(.vertical, 1)
-            .foregroundStyle(selected ? CassiniTheme.onAccent : tint)
-            .background((selected ? CassiniTheme.onAccent.opacity(0.22) : wash), in: Capsule())
+            .foregroundStyle(tint)
+            .background(wash, in: Capsule())
     }
     private func preview(_ meeting: LibraryMeeting) -> some View {
         ScrollView {

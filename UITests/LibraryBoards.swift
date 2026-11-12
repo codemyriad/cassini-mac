@@ -633,8 +633,14 @@ final class LibraryBoards: XCTestCase {
         window.buttons["meeting-back"].click()
         let client = window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch
         client.click(); XCTAssertTrue(window.descendants(matching:.any)["preview-transcribing"].waitForExistence(timeout:5))
-        let budget = window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000001").firstMatch
-        budget.click(); app.typeKey(.return,modifierFlags:[])
+        app.typeKey(.downArrow,modifierFlags:[])
+        let selectedBudget = NSPredicate { _,_ in !window.descendants(matching:.any)["preview-transcribing"].exists && self.text("Today, 09:00 · 52 min",in:window) }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:selectedBudget,object:nil)],timeout:5),.completed,"Down arrow moves selection across MeetingCard rows")
+        app.typeKey(.upArrow,modifierFlags:[])
+        XCTAssertTrue(window.descendants(matching:.any)["preview-transcribing"].waitForExistence(timeout:5),"Up arrow restores selection to the previous MeetingCard row")
+        app.typeKey(.downArrow,modifierFlags:[])
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:selectedBudget,object:nil)],timeout:5),.completed)
+        app.typeKey(.return,modifierFlags:[])
         XCTAssertTrue(window.buttons["meeting-back"].waitForExistence(timeout:10),app.debugDescription)
         XCTAssertEqual(window.staticTexts["meeting-title"].value as? String,"Budget review")
     }
