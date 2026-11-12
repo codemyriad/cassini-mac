@@ -30,15 +30,16 @@ import Darwin
     @ObservationIgnored private var paused = false
     @ObservationIgnored private var trashing = Set<String>()
     func isStopping(_ folder: URL) -> Bool { stoppingFolders.contains(folder.path) }
-    func stop(_ meeting: LibraryMeeting) {
+    @discardableResult
+    func stop(_ meeting: LibraryMeeting) -> Task<Void, Never>? {
         let path = meeting.folder.path, id = meeting.id, folder = meeting.folder
-        guard !closing, !trashing.contains(path), !stoppingFolders.contains(path), !meeting.metadataReadOnly else { return }
+        guard !closing, !trashing.contains(path), !stoppingFolders.contains(path), !meeting.metadataReadOnly else { return nil }
         stoppingFolders.insert(path)
         pending.removeAll { $0.folder.path == path }; prepared.remove(path)
         let child = active?.path == path ? task : nil
         child?.cancel()
         let metadata = preparing?.folder.path == path ? preparing?.work : nil
-        Task {
+        return Task {
             _ = try? await metadata?.value
             await child?.value
             pending.removeAll { $0.folder.path == path }; prepared.remove(path)
@@ -727,11 +728,7 @@ import Darwin
         }
         let staleRunning = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == activeSession.manifest.id }))
         guard staleRunning.state.transcript == .running else { throw POSIXError(.EINVAL) }
-        queue.stop(staleRunning)
-        for _ in 0..<200 {
-            if !queue.isStopping(activeSession.directory) { break }
-            try await Task.sleep(for:.milliseconds(25))
-        }
+        await queue.stop(staleRunning)?.value
         guard !queue.isStopping(activeSession.directory), queue.active == nextActive.folder else {
             throw NSError(domain:"ImportLifecycleSelfTest",code:7,userInfo:[NSLocalizedDescriptionKey:"Stopping active worker did not settle cleanly and promote next job"])
         }
@@ -761,11 +758,7 @@ import Darwin
               resumed.writtenTranscriptItems.map(\.text) == ["Partial"] else {
             throw NSError(domain:"ImportLifecycleSelfTest",code:11,userInfo:[NSLocalizedDescriptionKey:"Explicit resume did not queue meeting with preserved partial words"])
         }
-        queue.stop(resumed)
-        for _ in 0..<200 {
-            if !queue.isStopping(activeSession.directory) { break }
-            try await Task.sleep(for:.milliseconds(25))
-        }
+        await queue.stop(resumed)?.value
         guard !queue.isStopping(activeSession.directory) else { throw POSIXError(.EBUSY) }
     }
 }
