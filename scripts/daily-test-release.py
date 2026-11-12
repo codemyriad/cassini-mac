@@ -126,21 +126,28 @@ def fragment_blobs(ref):
     return result
 
 
-def notes(base,head,include_developer=True):
-    previous=fragment_blobs(base) if base else {}
+def notes(base,head,include_developer=True,published_refs=()):
+    published={}
+    for ref in ([base] if base else [])+list(published_refs):
+        for path,blob in fragment_blobs(ref).items():published.setdefault(path,set()).add(blob)
     fragments=[parse_fragment(Path(path).name,command(['git','-C',SOURCE,'show',head+':'+path]))
-               for path,blob in fragment_blobs(head).items() if previous.get(path)!=blob]
+               for path,blob in fragment_blobs(head).items() if blob not in published.get(path,set())]
     return ReleaseNotes(render(fragments),developer_notes(base,head) if include_developer else '')
 
 
-def stable_notes_base(releases,head):
+def stable_notes_source(releases):
     stable=[r for r in releases if not r['draft'] and not r['prerelease']
             and re.fullmatch(r'v[0-9]+(?:\.[0-9]+){1,2}',r['tag_name'])]
     if not stable:return None
     tag=max(stable,key=lambda r:r['published_at'])['tag_name']
     sha=command(['git','-C',SOURCE,'rev-parse','refs/tags/'+tag+'^{commit}']).strip()
+    return sha
+
+
+def stable_notes_base(releases,head):
+    sha=stable_notes_source(releases)
     # A separately published hotfix must not wedge main's release notes.
-    return command(['git','-C',SOURCE,'merge-base',sha,head]).strip()
+    return command(['git','-C',SOURCE,'merge-base',sha,head]).strip() if sha else None
 
 
 def publish(tag,version,build,sha,output,release_notes):
@@ -218,8 +225,9 @@ def tick(now):
             report('[Mac] daily test release skipped: latest main CI is not green');return
         releases=[r for page in gh(['--paginate','--slurp',f'repos/{REPO}/releases?per_page=100']) for r in page]
         previous=latest_nightly(releases)
+        stable=stable_notes_source(releases)
         base=source_commit(previous) if previous else stable_notes_base(releases,head)
-        if base==head or state.get('last_success')==head:
+        if base==head or stable==head or state.get('last_success')==head:
             report('[Mac] daily test release skipped: main unchanged');return
         if base:command(['git','-C',SOURCE,'merge-base','--is-ancestor',base,head])
         if state.get('last_success') and state['last_success']!=head:
@@ -237,7 +245,7 @@ def tick(now):
         build=next_build(version,initial,releases,state)
         state.update(build=build,head=head,phase='building');atomic(state_file,state)
         stage='release notes'
-        body=notes(base,head)
+        body=notes(base,head,published_refs=[stable] if stable else [])
         stage='signing/notarization'
         # The dedicated job directory is retained on failure and removed only
         # after successful publication; other agents' caches are never touched.

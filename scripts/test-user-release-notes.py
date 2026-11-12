@@ -92,6 +92,14 @@ class PublishedTagLedger(unittest.TestCase):
         published=daily.latest_nightly([{**release,'draft':False}])
         self.assertEqual(daily.notes(daily.source_commit(published),'HEAD').user,FALLBACK)
 
+    def test_newer_stable_fragments_do_not_repeat_after_an_older_beta(self):
+        beta=self.commit('one.md','You can record a meeting.')
+        stable=self.commit('two.md','You can share a meeting.')
+        head=self.commit('three.md','You can listen to a speaker.')
+        user=daily.notes(beta,head,published_refs=[stable]).user
+        self.assertNotIn('record a meeting',user);self.assertNotIn('share a meeting',user)
+        self.assertIn('listen to a speaker',user)
+
     def test_changed_fragment_is_new_and_a_hotfix_tag_does_not_wedge_main(self):
         first=self.commit('old.md','You can record a meeting.');self.git('tag','v1.0.0')
         second=self.commit('old.md','You can share a meeting.')

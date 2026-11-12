@@ -13,7 +13,9 @@ uploaded `user-release-notes.txt` and `user-release-notes.html` contain user tex
 only; HTML is suitable for an update window. Test apps still have public updates
 disabled and publish no Sparkle feed.
 
-The immutable previous nightly tag’s source tree is the publication ledger.
+The immutable previous nightly and latest stable tags’ source trees form the
+publication ledger, so a newer stable’s fragments do not repeat after an older
+beta.
 Before the first nightly, the last stable tag is the baseline; a separate hotfix
 branch uses its common ancestor with main. Failed/draft releases do not consume
 fragments. A successful local publication is also remembered if subsequent

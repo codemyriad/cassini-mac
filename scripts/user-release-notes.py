@@ -17,17 +17,20 @@ args=parser.parse_args()
 daily.SOURCE=Path(__file__).resolve().parent.parent
 head=daily.command(['git','-C',daily.SOURCE,'rev-parse',args.head+'^{commit}']).strip()
 base=args.base
+published=[]
 if base is None:
  releases=[r for page in daily.gh(['--paginate','--slurp',f'repos/{daily.REPO}/releases?per_page=100']) for r in page]
  previous=daily.latest_nightly(releases)
  base=daily.source_commit(previous) if previous else daily.stable_notes_base(releases,head)
-developer_head=args.developer_head or head
+ stable=daily.stable_notes_source(releases)
+ if stable:published.append(stable)
+developer_head=daily.command(['git','-C',daily.SOURCE,'rev-parse',args.developer_head+'^{commit}']).strip() if args.developer_head else head
 if args.format=='sources':
  print(daily.developer_notes(base,developer_head))
  old=daily.fragment_blobs(base) if base else {}
  for path,blob in daily.fragment_blobs(head).items():
   if old.get(path)!=blob:print(path+'\n'+daily.command(['git','-C',daily.SOURCE,'show',head+':'+path]))
 else:
- notes=daily.notes(base,head,include_developer=False)
+ notes=daily.notes(base,head,include_developer=False,published_refs=published)
  if args.format=='github':notes=daily.ReleaseNotes(notes.user,daily.developer_notes(base,developer_head))
  sys.stdout.write(notes.github() if args.format=='github' else notes.html() if args.format=='html' else notes.user+'\n')

@@ -17,7 +17,8 @@ alone need no fragment. Do not describe a bug introduced and fixed between
 published builds as a new fix; fold it into the feature it belongs to.
 
 Keep fragments in Git after publication. Their names and contents in the previous
-published source tag form the ledger; an unchanged fragment is not shown twice.
+nightly and latest stable source tags form the ledger; an unchanged fragment is
+not shown twice.
 An edited fragment is new. Nightly overflow is covered by “and smaller fixes” and
 is consumed with the other fragments at that tag. Stable notes still use every
 fragment since the previous stable tag, including those in intervening betas.
