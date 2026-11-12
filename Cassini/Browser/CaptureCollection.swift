@@ -520,7 +520,8 @@ private final class CaptureFiles: @unchecked Sendable {
     private func settle(_ snapshot: OwnedCaptureSnapshot) {
         let id = snapshot.manifest.id
         guard snapshot.phase == .saved, captures[id] != nil || CaptureActivityStore.shared.snapshot()[id] != nil else { return }
-        let keepBrowserMeProblem = captures[id]?.owner.nativeMe == false && snapshot.me && !snapshot.others && snapshot.manifest.problem != nil
+        let browserMeWasLost = !snapshot.browserAlive || snapshot.manifest.events?.last?.reason == CaptureEndReason.pageGone.rawValue
+        let keepBrowserMeProblem = captures[id]?.owner.nativeMe == false && snapshot.me && !snapshot.others && browserMeWasLost && snapshot.manifest.problem != nil
         if !snapshot.manifest.tracks.contains(where:{ $0.frames > 0 }), CaptureActivityStore.shared.snapshot()[id] == .preparing, !keepBrowserMeProblem {
                 guard settling[id] == nil else { return }
                 let signalOwned = captures[id]?.signalReservation != nil

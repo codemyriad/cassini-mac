@@ -756,7 +756,9 @@ public final class OwnedBrowserCapture: @unchecked Sendable {
                 if finalKind != "io" { finalKind = ledger.ioFailed ? "io" : "capture" }
             }
         }
-        if !nativeMe && me && !others && !browserAlive {
+        // Verified admission can report pageGone before the app's queued loss
+        // transition reaches this owner, particularly before the first PCM.
+        if !nativeMe && me && !others && (!browserAlive || (intent?.0 ?? reason) == .pageGone) {
             finalProblem = finalProblem ?? "Some announced audio was not fully captured."
             if finalKind != "io" { finalKind = "capture" }
         }

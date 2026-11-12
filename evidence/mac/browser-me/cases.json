@@ -58,5 +58,10 @@
     "name": "me-only-loss-drops-problem",
     "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
     "test": "SenderMeNegotiationTests/testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM"
+  },
+  {
+    "name": "page-gone-before-loss",
+    "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+    "test": "SenderMeNegotiationTests/testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM"
   }
 ]

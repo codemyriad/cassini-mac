@@ -82,14 +82,21 @@
       "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
       "test": "SenderMeNegotiationTests/testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM",
       "result": "behavioral assertion failure",
-      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/SenderMeNegotiationTests.swift:99: error: -[CassiniBrowserControlTests.SenderMeNegotiationTests testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM] : XCTAssertEqual failed: (\"Optional(\"empty\")\") is not equal to (\"Optional(\"capture\")\")"
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/SenderMeNegotiationTests.swift:103: error: -[CassiniBrowserControlTests.SenderMeNegotiationTests testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM] : XCTAssertEqual failed: (\"Optional(\"empty\")\") is not equal to (\"Optional(\"capture\")\")"
+    },
+    {
+      "name": "page-gone-before-loss",
+      "source": "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift",
+      "test": "SenderMeNegotiationTests/testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM",
+      "result": "behavioral assertion failure",
+      "assertion": "/Users/m1/agents/cassini-mac-browser-me/Tests/CassiniBrowserControlTests/SenderMeNegotiationTests.swift:103: error: -[CassiniBrowserControlTests.SenderMeNegotiationTests testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM] : XCTAssertEqual failed: (\"Optional(\"empty\")\") is not equal to (\"Optional(\"capture\")\")"
     }
   ],
   "restored": true,
   "sourceSHA256": {
     "Sources/CassiniBrowserControl/ControlRegistry.swift": "7ae22405811e164293dec5e36ee0b79bc57ae5724d0dafbdd3ad05638d5928ae",
     "Sources/CassiniBrowserControl/CaptureInputLifecycle.swift": "6acdce2d4a7bce4228be44c00ba08b881263a79fd777f016c18122f15024f2de",
-    "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift": "42058145b744a322f4dd7062314b4af38e3a32dd7f3b37785a3666deafdd9790",
+    "Sources/CassiniBrowserControl/OwnedBrowserCapture.swift": "6644c8a373f0228ba02a44bb53c5bf6d32b89a871346db5360dd72a6d5aa068a",
     "Sources/CassiniBrowserControl/BrowserAudioBroker.swift": "7e1d40916ed42200a88a1284f5746841dfa39d56b57157d96b35b56649254f6c",
     "Sources/CassiniBrowserControl/VerifiedCallAdmission.swift": "1e86bb19b64b8d56891cc638f7f8b8160a878da47e305e7d0e71aba2a9567c8a"
   }

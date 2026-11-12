@@ -534,23 +534,24 @@ final class CaptureProbeProcess: @unchecked Sendable {
             for await (problem,admitted) in finished { try require(!problem && admitted,"Accepted browser transport admits independently of hardware permission") }
             try require(authorizationAttempts == 0 && CaptureFixture.microphoneStarts == microphoneStarts,"Automatic admission never requests native Me")
             CaptureFixture.createdFinished = nil
-            try await collection.setAutoRecord(false)
             let pendingID = try collection.captures.keys.first.unwrap()
             let pendingCapture = try collection.captures[pendingID].unwrap()
             let pendingFolder = pendingCapture.snapshot.directory
+            try await wait { collection.peers.contains { $0.captures.contains { $0.captureID == pendingCapture.captureID } } }
             let systemBeforeLoss = CaptureFixture.systemStarts
             try await collection.select(pendingID,me:true,others:false)
             // Keep the verified call active: this scenario loses its page,
             // rather than independently reporting that the meeting ended.
             try await browserPending.page("navigating",active:true)
             let lostMeStop = try await browserPending.performNext()
-            try require(lostMeStop["action"]?.string == "stop","Me-only browser loss automatically saves")
+            try require(lostMeStop["action"]?.string == "stop" && lostMeStop["reason"]?.string == "pageGone","Me-only browser loss automatically saves for page loss, not admission cancellation")
             try await wait { collection.captures.isEmpty && !collection.isSaving }
             let lostMeManifest = try RecordingLoader.load(directory:pendingFolder)
-            try require(lostMeManifest.problem != nil && lostMeManifest.problemKind == "capture","Me-only loss keeps its capture problem")
+            try require(lostMeManifest.problem != nil && lostMeManifest.problemKind == "capture","Me-only loss keeps its capture problem (got \(lostMeManifest.problemKind ?? "nil"))")
             try require(lostMeManifest.tracks.isEmpty && FileManager.default.fileExists(atPath:pendingFolder.path),"A no-PCM browser loss retains its diagnostic meeting instead of discarding it")
             try require(authorizationAttempts == 0 && CaptureFixture.microphoneStarts == microphoneStarts && CaptureFixture.systemStarts == systemBeforeLoss,"Me-only loss never opens a native fallback")
             CaptureFixture.microphoneAuthorizationFixture = nil
+            try await collection.setAutoRecord(false)
             try await browserPending.meetings(false)
             try await wait { collection.captures.isEmpty && !collection.isSaving && !collection.hasCalls }
             report["separatedAdmissionNeedsNoHardwarePermission"] = true

@@ -80,7 +80,7 @@ final class SenderMeNegotiationTests: XCTestCase, @unchecked Sendable {
     }
 
     func testMeOnlyBrowserLossStopsWithCaptureProblemEvenBeforeFirstPCM() async throws {
-        for hasPCM in [false,true] {
+        for (observedLoss,hasPCM) in [(false,false),(false,true),(true,false),(true,true)] {
             let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
             defer { try? FileManager.default.removeItem(at:root) }
@@ -92,11 +92,16 @@ final class SenderMeNegotiationTests: XCTestCase, @unchecked Sendable {
                 try owner.browserAudio(id:"me",sequence:0,offsetMs:0,pcm:Data(repeating:0x12,count:1600))
             }
             XCTAssertFalse(owner.needsBrowserMeLossStop)
-            try owner.browserLost(atMs:100,transportAlive:false)
-            XCTAssertTrue(owner.needsBrowserMeLossStop,"The app's production stop predicate must fire with no possible source")
+            if observedLoss {
+                try owner.browserLost(atMs:100,transportAlive:false)
+                XCTAssertTrue(owner.needsBrowserMeLossStop,"The app's production stop predicate must fire with no possible source")
+            }
+            // Otherwise verified admission reports pageGone before a queued
+            // observeBrowserLoss reaches the owner. It must still save a problem.
             try await owner.finish(reason:.pageGone,atMs:100)
             XCTAssertEqual(owner.snapshot.phase,.saved)
             XCTAssertEqual(owner.snapshot.manifest.problemKind,"capture")
+            XCTAssertEqual(try RecordingLoader.load(directory:owner.snapshot.directory).problemKind,"capture")
             XCTAssertNotNil(owner.snapshot.manifest.problem)
             XCTAssertFalse(owner.snapshot.manifest.tracks.contains { ["microphone","system"].contains($0.kind) })
             XCTAssertEqual(owner.snapshot.manifest.tracks.reduce(0) { $0+$1.frames },hasPCM ? 800 : 0)

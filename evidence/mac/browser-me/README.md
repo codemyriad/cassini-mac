@@ -14,6 +14,9 @@ trimmed spans, per-source AC meters and analysis lane. Loss ends its span and
 clears its meter; Me+Others leaves a gap until returned browser PCM is admitted.
 Me-only browser loss instead saves a capture problem, including before any PCM;
 the app retains that diagnostic meeting rather than discarding an empty folder.
+Verified admission can deliver pageGone before the queued browser-loss callback,
+so finalization also honors that immutable terminal intent. Normal empty user
+cancellations retain their existing discard behavior.
 
 Protocol pin: merged156b40c314e7acf4e75d53c2fbc77fdae8deacc4, companion0.2.27,
 hook2. The canonical vendor tool updates both shared snapshot and installed
