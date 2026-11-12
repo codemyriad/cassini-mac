@@ -25,5 +25,5 @@ fragment since the previous stable tag, including those in intervening betas.
 
 Within a kind, use a leading number in the slug to put important changes first.
 The renderer prioritises New, then Better, then Fixed, and keeps complete
-fragments within500 UTF-16 units. Each fragment is at most400 units. See
+fragments within 500 UTF-16 units. Each fragment is at most 400 units. See
 [the writing and release procedure](../docs/release-notes.md).

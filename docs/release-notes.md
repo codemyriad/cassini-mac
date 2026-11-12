@@ -5,7 +5,7 @@ User notes and the developer changelog have different readers. Follow the
 changes add no fragment. Use the [shared glossary](https://github.com/codemyriad/cassini-ux/blob/main/strings/GLOSSARY.md).
 
 Test builds collect unpublished fragments at the admitted main SHA, group them
-under New/Better/Fixed, and keep the user text under500 UTF-16 units. Overflow
+under New/Better/Fixed, and keep the user text under 500 UTF-16 units. Overflow
 ends with “and smaller fixes”; without fragments the approved under-the-hood
 message appears. PR titles, commits and source SHA appear only in the GitHub
 release’s folded Developer changelog, below the user notes. The separately
@@ -15,7 +15,8 @@ disabled and publish no Sparkle feed.
 
 The immutable previous nightly and latest stable tags’ source trees form the
 publication ledger, so a newer stable’s fragments do not repeat after an older
-beta.
+beta. The scheduler fetches tags as well as main, including stable tags on a
+separate hotfix branch.
 Before the first nightly, the last stable tag is the baseline; a separate hotfix
 branch uses its common ancestor with main. Failed/draft releases do not consume
 fragments. A successful local publication is also remembered if subsequent

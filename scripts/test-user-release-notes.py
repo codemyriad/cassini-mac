@@ -100,6 +100,29 @@ class PublishedTagLedger(unittest.TestCase):
         self.assertNotIn('record a meeting',user);self.assertNotIn('share a meeting',user)
         self.assertIn('listen to a speaker',user)
 
+    def test_refresh_fetches_a_new_stable_tag_outside_main(self):
+        first=self.commit('old.md','You can record a meeting.')
+        self.git('tag','v1.0.0')
+        other=tempfile.TemporaryDirectory();self.addCleanup(other.cleanup)
+        remote=Path(other.name)/'remote.git';client=Path(other.name)/'client'
+        self.git('init','--bare','-q',str(remote))
+        self.git('push','-q',str(remote),'main','--tags')
+        self.git('clone','-q','--single-branch','--branch','main',str(remote),str(client))
+        self.git('switch','-qc','hotfix',first)
+        self.commit('fix.md','The Library opens normally.')
+        self.git('tag','v1.0.1')
+        self.git('push','-q',str(remote),'refs/tags/v1.0.1')
+        self.git('switch','-q','main')
+        head=self.commit('new.md','You can share a meeting.')
+        self.git('push','-q',str(remote),'main')
+        with patch.object(daily,'SOURCE',client):
+            fetched=daily.fetch_main()
+            self.assertEqual(fetched,head)
+            tag=subprocess.run(['git','show-ref','--verify','--quiet','refs/tags/v1.0.1'],cwd=client)
+            self.assertEqual(tag.returncode,0,'The publication ledger needs the new off-main stable tag')
+            release=dict(prerelease=False,draft=False,tag_name='v1.0.1',published_at='now')
+            self.assertEqual(daily.stable_notes_base([release],head),first)
+
     def test_changed_fragment_is_new_and_a_hotfix_tag_does_not_wedge_main(self):
         first=self.commit('old.md','You can record a meeting.');self.git('tag','v1.0.0')
         second=self.commit('old.md','You can share a meeting.')

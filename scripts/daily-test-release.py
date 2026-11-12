@@ -67,6 +67,12 @@ def main_is_green(sha):
     return eligible_ci([run for page in pages for run in page['workflow_runs']],sha)
 
 
+def fetch_main():
+    # Include stable hotfix tags whose commits are not reachable from main.
+    command(['git','-C',SOURCE,'fetch','--tags','origin','main'],timeout=180)
+    return command(['git','-C',SOURCE,'rev-parse','FETCH_HEAD']).strip()
+
+
 def nightly_version(source,releases):
     def parts(version):return tuple(map(int,(version+'.0').split('.')[:3]))
     stable=[parts(r['tag_name'][1:]) for r in releases if not r['draft'] and not r['prerelease']
@@ -232,8 +238,7 @@ def tick(now):
         def pipeline_source():
             return tuple(path.read_bytes() for path in [Path(__file__),Path(__file__).with_name('user_release_notes.py')])
         before=pipeline_source()
-        command(['git','-C',SOURCE,'fetch','origin','main'],timeout=180)
-        head=command(['git','-C',SOURCE,'rev-parse','FETCH_HEAD']).strip()
+        head=fetch_main()
         command(['git','-C',SOURCE,'checkout','--detach','--force',head])
         # Never continue executing an older pipeline after fetching its update.
         if pipeline_source()!=before:

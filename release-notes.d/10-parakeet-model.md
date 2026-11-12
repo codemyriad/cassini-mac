@@ -1,3 +1,3 @@
 kind: better
 ---
-Download the Parakeet Ultra update in Settings for new meetings. The old download stays until the update is ready.
+Update Parakeet Ultra in Settings for new meetings. Cassini keeps your current model until the update is ready.
