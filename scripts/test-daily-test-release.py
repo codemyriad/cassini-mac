@@ -82,6 +82,14 @@ class DailyPolicy(unittest.TestCase):
         self.assertEqual(daily.next_build('0.1.0',1,releases,{}),10)
         self.assertEqual(daily.next_build('0.1.0',1,releases,{'build':12}),13)
 
+    def test_nightly_version_moves_past_an_already_published_stable(self):
+        stable=dict(tag_name='v0.1.1',prerelease=False,draft=False)
+        self.assertEqual(daily.nightly_version('0.1.0',[stable]),'0.1.2')
+        self.assertEqual(daily.nightly_version('0.1.1',[stable]),'0.1.2')
+        self.assertEqual(daily.nightly_version('0.2.0',[stable]),'0.2.0')
+        self.assertEqual(daily.nightly_version('0.1.0',[{**stable,'draft':True}]),'0.1.0')
+        self.assertEqual(daily.nightly_version('1.0',[{**stable,'tag_name':'v1.0'}]),'1.0.1')
+
     def test_unpublished_or_production_release_cannot_skip_changed_main(self):
         release=dict(tag_name='v0.1.0-beta.3',prerelease=True,draft=False,name='nightly',published_at='2026-11-11',target_commitish='a'*40)
         self.assertEqual(daily.source_commit(daily.latest_nightly([release])),'a'*40)

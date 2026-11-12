@@ -17,6 +17,8 @@ Build admission requires current main with its latest own-repository
 push/workflow_dispatch CI green. Paginated PR/fork results cannot authorize or
 block it. The admitted SHA stays pinned through signing and publication. Unchanged main
 skips. Build numbers are reserved atomically and include failed attempts/drafts.
+A stale project version advances beyond the highest published stable patch,
+so post-release betas never claim an already shipped version.
 Each release has an immutable `vVERSION-beta.N` tag, a nightly title, and [user-facing notes](../docs/release-notes.md) from unpublished fragments.
 User text is under500 UTF-16 units and also uploaded as plain text and HTML.
 Developer PR titles are folded below it only on GitHub; they are literal code

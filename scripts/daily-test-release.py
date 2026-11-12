@@ -67,6 +67,16 @@ def main_is_green(sha):
     return eligible_ci([run for page in pages for run in page['workflow_runs']],sha)
 
 
+def nightly_version(source,releases):
+    def parts(version):return tuple(map(int,(version+'.0').split('.')[:3]))
+    stable=[parts(r['tag_name'][1:]) for r in releases if not r['draft'] and not r['prerelease']
+            and re.fullmatch(r'v[0-9]+(?:\.[0-9]+){1,2}',r['tag_name'])]
+    if stable and max(stable)>=parts(source):
+        major,minor,patch=max(stable)
+        return f'{major}.{minor}.{patch+1}'
+    return source
+
+
 def next_build(version,project_build,releases,state):
     pattern=re.compile(r'^v'+re.escape(version)+r'-beta\.([1-9][0-9]*)$')
     numbers=[int(m.group(1)) for r in releases if (m:=pattern.fullmatch(r['tag_name']))]
@@ -246,6 +256,7 @@ def tick(now):
             base=local
         project=(SOURCE/'project.yml').read_text()
         version=re.search(r'MARKETING_VERSION: "([0-9]+(?:\.[0-9]+){1,2})"',project).group(1)
+        version=nightly_version(version,releases)
         initial=int(re.search(r'CURRENT_PROJECT_VERSION: "([0-9]+)"',project).group(1))
         stage='disk reserve'
         if shutil.disk_usage(BASE).free < 25*1024**3:
