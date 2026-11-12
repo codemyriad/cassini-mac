@@ -30,13 +30,20 @@ def commit_distance(repo: str, older_sha: str, newer_sha: str) -> int | None:
         raise ValueError(f"Invalid repository: {repo!r}")
     if not SHA_RE.fullmatch(older_sha) or not SHA_RE.fullmatch(newer_sha):
         raise ValueError("Invalid baseline commit SHA")
-    res = subprocess.run(
-        ["gh", "api", f"repos/{repo}/compare/{older_sha}...{newer_sha}"],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
+    try:
+        res = subprocess.run(
+            ["gh", "api", f"repos/{repo}/compare/{older_sha}...{newer_sha}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError) as error:
+        print(
+            f"Baseline commit-age lookup failed ({older_sha[:7]}...{newer_sha[:7]}): {error}",
+            file=sys.stderr,
+        )
+        return None
     if res.returncode != 0:
         err = res.stderr.strip() or f"gh api exited {res.returncode}"
         print(f"Baseline commit-age lookup failed ({older_sha[:7]}...{newer_sha[:7]}): {err}", file=sys.stderr)

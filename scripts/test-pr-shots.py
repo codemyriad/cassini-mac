@@ -479,6 +479,34 @@ class BaselineFallbackReportingContract(unittest.TestCase):
             self.assertIn("::warning title=Fallback UI screenshot baseline (commit age unknown)::", proc.stdout)
             self.assertIn("commit age unknown", summary_err.read_text(encoding="utf-8"))
 
+    def test_compare_timeout_and_oserror_degrade_to_commit_age_unknown_without_sleeping(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            older = "1" * 40
+            requested = "2" * 40
+            changes_path = self.write_changes(work / "changes.json", base_sha=older, requested_base_sha=requested)
+            for label, exc in (
+                ("timeout", subprocess.TimeoutExpired(cmd=["gh", "api", "compare"], timeout=30)),
+                ("oserror", FileNotFoundError("gh: command not found")),
+            ):
+                with self.subTest(failure=label):
+                    summary_path = work / f"summary_{label}.md"
+                    summary_path.write_text("<!-- cassini-shots:start -->\n### UI screenshots\n", encoding="utf-8")
+                    out = io.StringIO()
+                    err = io.StringIO()
+                    with patch.object(self.reporter.subprocess, "run", side_effect=exc) as mocked_run, contextlib.redirect_stderr(err):
+                        res = self.reporter.report_baseline(changes_path, summary_path=summary_path, out=out)
+                    mocked_run.assert_called_once()
+                    self.assertEqual(res["status"], "fallback")
+                    self.assertIsNone(res["commits_old"])
+                    self.assertIn("Baseline commit-age lookup failed (1111111...2222222):", err.getvalue())
+                    self.assertIn("::warning title=Fallback UI screenshot baseline (commit age unknown)::", out.getvalue())
+                    summary_text = summary_path.read_text(encoding="utf-8")
+                    self.assertTrue(
+                        summary_text.startswith("> [!WARNING]\n> **Fallback UI screenshot baseline (commit age unknown):**")
+                    )
+                    self.assertIn("### UI screenshots", summary_text)
+
     def test_missing_baseline_and_invalid_metadata_contracts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
