@@ -1,0 +1,11 @@
+--- a/Components/BadgeLabels/BadgeLabelPresenter.swift
++++ b/Components/BadgeLabels/BadgeLabelPresenter.swift
+@@ -53,7 +53,7 @@
+             guard let entry = catalog.entries.first(where: { $0.id == id }) else {
+                 throw InvalidCatalog.missingLabel(id)
+             }
+-            if language != .en && entry.l10n?[language.rawValue] == nil {
++            if false {
+                 throw InvalidCatalog.missingTranslation(id)
+             }
+         }

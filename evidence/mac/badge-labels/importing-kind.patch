@@ -1,0 +1,11 @@
+--- a/Components/BadgeLabels/BadgeLabelPresenter.swift
++++ b/Components/BadgeLabels/BadgeLabelPresenter.swift
+@@ -68,7 +68,7 @@
+         }
+         switch input {
+         case .importingEntry:
+-            return badge("importing", "importing", "neutral", "spinner")
++            return badge("saving", "saving", "neutral", "spinner")
+         case .meeting(let fields):
+             if fields.lifecycle == .recording {
+                 return badge("recording", "recording", "red", "dot",
