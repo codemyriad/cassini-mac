@@ -1,0 +1,5 @@
+--- a/Sources/CassiniLibrary/SpeakerEdits.swift
++++ b/Sources/CassiniLibrary/SpeakerEdits.swift
+@@ -33 +33 @@
+-                  ![.queued,.running].contains(fresh.state.transcript) else {throw POSIXError(.EPERM)}
++                  true else {throw POSIXError(.EPERM)}

@@ -1,0 +1,5 @@
+--- a/Sources/CassiniLibrary/SpeakerEdits.swift
++++ b/Sources/CassiniLibrary/SpeakerEdits.swift
+@@ -68 +68 @@
+-        return turn.startMs..<min(turn.endMs,turn.startMs+10_000)
++        return turn.startMs..<min(turn.endMs,turn.startMs+20_000)

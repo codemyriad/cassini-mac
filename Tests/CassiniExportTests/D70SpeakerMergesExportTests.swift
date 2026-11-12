@@ -41,6 +41,27 @@ struct D70SpeakerMergesExportTests {
     }
 
     @Test(.enabled(if:ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"] != nil))
+    func editorCommandsReachMarkdownPortableFileAndReimport() throws {
+        let (root,m)=try recording(merges:nil);defer {try? FileManager.default.removeItem(at:root)}
+        let body=try Data(contentsOf:m.folder.appendingPathComponent("transcript.json"))
+        try SpeakerEdits.apply(.name(speaker:"track-c",value:" Ada "),to:m,roots:[root])
+        try SpeakerEdits.apply(.merge(from:"track-a",into:"track-c"),to:m,roots:[root])
+        let updated=try #require(LibraryScanner(root:root).meeting(at:m.folder))
+        let markdown=MeetingMarkdown.render(updated,timeZone:TimeZone(secondsFromGMT:0)!,language:.en)
+        #expect(markdown.contains("Ada") && !markdown.contains("Carla"))
+        let file=try export(root,updated)
+        #expect(file.manifest?.speakers.filter {$0.id != "me"}.allSatisfy {$0.label=="Ada"}==true)
+        #expect(file.defaultTranscript?.load.transcript?.items.map(\.speaker)==["track-c","me","track-a","track-a"])
+        // Repacking is deliberately independent of the editor's Library snapshot.
+        let assetsURL=URL(fileURLWithPath:try #require(ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"]))
+        let hashes=try JSONDecoder().decode([String:String].self,from:Data(contentsOf:assetsURL.appendingPathComponent("unsigned-sha256.json")))
+        let assets=try OpusAssets.builtForTests(directory:assetsURL,expectedBinarySHA256:#require(hashes["libopus.0.dylib"]))
+        let artifact=try MeetingFileExporter.cassini(updated,assets:assets,temporaryRoot:root)
+        let imported=try LibraryImport.copy(artifact.url,into:root.appendingPathComponent("Imported"))
+        #expect(imported.speakerNames.filter {$0=="Ada"}.count==2,"Portable bodies retain their raw IDs; each carries the merged target name")
+        #expect(try Data(contentsOf:m.folder.appendingPathComponent("transcript.json"))==body)
+    }
+    @Test(.enabled(if:ProcessInfo.processInfo.environment["CASSINI_OPUS_ASSETS"] != nil))
     func mergedIdsShareTheirTargetsLabelAndBodiesKeepTheirOwnIds() throws {
         let (root,meeting) = try recording(merges:[["from":"track-a","into":"track-c","by":"gnome"]])
         defer { try? FileManager.default.removeItem(at:root) }
