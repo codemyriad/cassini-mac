@@ -22,6 +22,7 @@
     "scripts/export-ux-boards.py",
     "scripts/test-export-ux-boards.py",
     "scripts/pr-shots.py",
+    "scripts/report-pr-shots-baseline.py",
     "scripts/test-pr-shots.py",
     "scripts/test-recording-comfort.py",
     ".github/workflows/ux-boards.yml",
