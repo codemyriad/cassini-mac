@@ -14,7 +14,9 @@ import Darwin
 @MainActor final class RecordingSpectrogram: NSObject {
     static let enabled = ProcessInfo.processInfo.environment["CASSINI_SPECTRO"] != "0"
     static let measuring: Bool = {
-        #if DEBUG
+        #if SPECTROGRAM_PROBE
+        return SpectrogramFixtureHost.current && CommandLine.arguments.contains("--spectrogram-self-test")
+        #elseif DEBUG
         let e = ProcessInfo.processInfo.environment
         return e["GITHUB_ACTIONS"] == "true" && e["RUNNER_ENVIRONMENT"] == "github-hosted" &&
             CommandLine.arguments.contains("--spectrogram-self-test")

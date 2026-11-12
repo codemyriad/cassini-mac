@@ -9,7 +9,7 @@ import CassiniKit
 import Darwin
 import ScreenCaptureKit
 
-/// Disposable hosted runner only. Exercises the production sink/owner, utility
+/// Qualified GUI CI only. Exercises the production sink/owner, utility
 /// analyser and native view/display link with generated PCM, never devices.
 @MainActor enum SpectrogramSelfTest {
     private enum Failure: Error { case check(String) }
@@ -18,7 +18,7 @@ import ScreenCaptureKit
     }
     static func run() async {
         let e = ProcessInfo.processInfo.environment
-        guard e["GITHUB_ACTIONS"] == "true", e["RUNNER_ENVIRONMENT"] == "github-hosted",
+        guard SpectrogramFixtureHost.current,
               let mode = argument("-SpectrogramCase"), ["A","B","C","D","E"].contains(mode) else { exit(78) }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniSpectrogram-"+UUID().uuidString)
         var report: [String:Any] = [:]

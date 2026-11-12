@@ -86,7 +86,20 @@ final class LibraryStore {
     static let shared = LibraryStore()
     private(set) var context: LibraryLaunchContext
     private(set) var snapshot: LibraryScan?
-    var selectedKey: String?
+    var selectedKeys: Set<String> = []
+    var selectedKey: String? {
+        get { selectedKeys.count == 1 ? selectedKeys.first : nil }
+        set { selectedKeys = newValue.map { [$0] } ?? [] }
+    }
+    var primarySelectedKey: String? {
+        if let single = selectedKey { return single }
+        guard !selectedKeys.isEmpty else { return nil }
+        return meetings.first { selectedKeys.contains($0.libraryKey) }?.libraryKey
+    }
+    var selectedMeetings: [LibraryMeeting] {
+        guard !selectedKeys.isEmpty else { return [] }
+        return meetings.filter { selectedKeys.contains($0.libraryKey) }
+    }
     private(set) var loaded = false
     private(set) var revision = 0
     private(set) var offline = false
@@ -184,8 +197,13 @@ final class LibraryStore {
                 }
                 TranscriptionQueue.shared.consider(result.meetings,automatic:!context.screenshot && !MeetingRenameFixture.enabled && (!RecordingFixture.enabled || RecordingFixture.transcribes))
                 LegacyOpening.refreshTranscripts(result.meetings)
-                if selectedKey == nil || !meetings.contains(where:{ $0.libraryKey == selectedKey }) {
-                    selectedKey = context.screenshot ? meetings.first(where:{ $0.title == "Budget review" })?.libraryKey ?? meetings.first?.libraryKey : meetings.first?.libraryKey
+                let validKeys = Set(meetings.map(\.libraryKey))
+                let surviving = selectedKeys.intersection(validKeys)
+                if surviving.isEmpty {
+                    let initial = context.screenshot ? (meetings.first(where:{ $0.title == "Budget review" })?.libraryKey ?? meetings.first?.libraryKey) : meetings.first?.libraryKey
+                    selectedKeys = initial.map { [$0] } ?? []
+                } else if surviving != selectedKeys {
+                    selectedKeys = surviving
                 }
                 loaded = true; revision &+= 1
                 LibraryMoveCoordinator.shared.maybeRetryDeferred()

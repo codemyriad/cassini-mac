@@ -169,6 +169,11 @@ targets:
             LSHandlerRank: Alternate
             LSItemContentTypes:
               - org.xiph.ogg-audio
+          - CFBundleTypeName: ZIP Archive
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.zip-archive
         UTImportedTypeDeclarations:
           - UTTypeIdentifier: org.xiph.ogg-audio
             UTTypeDescription: Ogg Opus Audio

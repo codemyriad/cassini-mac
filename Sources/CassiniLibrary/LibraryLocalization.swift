@@ -136,7 +136,7 @@ public struct LibraryLocalization: Sendable {
         // The plural count is {n}; D70's speakers.when.times names it {count}.
         let template = (values["n"] ?? values["count"]).flatMap { selected.plural[language.pluralCategory($0)] ?? selected.plural["other"] } ?? selected.base
         var localized = values
-        for key in ["n", "m", "k", "count"] {
+        for key in ["n", "m", "k", "count", "done", "total"] {
             guard let literal = values[key], let quantity = Quantity(literal) else { continue }
             let formatter = NumberFormatter(); formatter.locale = locale; formatter.numberStyle = .decimal
             formatter.minimumFractionDigits = quantity.fractionDigits; formatter.maximumFractionDigits = quantity.fractionDigits
