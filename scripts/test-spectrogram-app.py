@@ -196,6 +196,13 @@ def check_scheduling(checker: Path, output: Path):
     return report
 
 
+def stop_sampler(sampler):
+    """Reap the owned diagnostic child without relying on top's SIGTERM handling."""
+    if sampler.poll() is None:
+        sampler.kill()
+    sampler.wait(timeout=10)
+
+
 def measure(app: Path, output: Path, scheduling_checker: Path):
     host = check()
     output.mkdir(parents=True, exist_ok=True)
@@ -222,7 +229,7 @@ def measure(app: Path, output: Path, scheduling_checker: Path):
                     process.kill()
                     process.wait()
                 if top:
-                    top.terminate(); top.wait(timeout=10)
+                    stop_sampler(top)
             (output/f'{case}.stdout.txt').write_text(stdout)
             if process.returncode != 0:
                 try:

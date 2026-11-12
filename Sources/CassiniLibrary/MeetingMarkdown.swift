@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import CassiniKit
 
 /// Binding S-5 export. This consumes derived labels, never naming provenance or
 /// voiceprints. Dates are absolute and never use the Library's Today/Yesterday.
@@ -7,16 +8,17 @@ public enum MeetingMarkdown {
     public static func render(_ meeting: LibraryMeeting, timeZone: TimeZone, locale: Locale = .current, language: CassiniLanguage = .system) -> String {
         render(title:meeting.title ?? LibraryLocalization.shared.text("library.untitled",language:language,locale:locale),start:meeting.start,durationMs:meeting.durationMs,
             timeZone:timeZone,names:Dictionary(uniqueKeysWithValues:meeting.speakers.map { ($0.id,$0.displayName) }),
-            items:meeting.state.transcript == .done ? meeting.transcriptItems : [],notes:meeting.notes,gaps:meeting.speakerGaps,endsBoundedByAudio:meeting.wordEndsBoundedByAudio,locale:locale,language:language)
+            items:meeting.state.transcript == .done ? meeting.transcriptItems : [],notes:meeting.notes,gaps:meeting.speakerGaps,endsBoundedByAudio:meeting.wordEndsBoundedByAudio,locale:locale,language:language,recordingTime:meeting.meetingTime)
     }
     public static func render(title: String, start: Date?, durationMs: Int64?, timeZone: TimeZone,
                               names: [String:String], items: [LibraryTranscriptItem], notes: [MeetingNote], gaps: SpeakerGapRanges.Ranges = [:], endsBoundedByAudio: Bool = false,
-                              locale: Locale = .current, language: CassiniLanguage = .system) -> String {
+                              locale: Locale = .current, language: CassiniLanguage = .system, recordingTime: MeetingTime? = nil) -> String {
         let strings=LibraryLocalization.shared
         let title=title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty ? strings.text("library.untitled",language:language,locale:locale) : title
         var blocks = ["# " + escape(title)]
         // D50.3: words follow the document language; the clock follows `locale`.
-        if let start { blocks.append(LibraryFormat(timeZone:timeZone,locale:locale,language:language).absoluteDateLine(start,durationMs:durationMs)) }
+        if let recordingTime { blocks.append(LibraryFormat(timeZone:timeZone,locale:locale,language:language).absoluteDateLine(recordingTime,durationMs:durationMs)) }
+        else if let start { blocks.append(LibraryFormat(timeZone:timeZone,locale:locale,language:language).absoluteDateLine(start,durationMs:durationMs)) }
         let ordered = items // Group canonical words before sorting display blocks, as the viewer does.
         let all = MeetingPresentation.turns(ordered,gaps:gaps,endsBoundedByAudio:endsBoundedByAudio)
         let turns = MeetingPresentation.visibleTurns(all)

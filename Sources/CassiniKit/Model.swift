@@ -60,6 +60,7 @@ public struct Meeting: Sendable, Equatable {
     public var durationMs: Int
     public var recordedAtLocal: String?
     public var processedAtUtc: String?
+    public var recordedAtUtc: String? = nil
 }
 
 public struct AudioInfo: Sendable, Equatable {
