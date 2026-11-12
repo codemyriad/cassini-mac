@@ -684,6 +684,15 @@ final class LibraryBoards: XCTestCase {
         let chooserClosed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:chooser)
         XCTAssertEqual(XCTWaiter.wait(for:[chooserClosed],timeout:5),.completed,app.debugDescription)
         XCTAssertFalse(chooser.exists)
+        let exportAll = window.buttons["settings-export-all-zip"]
+        XCTAssertTrue(exportAll.waitForExistence(timeout:5),window.debugDescription)
+        XCTAssertTrue(exportAll.isEnabled,window.debugDescription)
+        exportAll.click()
+        let savePresented = NSPredicate { _,_ in window.sheets.firstMatch.exists || app.windows["save-panel"].exists }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:savePresented,object:nil)],timeout:5),.completed,app.debugDescription)
+        app.typeKey(.escape,modifierFlags:[])
+        let saveClosed = NSPredicate { _,_ in !window.sheets.firstMatch.exists && !app.windows["save-panel"].exists }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:saveClosed,object:nil)],timeout:5),.completed,app.debugDescription)
         window.toolbars.buttons["Browser companion"].click()
         XCTAssertTrue(text("Setting up the connection…",in:window))
         XCTAssertFalse(window.buttons["browser-try-again"].exists)

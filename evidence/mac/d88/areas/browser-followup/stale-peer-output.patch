@@ -1,0 +1,7 @@
+--- a/Sources/CassiniBrowserControl/ControlRegistry.swift
++++ b/Sources/CassiniBrowserControl/ControlRegistry.swift
+@@ -887 +886,0 @@
+-        guard !peer.superseded else { throw BrowserControlStateError.unavailable }
+@@ -957 +956 @@
+-        let returning = snapshots.flatMap { $0.captures + $0.interrupted }
++        let returning = peers.values.flatMap { $0.captures + $0.interrupted }

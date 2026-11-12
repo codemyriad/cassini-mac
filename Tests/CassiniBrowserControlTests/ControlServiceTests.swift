@@ -204,6 +204,7 @@ final class ControlServiceTests: XCTestCase {
     }
     func testFreshStopWithAStaleUIKeyUsesTheCurrentCaptureConnection() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let clock = IPCBarrierClock(), frames = SignalFrameWaiter()
         let oldReady = expectation(description:"Old capture status"), newReady = expectation(description:"Replacement capture status")
         oldReady.assertForOverFulfill = false; newReady.assertForOverFulfill = false
         let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
@@ -212,12 +213,12 @@ final class ControlServiceTests: XCTestCase {
             guard let peer = peers.first, peer.captures.first?.captureID == "capture" else { return }
             if peer.captures.first?.path == "/replacement-status" { newReady.fulfill() }
             else { oldReady.fulfill() }
-        },completed:{ _,_ in })
+        },completed:{ _,_ in },clock:clock.now,received:{ frames.received($0) })
         try service.start(root:root); defer { service.stop() }
         let first = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
         let folder = try XCTUnwrap(FileManager.default.contentsOfDirectory(at:root.appendingPathComponent("clients"),includingPropertiesForKeys:nil).first { UUID(uuidString:$0.lastPathComponent) != nil })
         let oldKey = BrowserMeetingKey(peer:try XCTUnwrap(UUID(uuidString:folder.lastPathComponent)),tabID:2)
-        try hello(first); try send(status(true),first)
+        try hello(first,heartbeat:true); try send(status(true),first)
         wait(for:[oldReady],timeout:3)
         let second = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
         try hello(second)
@@ -228,17 +229,18 @@ final class ControlServiceTests: XCTestCase {
         wait(for:[newReady],timeout:3)
         service.stopMeeting(oldKey,captureID:"capture")
         XCTAssertEqual(try receive(second)["action"]?.string,"stop")
-        XCTAssertThrowsError(try receive(first,seconds:0.2))
+        try assertNoCommandBeforeHeartbeat(service,first,clock:clock,frames:frames)
     }
     func testDisconnectedCaptureStopSurvivesARealPipeReconnectAndNewURLCanStart() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let clock = IPCBarrierClock(), frames = SignalFrameWaiter()
         let bound = expectation(description:"First status binds before audio registration")
         let gone = expectation(description:"Control connection gone")
         bound.assertForOverFulfill = false; gone.assertForOverFulfill = false
         let service = BrowserControlService(changed:{ peers in
             if peers.contains(where:{ $0.captures.first?.captureID == "capture" }) { bound.fulfill() }
             if peers.isEmpty { gone.fulfill() }
-        },completed:{ _,_ in })
+        },completed:{ _,_ in },clock:clock.now,received:{ frames.received($0) })
         try service.start(root:root); defer { service.stop() }
         let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
         var first: PipeEndpoint? = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
@@ -249,13 +251,14 @@ final class ControlServiceTests: XCTestCase {
         service.rememberUserStop(captureID:"capture",key:nil)
         service.setAutoRecord(true,microphone:false)
         let second = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
-        try hello(second); try send(status(false),second)
-        XCTAssertThrowsError(try receive(second,seconds:0.3))
+        try hello(second,heartbeat:true); try send(status(false),second)
+        try assertNoCommandBeforeHeartbeat(service,second,clock:clock,frames:frames)
         try send(["type":"meetings","meetings":[["tabId":2,"title":"New call","url":"https://meet.example/new","sourceCount":2]]],second)
         XCTAssertEqual(try receive(second)["action"]?.string,"start")
     }
     func testRegisteredAudioThenDisconnectedStopAllBeforeAnyCaptureStatusCannotRestart() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at:root) }
+        let clock = IPCBarrierClock(), frames = SignalFrameWaiter()
         let closing = Admission(), gone = expectation(description:"Control really disconnected")
         gone.assertForOverFulfill = false
         let broker = BrowserAudioBroker(make:{ title,mic in
@@ -263,7 +266,7 @@ final class ControlServiceTests: XCTestCase {
         },created:{ _,_ in },stopNative:{ _,reply in reply(nil) })
         let service = BrowserControlService(changed:{ peers in
             if closing.read(), peers.isEmpty { gone.fulfill() }
-        },completed:{ _,_ in },audio:broker)
+        },completed:{ _,_ in },audio:broker,clock:clock.now,received:{ frames.received($0) })
         try service.start(root:root); defer { service.stop() }
         service.setAutoRecord(true,microphone:false)
         let instance = try XCTUnwrap(BrowserInstance.process(getpid()))
@@ -278,8 +281,8 @@ final class ControlServiceTests: XCTestCase {
         closing.set(true); control = nil; wait(for:[gone],timeout:3)
         service.stopRecordings()
         let next = try PipeEndpoint(root:root,role:.control,browser:"Chrome",browserInstance:instance)
-        try hello(next); try send(status(false),next)
-        XCTAssertThrowsError(try receive(next,seconds:0.3))
+        try hello(next,heartbeat:true); try send(status(false),next)
+        try assertNoCommandBeforeHeartbeat(service,next,clock:clock,frames:frames)
         // This test opens only private files/FIFOs; no PCM or device is used.
         try send(["type":"stop"],audio); XCTAssertEqual(try receive(audio)["type"]?.string,"stopped")
     }
@@ -429,7 +432,7 @@ private final class SignalEvents: @unchecked Sendable {
     var stopReason: CaptureEndReason? { lock.withLock { for action in actions { if case .stop(_,let reason) = action { return reason } }; return nil } }
 }
 
-private final class SignalFrameWaiter: @unchecked Sendable {
+final class SignalFrameWaiter: @unchecked Sendable {
     private let lock = NSLock()
     private var waiting: [String:[XCTestExpectation]] = [:]
     func expect(_ type: String, _ event: XCTestExpectation) { lock.withLock { waiting[type,default:[]].append(event) } }
@@ -443,9 +446,30 @@ private final class SignalFrameWaiter: @unchecked Sendable {
     }
 }
 
-private final class IPCBarrierClock: @unchecked Sendable {
+final class IPCBarrierClock: @unchecked Sendable {
     private let lock = NSLock()
     private var value: UInt64 = 1_000_000
     func now() -> UInt64 { lock.withLock { value } }
     func advance() { lock.withLock { value += ControlHeartbeat.interval } }
+}
+
+
+// The peer's next ping is sent by the same ordered writer as control commands.
+// Receipt of the pong fences input reconciliation before virtual time advances.
+extension XCTestCase {
+    func assertNoCommandBeforeHeartbeat(_ service: BrowserControlService, _ client: PipeEndpoint,
+                                        clock: IPCBarrierClock, frames: SignalFrameWaiter,
+                                        file: StaticString = #filePath, line: UInt = #line) throws {
+        let reconciled = expectation(description:"Control input reconciled before the output barrier")
+        frames.expect("pong",reconciled)
+        try client.send(JSONSerialization.data(withJSONObject:["type":"pong","seq":0]))
+        wait(for:[reconciled],timeout:3)
+        clock.advance(); service.tickHeartbeats()
+        guard let data = try client.receive(deadline:DispatchTime.now().uptimeNanoseconds + 3_000_000_000) else {
+            throw BrowserIPCError.closed
+        }
+        let barrier = try JSONParser.parse(data)
+        XCTAssertEqual(barrier["type"]?.string,"ping","A command preceded the output barrier",file:file,line:line)
+        XCTAssertEqual(barrier["seq"]?.int,0,file:file,line:line)
+    }
 }

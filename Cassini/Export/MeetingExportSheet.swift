@@ -2,22 +2,161 @@
 import SwiftUI
 import CassiniLibrary
 
-struct MeetingExportNotice: View {
-    @State private var coordinator = MeetingExportCoordinator.shared
+struct TransferStatusBanner: View {
+    @State private var importer = LibraryImportCoordinator.shared
+    @State private var bulkExporter = BulkZipExportCoordinator.shared
+    @State private var singleExporter = MeetingExportCoordinator.shared
+    var fixtureVisibleCards: (([TransferBannerPresentation.Card]) -> Void)? = nil
+    var fixtureOnCleanup: (() -> Void)? = nil
+
+    private var presentation: TransferBannerPresentation {
+        TransferBannerPresentation(
+            importProgress: importer.progress.map { .init(done: $0.done, total: $0.total) },
+            importNotice: importer.notice.map { .init(id: $0.id, message: $0.message, isWarning: $0.isWarning, autoDismiss: $0.autoDismiss) },
+            bulkExportProgress: bulkExporter.progress.map { .init(done: $0.done, total: $0.total) },
+            bulkExportReceipt: bulkExporter.receipt.map { .init(id: $0.id, count: $0.count) },
+            singleExportReceipt: singleExporter.receipt.map {
+                .init(id: $0.id, title: $0.title, folderName: $0.url.deletingLastPathComponent().lastPathComponent)
+            }
+        )
+    }
+
     var body: some View {
-        if let receipt = coordinator.receipt {
-            HStack(spacing:16) {
-                Text(UXText.text("meeting.exported",["title":receipt.title,"folder":receipt.url.deletingLastPathComponent().lastPathComponent]))
-                    .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("export-success")
-                Button(UXText.text("common.show")) { coordinator.revealReceipt() }.accessibilityIdentifier("export-show")
-            }.padding(14).background(.regularMaterial,in:RoundedRectangle(cornerRadius:8)).shadow(radius:6)
-                .padding(20).accessibilityElement(children:.contain)
-                .task(id:receipt.id) {
-                    do { try await Task.sleep(for:.seconds(10)) } catch { }
-                    coordinator.clearReceipt(receipt.id)
+        let current = presentation
+        Group {
+            if !current.cards.isEmpty {
+                VStack(spacing: 10) {
+                    ForEach(current.cards) { item in
+                        switch item {
+                        case .importProgress(let done, let total):
+                            card(warning: false) {
+                                ProgressView().controlSize(.small)
+                                Text(UXText.text("import.progress", ["done": String(done), "total": String(total)]))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("import-progress")
+                                Button(UXText.text("common.cancel")) { importer.cancelCurrentRun() }
+                                    .accessibilityIdentifier("import-cancel")
+                            }
+                        case .importNotice(let notice):
+                            card(warning: notice.isWarning) {
+                                if notice.isWarning {
+                                    Image(systemName: "exclamationmark.triangle.fill").accessibilityHidden(true)
+                                }
+                                Text(notice.message)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier(notice.isWarning ? "import-warning" : "import-summary")
+                                Button(UXText.text("common.done")) { importer.dismissNotice(notice.id) }
+                                    .accessibilityIdentifier("import-notice-done")
+                            }
+                        case .bulkExportProgress(let done, let total):
+                            card(warning: false) {
+                                ProgressView().controlSize(.small)
+                                Text(UXText.text("export.zip.progress", ["done": String(done), "total": String(total)]))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("export-zip-progress")
+                                Button(UXText.text("common.cancel")) { bulkExporter.cancel() }
+                                    .accessibilityIdentifier("export-zip-cancel")
+                            }
+                        case .bulkExportReceipt(let receipt):
+                            card(warning: false) {
+                                Text(UXText.text("export.zip.done", ["n": String(receipt.count)]))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("export-zip-success")
+                                Button(UXText.text("common.show")) { bulkExporter.revealReceipt() }
+                                    .accessibilityIdentifier("export-zip-show")
+                            }
+                        case .singleExportReceipt(let receipt):
+                            card(warning: false) {
+                                Text(UXText.text("meeting.exported", ["title": receipt.title, "folder": receipt.folderName]))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("export-success")
+                                Button(UXText.text("common.show")) { singleExporter.revealReceipt() }
+                                    .accessibilityIdentifier("export-show")
+                            }
+                        }
+                    }
                 }
+                .padding(20)
+            }
+        }
+        .onAppear { fixtureVisibleCards?(current.cards) }
+        .onChange(of: current.cards) { _, updated in fixtureVisibleCards?(updated) }
+        .modifier(BannerCleanupProbe(onCleanup: fixtureOnCleanup))
+    }
+
+    @ViewBuilder
+    private func card<Content: View>(warning: Bool, @ViewBuilder content: () -> Content) -> some View {
+        HStack(spacing: 16) {
+            content()
+        }
+        .padding(14)
+        .foregroundStyle(warning ? LibraryTheme.amber : Color(nsColor: .labelColor))
+        .background {
+            if warning {
+                RoundedRectangle(cornerRadius: 8).fill(LibraryTheme.amberTint)
+            } else {
+                RoundedRectangle(cornerRadius: 8).fill(.regularMaterial)
+            }
+        }
+        .shadow(radius: 6)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+@MainActor private final class BannerCleanupTracker {
+    private var disappeared = false
+    private var taskFinished = false
+    private var fired = false
+
+    func markDisappeared(onCleanup: () -> Void) {
+        disappeared = true
+        fireIfReady(onCleanup: onCleanup)
+    }
+
+    func markTaskFinished(onCleanup: () -> Void) {
+        taskFinished = true
+        fireIfReady(onCleanup: onCleanup)
+    }
+
+    private func fireIfReady(onCleanup: () -> Void) {
+        guard disappeared, taskFinished, !fired else { return }
+        fired = true
+        onCleanup()
+    }
+}
+
+private struct BannerCleanupProbe: ViewModifier {
+    let onCleanup: (() -> Void)?
+
+    func body(content: Content) -> some View {
+        if let onCleanup {
+            content.modifier(ActiveBannerCleanupProbe(onCleanup: onCleanup))
+        } else {
+            content
         }
     }
+}
+
+private struct ActiveBannerCleanupProbe: ViewModifier {
+    let onCleanup: () -> Void
+    @State private var tracker = BannerCleanupTracker()
+
+    func body(content: Content) -> some View {
+        let capturedTracker = tracker
+        let callback = onCleanup
+        content
+            .onDisappear {
+                capturedTracker.markDisappeared(onCleanup: callback)
+            }
+            .task {
+                defer { capturedTracker.markTaskFinished(onCleanup: callback) }
+                do { try await Task.sleep(for: .seconds(3600)) } catch { return }
+            }
+    }
+}
+
+struct MeetingExportNotice: View {
+    var body: some View { TransferStatusBanner() }
 }
 
 struct MeetingExportSheet: View {

@@ -40,6 +40,12 @@ struct AppCommands: Commands {
 
             Button(UXText.text("common.exportEllipsis")) { if let meeting = exportMeeting { MeetingExportCoordinator.shared.show(meeting) } }
                 .keyboardShortcut("e", modifiers: [.command, .shift]).disabled(!MeetingExportCoordinator.canExport(exportMeeting))
+            if BulkZipExportCoordinator.shared.hasSelection {
+                Button(UXText.text("export.zip.selected")) { BulkZipExportCoordinator.shared.exportSelected() }
+                    .disabled(!BulkZipExportCoordinator.shared.canExportSelected)
+            }
+            Button(UXText.text("export.zip.all")) { BulkZipExportCoordinator.shared.exportAll() }
+                .disabled(!BulkZipExportCoordinator.shared.canExportAll)
             Button(UXText.text("common.moveToTrash")) {
                 let trash = MeetingTrashCoordinator.shared
                 if trash.commandEnabled, let meeting = trash.commandMeeting { trash.move(meeting,undoManager:NSApp.keyWindow?.undoManager) }

@@ -37,6 +37,8 @@ private final class SourceChangeToken: @unchecked Sendable {
     }
     private let capture: OwnedBrowserCapture
     private let origin: UInt64
+    // Injectable host clock for deterministic event-stamp tests, never a UI counter.
+    var hostTime: () -> UInt64 = { mach_absolute_time() }
     private let microphone: @MainActor () -> any CaptureInput
     private let system: @MainActor () -> any CaptureInput
     private let failure: @Sendable (String) -> Void
@@ -135,12 +137,18 @@ private final class SourceChangeToken: @unchecked Sendable {
     public func update() async throws { try await enqueue { try await self.reconcile(refusingAt:self.recordingMs()) } }
     /// Returns the sides whose turn-on was refused (D58), with their codes. A refused turn-on
     /// leaves that side's selection unchanged and writes no selection event for it.
+    /// Stamp a person’s action from the recording clock without truncating it
+    /// through the whole-millisecond counter used by UI labels.
+    @discardableResult
+    public func select(me: Bool, others: Bool) async throws -> [CaptureSide:String] {
+        try await select(me:me,others:others,atMs:recordingMs())
+    }
     @discardableResult
     public func select(me: Bool, others: Bool, atMs: Double) async throws -> [CaptureSide:String] {
         guard atMs.isFinite, atMs >= 0, me || others else { throw RecordingError.invalid("Invalid recording selection.") }
         cancelSourceChange()
         let selectionToken = capture.snapshot.managedBrowser ? sourceChange : nil
-        let requested = ProcessInfo.processInfo.systemUptime
+        let requested = hostTime()
         let refusedNow = RefusedTurnOns()
         try await enqueue {
             guard !self.closed, self.capture.snapshot.phase == .recording else { throw BrowserIPCError.closed }
@@ -184,7 +192,8 @@ private final class SourceChangeToken: @unchecked Sendable {
                     throw RecordingError.invalid("The new audio input stopped before the selection could be applied.")
                 }
                 if prepared[.others] != nil { try selectionToken?.check() }
-                let appliedAt = atMs + max(0,ProcessInfo.processInfo.systemUptime-requested)*1000
+                let finished = self.hostTime()
+                let appliedAt = atMs + (finished > requested ? AVAudioTime.seconds(forHostTime:finished-requested)*1000 : 0)
                 try await self.capture.select(me:me,others:others,atMs:appliedAt,reservingNative:Set(prepared.keys))
             } catch {
                 for value in prepared.values { await self.discard(value) }
@@ -356,7 +365,7 @@ private final class SourceChangeToken: @unchecked Sendable {
     /// Milliseconds since the recording's host-time origin: the time of a refusal that no
     /// selection stamps (the browser fallback's system input).
     private func recordingMs() -> Double {
-        let now = mach_absolute_time()
+        let now = hostTime()
         return now > origin ? AVAudioTime.seconds(forHostTime:now - origin) * 1000 : 0
     }
     private func discard(_ value: Input) async {

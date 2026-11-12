@@ -164,12 +164,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let queue = TranscriptionQueue.shared
             let imports = LibraryImportCoordinator.shared
             let exports = MeetingExportCoordinator.shared
+            let bulkExports = BulkZipExportCoordinator.shared
             let moves = LibraryMoveCoordinator.shared
-            let wait = MeetingRenameCoordinator.shared.working || RecordingOverview.saving || queue.isBusy || imports.isBusy || exports.isBusy || moves.busy || MeetingTrashCoordinator.shared.busy || RecordingPageModel.hasPendingEdits
+            let wait = MeetingRenameCoordinator.shared.working || RecordingOverview.saving || queue.isBusy || imports.isBusy || exports.isBusy || bulkExports.isBusy || moves.busy || MeetingTrashCoordinator.shared.busy || RecordingPageModel.hasPendingEdits
             CaptureCollection.shared.beginShutdown()
             imports.beginShutdown()
             MeetingRenameCoordinator.shared.beginShutdown()
             exports.beginShutdown()
+            bulkExports.beginShutdown()
             moves.beginShutdown()
             MeetingTrashCoordinator.shared.beginShutdown()
             queue.beginShutdown()
@@ -184,6 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     await imports.waitForShutdown()
                     await MeetingRenameCoordinator.shared.waitForShutdown()
                     await exports.waitForShutdown()
+                    await bulkExports.waitForShutdown()
                     await moves.waitForShutdown()
                     await MeetingTrashCoordinator.shared.waitForShutdown()
                     self?.confirmingQuit = false; sender.reply(toApplicationShouldTerminate:true)
@@ -196,6 +199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
           Task { @MainActor in
             await MeetingRenameCoordinator.shared.dismissForQuit()
             await MeetingExportCoordinator.shared.dismissForQuit()
+            await BulkZipExportCoordinator.shared.dismissForQuit()
             await LibraryMoveCoordinator.shared.dismissForQuit()
             // A menu-bar Quit may still have its transient popup as keyWindow.
             // Never attach the save confirmation to a popup that is closing.
@@ -212,6 +216,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         MeetingTrashCoordinator.shared.beginShutdown()
                         MeetingRenameCoordinator.shared.beginShutdown()
                         MeetingExportCoordinator.shared.beginShutdown()
+                        BulkZipExportCoordinator.shared.beginShutdown()
                         LibraryImportCoordinator.shared.beginShutdown()
                         TranscriptionQueue.shared.beginShutdown()
                         await RecordingConfirmation.stopAndWait()
@@ -220,6 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         await LibraryImportCoordinator.shared.waitForShutdown()
                         await MeetingRenameCoordinator.shared.waitForShutdown()
                         await MeetingExportCoordinator.shared.waitForShutdown()
+                        await BulkZipExportCoordinator.shared.waitForShutdown()
                         await LibraryMoveCoordinator.shared.waitForShutdown()
                         await MeetingTrashCoordinator.shared.waitForShutdown()
                     }
@@ -245,6 +251,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             LibraryImportCoordinator.shared.beginShutdown()
             MeetingRenameCoordinator.shared.beginShutdown()
             MeetingExportCoordinator.shared.beginShutdown()
+            BulkZipExportCoordinator.shared.beginShutdown()
             LibraryMoveCoordinator.shared.beginShutdown()
             MeetingTrashCoordinator.shared.beginShutdown()
             SessionPlaybackController.stopAll(); RecordingController.shared.stop()
@@ -256,7 +263,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        MainActor.assumeIsolated { urls.forEach { LegacyOpening.openDocument($0) } }
+        MainActor.assumeIsolated { LegacyOpening.openDocuments(urls) }
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { !CommandLine.arguments.contains("--recording-self-test") && !CommandLine.arguments.contains("--recording-sink-self-test") }
@@ -356,8 +363,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            !MeetingNavigation.shared.loading, !LibrarySearchModel.shared.visible,
            event.modifierFlags.intersection([.command,.option,.control]).isEmpty,
            ((event.keyCode == 109 && event.modifierFlags.contains(.shift)) || event.charactersIgnoringModifiers == "\u{F735}"),
-           let meeting = LibraryStore.shared.selected,
-           LibraryKeyboardMenu.show(meeting,trash:MeetingTrashCoordinator.shared,undo:window.undoManager) { return nil }
+           !LibraryStore.shared.selectedKeys.isEmpty,
+           LibraryKeyboardMenu.show(LibraryStore.shared.selected,trash:MeetingTrashCoordinator.shared,undo:window.undoManager) { return nil }
         guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
               [49, 123, 124].contains(event.keyCode),
               let window = event.window else { return event }

@@ -1,0 +1,5 @@
+--- a/Sources/CassiniBrowserControl/ControlRegistry.swift
++++ b/Sources/CassiniBrowserControl/ControlRegistry.swift
+@@ -371 +371 @@
+-            context = captureCalls[id]
++            context = nil

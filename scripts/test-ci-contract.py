@@ -237,9 +237,9 @@ class RentedRunnerRouting(unittest.TestCase):
     def evaluate(self, expression, event, head, label, runner):
         expression=expression.strip().removeprefix('${{').removesuffix('}}').strip()
         expression=expression.replace('&&',' and ').replace('||',' or ')
-        github=SimpleNamespace(event_name=event,repository='codemyriad/cassini-mac',
-            event=SimpleNamespace(pull_request=SimpleNamespace(head=SimpleNamespace(repo=SimpleNamespace(full_name=head)))))
-        return eval(expression,{'__builtins__':{}},{'github':github,'vars':SimpleNamespace(CM_MAC_RUNNER=label),
+        payload=SimpleNamespace(pull_request=SimpleNamespace(head=SimpleNamespace(repo=SimpleNamespace(full_name=head)))) if event=='pull_request' else SimpleNamespace()
+        github=SimpleNamespace(event_name=event,repository='codemyriad/cassini-mac',event=payload)
+        return eval(expression,{'__builtins__':{}},{'github':github,'vars':SimpleNamespace(CM_MAC_RUNNER=label,CM_MAC_GUI_RUNNER=label),
                     'matrix':SimpleNamespace(runner=runner)})
 
     def worker(self):
@@ -247,24 +247,41 @@ class RentedRunnerRouting(unittest.TestCase):
 
     def test_actual_expressions_route_only_trusted_jobs_with_a_configured_runner(self):
         producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
-        # Both architectures of the producer and the Whistle worker, and the Intel package tests.
-        for job,runners in [(producer,['macos-15','macos-15-intel']),(self.worker(),['macos-15','macos-15-intel']),
-                            (ci_job('package_tests'),['macos-15-intel']),
-                            (ci_job('kit'),['macos-15']),
-                            ((ROOT/'.github/workflows/ci-build-release.yml').read_text(),['macos-15']),
-                            ((ROOT/'.github/workflows/ux-parakeet.yml').read_text().split('  runtime:',1)[1].split('\n  parakeet:\n',1)[0],['macos-15','macos-15-intel']),
-                            ((ROOT/'.github/workflows/ux-browser-setup.yml').read_text().split('  control:',1)[1].split('  setup:',1)[0],['macos-15','macos-15-intel'])]:
-            route=re.search(r'^    runs-on: (.+)$',job,re.M).group(1)
-            for runner in runners:
-                for event,head,label,enabled in [('pull_request','codemyriad/cassini-mac','cm-mac-m4',True),
-                    ('pull_request','fork/repo','cm-mac-m4',False),('pull_request','codemyriad/cassini-mac','',False),
-                    ('push','','cm-mac-m4',True),('schedule','','cm-mac-m4',True),('workflow_dispatch','','',False)]:
-                    with self.subTest(runner=runner,event=event,head=head,label=label):
-                        expected='cm-mac-m4' if enabled else runner
-                        self.assertEqual(self.evaluate(route,event,head,label,runner),expected)
+        # Evaluate every actual rented-runner expression, including reusable workflows.
+        routes=[]
+        for path in sorted((ROOT/'.github/workflows').glob('*.yml')):
+            for route in re.findall(r'^    runs-on: (.+)$',path.read_text(),re.M):
+                if 'vars.CM_MAC' in route:
+                    routes.append((path.name,route))
+        self.assertEqual(len(routes),8)
+        events=['push','schedule','workflow_dispatch','pull_request',
+                'pull_request_target','workflow_run','issue_comment','workflow_call',
+                'release','repository_dispatch','deployment_status','check_run','unknown']
+        for name,route in routes:
+            for runner in ['macos-15','macos-15-intel']:
+                fallback_match=re.search(r"\|\| (matrix\.runner|'([^']+)') \}\}$",route)
+                self.assertIsNotNone(fallback_match,route)
+                fallback=runner if fallback_match.group(1)=='matrix.runner' else fallback_match.group(2)
+                self.assertIn(fallback,['macos-15','macos-15-intel'])
+                for event in events:
+                    for head in ['codemyriad/cassini-mac','fork/repo','']:
+                        for label in ['cm-mac-m4','']:
+                            trusted=event in ['push','schedule','workflow_dispatch'] or (event=='pull_request' and head=='codemyriad/cassini-mac')
+                            expected=label if trusted and label else fallback
+                            with self.subTest(workflow=name,route=route,runner=runner,event=event,head=head,label=label):
+                                self.assertEqual(self.evaluate(route,event,head,label,runner),expected)
         for job in [producer,self.worker()]:
             rows=re.findall(r'- runner: (\S+)\n\s+arch: (\S+)',job)
             self.assertEqual(rows,[('macos-15','arm64'),('macos-15-intel','x86_64')])
+
+    def test_screenshot_derived_data_is_job_owned_and_cleaned_around_artifacts(self):
+        shot=(ROOT/'.github/workflows/ux-shot.yml').read_text()
+        self.assertEqual(shot.count('-derivedDataPath "$RUNNER_TEMP/cassini-window-screenshots-derived-data"'),2)
+        self.assertEqual(shot.count('run: rm -rf -- "$RUNNER_TEMP/cassini-window-screenshots-derived-data"'),2)
+        self.assertLess(shot.index('- name: Clean interrupted screenshot DerivedData'),shot.index('- uses: actions/checkout'))
+        cleanup=shot.index('- name: Clean screenshot DerivedData after artifact upload')
+        self.assertGreater(cleanup,shot.rindex('- uses: actions/upload-artifact'))
+        self.assertIn('if: always()',shot[cleanup:])
 
     def test_intel_products_are_named_cross_built_and_run_as_x86_64_wherever_the_job_lands(self):
         producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
@@ -304,7 +321,7 @@ class RentedRunnerRouting(unittest.TestCase):
         self.assertIn('name: whistle-${{ matrix.runner }}\n',worker)
         for name in ['name: downloader-macos-15-intel\n','name: exports-macos-15-intel\n']:self.assertIn(name,package)
 
-    def test_gui_jobs_and_original_artifact_names_remain_hosted(self):
+    def test_unqualified_gui_jobs_and_artifact_names_remain_hosted(self):
         self.assertIn('runs-on: macos-15\n',ci_job('native_sink'))
         # App, XPC and GUI jobs need a login session; both their architectures stay hosted.
         for name in ['ux-parakeet.yml','ux-browser-setup.yml']:
@@ -315,8 +332,17 @@ class RentedRunnerRouting(unittest.TestCase):
             # Their hosted Intel row compiles SwiftPM itself after a rented Mac built the products.
             job=body[body.index('runner: [macos-15, macos-15-intel]'):]
             self.assertEqual(re.search(r'(?m)^    timeout-minutes: (\d+)$',job).group(1),'25',name)
-        for name in ['ux-shot.yml','ux-boards.yml']:
-            self.assertNotIn('CM_MAC_RUNNER',(ROOT/'.github/workflows'/name).read_text(),name)
+        for name in ['ux-shot.yml']:
+            gui=(ROOT/'.github/workflows'/name).read_text()
+            self.assertIn('vars.CM_MAC_GUI_RUNNER',gui,name) # Event matrix above evaluates the actual selector.
+            self.assertIn('python3 scripts/gui_session.py',gui,name)
+            self.assertNotIn('cancel-in-progress: true',gui,name)
+            self.assertNotIn('concurrency:',gui,name) # One runner queues all GUI jobs without dropping pending work.
+            self.assertNotIn('CM_MAC_RUNNER',gui,name)
+
+        boards=(ROOT/'.github/workflows/ux-boards.yml').read_text()
+        self.assertNotIn('CM_MAC_GUI_RUNNER',boards)
+        self.assertIn('runs-on: macos-15',boards)
         body=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  bundle:',1)[1]
         self.assertIn('runs-on: macos-15',body)
         producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
@@ -373,12 +399,31 @@ class RentedRunnerRouting(unittest.TestCase):
             self.assertNotIn('sudo xcode-select',body)
         keys=[line for line in producer.splitlines() if any(marker in line for marker in
             ['key: swiftpm-','restore-keys: swiftpm-','key: pinned-fetches-','restore-keys: pinned-fetches-'])]
-        self.assertEqual(len(keys),4)
+        self.assertEqual(len(keys),3)
         for line in keys:self.assertIn('steps.xcode.outputs.fingerprint',line)
         for line in keys:
             if 'swiftpm-' in line:self.assertIn('steps.xcode.outputs.workspace',line)
             else:self.assertNotIn('steps.xcode.outputs.workspace',line)
         self.assertIn('scripts/ci-test-xcode.py',ci_job('changes'))
+
+
+class CompiledCacheCoherence(unittest.TestCase):
+    def test_changed_inputs_cannot_restore_partial_compiled_objects(self):
+        body=(ROOT/'.github/workflows/ci-build.yml').read_text()
+        cache=body.split('path: .build\n',1)[1].split('      - name:',1)[0]
+        self.assertNotIn('restore-keys:',cache,"Cross-input restoration can retain an incompatible native client")
+        key=re.search(r'(?m)^\s+key: (.+)$',cache).group(1)
+        self.assertIn('steps.swiftpm_key.outputs.hash',key)
+        self.assertIn('matrix.arch',key)
+        self.assertIn('steps.xcode.outputs.fingerprint',key)
+        self.assertIn('steps.xcode.outputs.workspace',key)
+        self.assertNotIn('key: swiftpm-${{ matrix.arch }}',cache,"Invalidate already-saved incoherent objects")
+        inputs=body.split('- id: swiftpm_key',1)[1].split('- uses:',1)[0]
+        package=(ROOT/'Package.swift').read_text()
+        custom_roots={p.split('/',1)[0]+'/**' for p in re.findall(r'path:\s*"([^"]+)"',package)}
+        self.assertTrue(custom_roots,"Exercise the package's custom target roots")
+        for pattern in ('Package.swift','Package.resolved','Sources/**','Tests/**',*sorted(custom_roots)):
+            self.assertIn(pattern,inputs)
 
 
 class ProductArchitecture(unittest.TestCase):

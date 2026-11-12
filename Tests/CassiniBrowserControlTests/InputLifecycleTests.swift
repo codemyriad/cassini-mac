@@ -48,6 +48,25 @@ import CassiniKit
     func stop() { stops += 1; sink = nil; onStop?() }
 }
 final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
+    @MainActor func testSelectionKeepsSubmillisecondRecordingTimeInsteadOfTheDisplayCounter() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("Selection-clock-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Selection clock",microphone:true,browser:false)
+        let origin = mach_absolute_time()
+        let now = origin + AVAudioTime.hostTime(forSeconds:2.49075)
+        let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
+        inputs.hostTime = { now }
+        try await inputs.start()
+        try await inputs.select(me:false,others:true)
+        let event = try XCTUnwrap(owner.snapshot.manifest.events?.last(where:{ $0.type == "selection" }))
+        let expected = AVAudioTime.seconds(forHostTime:now-origin)*1000
+        let at = try XCTUnwrap(event.atMs)
+        XCTAssertEqual(at,expected,accuracy:0.000001)
+        XCTAssertGreaterThan(at,2490.663,"the 2490.663ms request must not be backdated to the display's 2490ms")
+        XCTAssertEqual(event.me,false); XCTAssertEqual(event.others,true)
+        try await inputs.stop(); try await owner.finish()
+    }
     @MainActor func testSignalStopBetweenEligibilityCheckAndDriverStartIsAtomic() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("D74-open-"+UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }

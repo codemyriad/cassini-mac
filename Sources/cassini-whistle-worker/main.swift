@@ -56,6 +56,15 @@ do {
     SegmentedAudio.removeAbandonedScratch()
     let assets = try WhistleAssets.forWorker(arguments: Array(CommandLine.arguments.dropFirst()))
     let engine = try WhistleEngine(assets: assets)
+    #if DEBUG
+    // Private inherited-FD event: initialization finished, before any input or
+    // stdout write. Fatal-input tests must retain their first-message coverage.
+    if let value = ProcessInfo.processInfo.environment["CASSINI_TEST_ENGINE_READY_FD"],
+       let fd = Int32(value), fd >= 3 {
+        defer { close(fd) }
+        try WhistleIO.write(Data([1]), to:fd)
+    }
+    #endif
     var vadAssets: VADAssets?
     let lines = WhistleLineReader(fd: STDIN_FILENO)
     while let line = try lines.next() {
