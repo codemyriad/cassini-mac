@@ -130,7 +130,11 @@ python3 scripts/install-daily-test-release.py \
 - The helper refuses a path outside `/Volumes/<volume>`, a volume that is not mounted (it never writes to a stale
   mount point), a symlinked folder, or less than 25 GiB free there. It makes one private folder per build and
   removes it afterwards, whatever the outcome.
-- Products, logs and notary files stay in the scheduler's folder on the internal disk, which then needs 5 GiB free.
+- Products, logs and notary files stay in the scheduler's folder on the internal disk, which then needs 13 GiB free
+  (10 GiB host reserve plus 3 GiB) instead of 25. `release.py` passes each phase's disks to
+  `release-resources.py`: 25 GiB where DerivedData goes, 13 GiB where the products go.
+- When the build ends, in any way, the helper stops every process left in the build's own process group before it
+  removes the folder.
 - Setting only one of the two options fails the job before a build number is used.
 
 To change an installed agent, wait for its current job, `launchctl bootout gui/$(id -u)/io.codemyriad.cassini.daily-test-release`,

@@ -4,6 +4,7 @@
 from datetime import datetime,timedelta,timezone
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -788,6 +789,80 @@ class ExternalDerivedData(unittest.TestCase):
         self.assertEqual(external.build(str(root),[sys.executable,'-c',script,str(record)],timeout=0,free=lambda _:30*1024**3),124)
         self.assertEqual(list(root.iterdir()),[])
 
+    def ended(self,pid):
+        # Gone, or ended and waiting to be collected by launchd: either way it runs no more.
+        state=subprocess.run(['ps','-o','stat=','-p',str(pid)],capture_output=True,text=True).stdout.strip()
+        return state=='' or state.startswith('Z')
+
+    def test_a_descendant_that_ignores_the_stop_is_gone_before_the_folder_is_removed(self):
+        volumes=self.volumes();root=volumes/'Disk/builds'
+        ready=volumes/'ready';os.mkfifo(ready)
+        # The build starts a descendant that ignores SIGTERM and then says it is ready through a FIFO; the build
+        # itself exits on SIGTERM. The helper is let go only once the descendant is ready, with its limit at zero.
+        descendant=('import os,signal,sys; signal.signal(signal.SIGTERM,signal.SIG_IGN); '
+                    'f=open(sys.argv[1],"w"); f.write(str(os.getpid())+" "+sys.argv[2]); f.close(); '
+                    '[signal.pause() for _ in iter(int,1)]')
+        leader=('import signal,subprocess,sys; d=sys.argv[sys.argv.index("--derived-data")+1]; '
+                'subprocess.Popen([sys.executable,"-c",sys.argv[2],sys.argv[1],d]); signal.pause()')
+        seen={}
+        def started(process):
+            with open(ready) as stream:pid,derived=stream.read().split(' ',1)
+            seen.update(pid=int(pid),derived=Path(derived),existed=Path(derived).is_dir(),group=os.getpgid(int(pid)),leader=process.pid)
+        code=external.build(str(root),[sys.executable,'-c',leader,str(ready),descendant],timeout=0,grace=0,
+                            free=lambda _:30*1024**3,started=started)
+        self.assertEqual(code,124)
+        self.assertTrue(seen['existed']);self.assertEqual(seen['group'],seen['leader'],'the descendant is in the build\'s own group')
+        self.assertTrue(self.ended(seen['pid']))
+        self.assertFalse(seen['derived'].exists())
+        self.assertEqual(list(root.iterdir()),[])
+
+    def test_a_descendant_left_by_a_build_that_exited_is_stopped_too(self):
+        volumes=self.volumes();root=volumes/'Disk/builds'
+        ready=volumes/'ready';os.mkfifo(ready)
+        descendant=('import os,signal,sys; signal.signal(signal.SIGTERM,signal.SIG_IGN); '
+                    'f=open(sys.argv[1],"w"); f.write(str(os.getpid())); f.close(); [signal.pause() for _ in iter(int,1)]')
+        # The build waits until its descendant is ready (it reads the FIFO), then exits with 0 and leaves it.
+        leader=('import subprocess,sys; subprocess.Popen([sys.executable,"-c",sys.argv[2],sys.argv[1]]); '
+                'open(sys.argv[3],"w").write(open(sys.argv[1]).read())')
+        record=volumes/'pid'
+        self.assertEqual(external.build(str(root),[sys.executable,'-c',leader,str(ready),descendant,str(record)],grace=0,free=lambda _:30*1024**3),0)
+        self.assertTrue(self.ended(int(record.read_text())))
+        self.assertEqual(list(root.iterdir()),[])
+
+    def test_each_build_phase_checks_the_disk_its_files_go_to(self):
+        release=load('release_storage','release.py')
+        gib=1024**3;pressure='System-wide memory free percentage: 40%'
+        with tempfile.TemporaryDirectory() as directory:
+            internal=Path(directory)/'job/release';external_derived=Path(directory)/'volume/derived-x'
+            internal.mkdir(parents=True);(Path(directory)/'volume').mkdir()
+            # One disk: the single 25 GiB check, as before.
+            with patch.object(release,'same_disk',return_value=True):
+                reserves,command=resources.storage([*map(str,release.build_reserves(internal.parent/'DerivedData',internal)),'xcodebuild','build'])
+            self.assertEqual((reserves,command),([(15,internal.parent/'DerivedData')],['xcodebuild','build']))
+            # Two disks: 25 GiB where DerivedData goes, 13 GiB where the products go. The command is the one
+            # release.py passes to release-resources.py, parsed and admitted by that script's own functions.
+            with patch.object(release,'same_disk',return_value=False):
+                arguments=[*map(str,release.build_reserves(external_derived,internal)),'xcodebuild','build']
+            reserves,command=resources.storage(arguments)
+            self.assertEqual(reserves,[(15,external_derived),(3,internal)])
+            def disks(external_free,internal_free):
+                # The folder for DerivedData does not exist yet: its parent's disk is the one measured.
+                return lambda path:{Path(directory)/'volume':external_free,internal:internal_free}[path]
+            resources.admit_all(reserves,pressure,disks(25*gib,13*gib))
+            for external_free,internal_free in [(25*gib-1,40*gib),(40*gib,13*gib-1)]:
+                with self.subTest(external=external_free,internal=internal_free),self.assertRaises(ValueError):
+                    resources.admit_all(reserves,pressure,disks(external_free,internal_free))
+            # The internal disk at 14 GiB, far below the old 25: admitted when DerivedData is elsewhere.
+            resources.admit_all(reserves,pressure,disks(60*gib,14*gib))
+            with self.assertRaises(ValueError):resources.admit_all([(15,internal)],pressure,disks(60*gib,14*gib))
+        self.assertEqual(resources.storage(['3','hdiutil','create']),([(3,ROOT)],['hdiutil','create']))
+        for bad in [['--reserve','3'],['--reserve','3','/tmp'],['15']]:
+            with self.subTest(bad=bad),self.assertRaises(ValueError):resources.storage(bad)
+        source=(ROOT/'scripts/release.py').read_text()
+        self.assertEqual(source.count("release-resources.py', *build_reserves(derived,output)"),1)
+        self.assertEqual(source.count("release-resources.py','--reserve','3',output,"),1,'the disk-image phase checks the products\' disk')
+        self.assertTrue(release.same_disk(ROOT,ROOT/'does/not/exist/yet'))
+
     def test_the_scheduler_needs_both_settings_and_checks_them(self):
         with tempfile.TemporaryDirectory() as directory:
             runner=Path(directory)/'guirun';runner.write_text('#!/bin/sh\n');runner.chmod(0o700)
@@ -815,8 +890,8 @@ class ExternalDerivedData(unittest.TestCase):
             runner=Path(directory)/'guirun';runner.write_text('#!/bin/sh\n');runner.chmod(0o700)
             root='/Volumes/Disk/cassini-mac-test-releases'
             environment=dict(CASSINI_MAC_TEST_RELEASE_DERIVED_ROOT=root,CASSINI_MAC_TEST_RELEASE_AQUA=str(runner))
-            small=type('Disk',(),{'free':6*1024**3})()
-            # 6 GiB on the internal disk: not enough for a build that keeps DerivedData there, enough for one that does not.
+            small=type('Disk',(),{'free':14*1024**3})()
+            # 14 GiB on the internal disk: not enough for a build that keeps DerivedData there, enough for one that does not.
             with patch.object(daily.shutil,'disk_usage',return_value=small):
                 with patch.dict(daily.os.environ,environment),self.assertRaises(SystemExit):daily.tick(instant)
             build.assert_called_once()
@@ -829,7 +904,7 @@ class ExternalDerivedData(unittest.TestCase):
             self.assertTrue(Path(command[command.index('--output')+1]).is_relative_to(base),'products stay beside the job')
         with tempfile.TemporaryDirectory() as directory:
             base,_,build=execution.context(directory)
-            with patch.object(daily.shutil,'disk_usage',return_value=type('Disk',(),{'free':5*1024**3-1})()), \
+            with patch.object(daily.shutil,'disk_usage',return_value=type('Disk',(),{'free':13*1024**3-1})()), \
                  patch.dict(daily.os.environ,dict(CASSINI_MAC_TEST_RELEASE_DERIVED_ROOT='/Volumes/Disk/builds',CASSINI_MAC_TEST_RELEASE_AQUA=str(Path(sys.executable)))), \
                  self.assertRaises(SystemExit):daily.tick(instant)
             build.assert_not_called()

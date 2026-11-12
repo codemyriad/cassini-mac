@@ -243,8 +243,9 @@ def publish(tag,version,build,sha,output,release_notes):
     command(['gh','release','edit',tag,'-R',REPO,'--draft=false','--prerelease','--latest=false'])
 
 
-# With DerivedData on the external volume the internal disk holds only the job's products, logs and notary files.
-EXTERNAL_INTERNAL_RESERVE=5*1024**3
+# With DerivedData on the external volume the internal disk holds only the job's products, logs and notary files:
+# the 13 GiB (10 GiB host reserve + 3 GiB) that release.py's own checks then ask of the products' disk.
+EXTERNAL_INTERNAL_RESERVE=13*1024**3
 
 
 def external_build():
@@ -451,7 +452,7 @@ def tick(now):
         if external is None and shutil.disk_usage(BASE).free < 25*1024**3:
             raise ValueError('At least25GiB free required before a signed test build')
         if external is not None and shutil.disk_usage(BASE).free < EXTERNAL_INTERNAL_RESERVE:
-            raise ValueError('At least5GiB free required for the products of a signed test build')
+            raise ValueError('At least13GiB free required for the products of a signed test build')
         build=next_build(version,initial,releases,state)
         state.update(build=build,head=head,phase='building');atomic(state_file,state)
         stage='release notes'
