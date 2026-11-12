@@ -875,16 +875,20 @@ class ReleaseArchitecture(unittest.TestCase):
 
 
 class Concurrency(unittest.TestCase):
-    """D66 mac-P1-1: only a pull request's own newer run cancels it; every other run (push,
-    nightly, manual) has a group of its own, so GitHub never cancels or replaces it while pending."""
+    """D66 mac-P1-1: only a pull request's own newer code-push run cancels an older push run;
+    labeled runs use a separate non-cancelling group so opened/synchronize + labeled on the same
+    head never leave CANCELLED jobs (UNSTABLE check rollup); push, nightly and manual runs each
+    have a group of their own so GitHub never cancels or replaces them while pending."""
     def test_only_pull_requests_share_a_cancellable_group(self):
         body = (ROOT/'.github/workflows/ci.yml').read_text()
         group = re.search(r'^concurrency:\n  group: (.+)\n  cancel-in-progress: (.+)$', body, re.M)
         self.assertIsNotNone(group)
-        self.assertIn("github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number)", group.group(1))
+        self.assertIn("github.event_name == 'pull_request'", group.group(1))
+        self.assertIn("format('pr-{0}', github.event.pull_request.number)", group.group(1))
+        self.assertIn("github.event.action == 'labeled' && format('pr-{0}-label-{1}', github.event.pull_request.number, github.run_id)", group.group(1))
         self.assertIn("format('run-{0}', github.run_id)", group.group(1), 'non-PR runs need a unique group, not the commit')
         self.assertNotIn('github.sha', group.group(1))
-        self.assertEqual(group.group(2).strip(), "${{ github.event_name == 'pull_request' }}")
+        self.assertEqual(group.group(2).strip(), "${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}")
 class ProductDownloads(unittest.TestCase):
     """D66 mac-P0-4: the products action downloads strictly and retries an incomplete product
     once; its shell steps run here with a stub python3 standing in for ci-products.py."""
@@ -1033,73 +1037,126 @@ class PullRequestFourJobBudget(unittest.TestCase):
         return []
 
     @staticmethod
-    def eval_job_if(expr, outputs, build_ok=True, release_result='success', changes_ok=True, boards_result='skipped', event='pull_request', job_needs=()):
+    def eval_job_if(
+        expr,
+        outputs,
+        build_result='success',
+        release_result='success',
+        changes_result='success',
+        boards_result='skipped',
+        event='pull_request',
+        action='synchronize',
+        added_label='',
+        ancestors_ok=True,
+    ):
         results = {
-            'changes': 'success' if changes_ok else 'failure',
-            'build': 'success' if build_ok else 'failure',
+            'changes': changes_result,
+            'build': build_result,
             'build_release': release_result,
             'boards': boards_result,
         }
         if expr is None:
-            return all(results[dep] == 'success' for dep in job_needs)
-        has_always = 'always()' in expr
-        if not has_always and any(results[dep] != 'success' for dep in job_needs):
+            return ancestors_ok
+        has_status_fn = any(fn in expr for fn in ('always()', 'cancelled()', 'failure()', 'success()'))
+        if not has_status_fn and not ancestors_ok:
             return False
         py = expr.strip().removeprefix('${{').removesuffix('}}').strip()
         py = py.replace('!cancelled()', 'True').replace('always()', 'True')
+        py = py.replace('cancelled()', 'False').replace('failure()', 'False').replace('success()', str(ancestors_ok))
         py = py.replace('&&', ' and ').replace('||', ' or ').replace('!=', ' != ')
         needs = SimpleNamespace(
             changes=SimpleNamespace(
                 result=results['changes'],
-                outputs=SimpleNamespace(**{k: str(v).lower() for k, v in outputs.items()}),
+                outputs=SimpleNamespace(**{k: str(v).lower() if changes_result == 'success' else '' for k, v in outputs.items()}),
             ),
             build=SimpleNamespace(result=results['build']),
             build_release=SimpleNamespace(result=results['build_release']),
             boards=SimpleNamespace(result=results['boards']),
         )
-        github = SimpleNamespace(event_name=event)
-        return bool(eval(py, {'__builtins__': {}}, {'needs': needs, 'github': github}))
+        event_ns = SimpleNamespace(action=action, label=SimpleNamespace(name=added_label)) if event == 'pull_request' else SimpleNamespace(action='', label=SimpleNamespace(name=''))
+        github = SimpleNamespace(event_name=event, event=event_ns)
+        ctx = {
+            'needs': needs,
+            'github': github,
+            'True': True,
+            'False': False,
+            'fromJSON': json.loads,
+            'contains': lambda values, name: str(name).casefold() in [str(v).casefold() for v in values],
+        }
+        return bool(eval(py, {'__builtins__': {}}, ctx))
 
-    def active_ci_jobs(self, event, changed, labels=(), release_failed=False, include_ubuntu=False, boards_failed=False):
+    def active_ci_jobs(
+        self,
+        event,
+        changed,
+        labels=(),
+        release_failed=False,
+        include_ubuntu=False,
+        boards_failed=False,
+        action='synchronize',
+        added_label='',
+    ):
         selected = {
             **changes.select(event, 'base', PATHS, changed, labels=labels),
             **changes.execution_tier(event, labels),
         }
         ci = (ROOT/'.github/workflows/ci.yml').read_text()
         jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)', ci.split('\njobs:\n', 1)[1], re.M | re.S))
-        release_result = 'skipped'
-        boards_result = 'skipped'
+        needs_map = {name: self.parse_needs(body) for name, body in jobs.items()}
+
+        def transitive_ancestors(job):
+            seen = set()
+            stack = list(needs_map[job])
+            while stack:
+                dep = stack.pop()
+                if dep not in seen:
+                    seen.add(dep)
+                    stack.extend(needs_map[dep])
+            return seen
+
+        job_results = {}
         active = []
         for name, body in jobs.items():
-            if name == 'changes':
-                continue
             is_ubuntu = 'runs-on: ubuntu-latest' in body
-            job_needs = self.parse_needs(body)
             cond_match = re.search(r'^    if: (.+)$', body, re.M)
             cond = cond_match.group(1) if cond_match else None
-            if name == 'build':
-                if self.eval_job_if(cond, selected, event=event, job_needs=job_needs):
-                    active.append('build:arm64')
-                    if selected['full_ci']:
-                        active.append('build:x86_64')
-                continue
-            if name == 'build_release':
-                if self.eval_job_if(cond, selected, event=event, job_needs=job_needs):
-                    release_result = 'failure' if release_failed else 'success'
-                    active.append('build_release')
-                continue
-            if self.eval_job_if(
+            anc_ok = all(job_results[anc] == 'success' for anc in transitive_ancestors(name))
+            ok = self.eval_job_if(
                 cond,
                 selected,
-                release_result=release_result,
-                boards_result=boards_result,
+                build_result=job_results.get('build', 'skipped'),
+                release_result=job_results.get('build_release', 'skipped'),
+                changes_result=job_results.get('changes', 'skipped'),
+                boards_result=job_results.get('boards', 'skipped'),
                 event=event,
-                job_needs=job_needs,
-            ):
-                if name == 'boards':
-                    boards_result = 'failure' if boards_failed else 'success'
-                if include_ubuntu or not is_ubuntu:
-                    active.append(name)
+                action=action if event == 'pull_request' else '',
+                added_label=added_label,
+                ancestors_ok=anc_ok,
+            )
+            if not ok:
+                job_results[name] = 'skipped'
+                continue
+            if name == 'changes':
+                job_results[name] = 'success'
+                if include_ubuntu:
+                    active.append('changes')
+                continue
+            if name == 'build':
+                job_results[name] = 'success'
+                active.append('build:arm64')
+                if selected['full_ci']:
+                    active.append('build:x86_64')
+                continue
+            if name == 'build_release':
+                job_results[name] = 'failure' if release_failed else 'success'
+                active.append('build_release')
+                continue
+            if name == 'boards':
+                job_results[name] = 'failure' if boards_failed else 'success'
+            else:
+                job_results[name] = 'success'
+            if include_ubuntu or not is_ubuntu:
+                active.append(name)
         return active
 
     def test_caller_dependency_graph_decouples_boards_from_release_and_gates_spectrogram(self):
@@ -1371,6 +1428,136 @@ class PullRequestFourJobBudget(unittest.TestCase):
         ]:
             with self.subTest(smoke_marker=marker):
                 self.assertIn(marker, smoke)
+
+    def test_perf_gate_is_wired_only_for_nightly_dispatch_and_full_ci(self):
+        ci_text = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertIn(
+            "CASSINI_PERF_GATE: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && '1' || '' }}",
+            ci_text.split('\njobs:\n', 1)[0],
+        )
+        kit = ci_job('kit')
+        self.assertNotIn('--test-skip-pattern', kit)
+        self.assertIn(
+            'run: node --test browser-protocol/extension/tests/*.test.cjs BrowserExtension/tests/tone-window.test.cjs',
+            kit,
+        )
+        synthetic = (ROOT / 'BrowserExtension/tests/synthetic-capture.mjs').read_text()
+        self.assertNotIn('CASSINI_PERF_GATE', synthetic)
+        self.assertIn('assert.ok(clockError < 400,', synthetic)
+
+    def test_labeled_events_isolate_concurrency_and_preserve_complete_job_dag(self):
+        ci_header = (ROOT / '.github/workflows/ci.yml').read_text().split('\njobs:\n', 1)[0]
+        group_expr = re.search(r'^  group: (.+)$', ci_header, re.M).group(1)
+        cancel_expr = re.search(r'^  cancel-in-progress: (.+)$', ci_header, re.M).group(1)
+        changes_job = ci_job('changes')
+        self.assertIn(
+            'if: ${{ github.event_name != \'pull_request\' || github.event.action != \'labeled\' || contains(fromJSON(\'["ui-shots","full-ci"]\'), github.event.label.name) }}',
+            changes_job,
+        )
+        self.assertNotIn('skip_duplicate', (ROOT / '.github/workflows/ci.yml').read_text())
+
+        def eval_header(raw, event='pull_request', action='synchronize', pr_number=268, run_id=100):
+            def render_expr(m):
+                expr = m.group(1).strip()
+                py = expr.replace('&&', ' and ').replace('||', ' or ').replace('!=', ' != ')
+                github = SimpleNamespace(
+                    event_name=event,
+                    run_id=run_id,
+                    event=SimpleNamespace(action=action, pull_request=SimpleNamespace(number=pr_number)),
+                )
+                val = eval(py, {'__builtins__': {}, 'format': lambda t, *a: t.format(*a)}, {'github': github})
+                return str(val)
+
+            if raw.startswith('${{') and raw.endswith('}}'):
+                expr = raw.removeprefix('${{').removesuffix('}}').strip()
+                py = expr.replace('&&', ' and ').replace('||', ' or ').replace('!=', ' != ')
+                github = SimpleNamespace(event_name=event, event=SimpleNamespace(action=action))
+                return bool(eval(py, {'__builtins__': {}}, {'github': github}))
+            return re.sub(r'\$\{\{(.*?)\}\}', render_expr, raw)
+
+        # Concurrency: push/opened/synchronize cancel older PR push runs, while labeled runs use
+        # distinct non-cancelling groups so same-head synchronize + labeled never leave CANCELLED checks.
+        self.assertEqual(eval_header(group_expr, 'pull_request', 'opened', 268, 10), 'ci-pr-268')
+        self.assertEqual(eval_header(group_expr, 'pull_request', 'synchronize', 268, 11), 'ci-pr-268')
+        self.assertEqual(eval_header(group_expr, 'pull_request', 'labeled', 268, 12), 'ci-pr-268-label-12')
+        self.assertEqual(eval_header(group_expr, 'pull_request', 'labeled', 268, 13), 'ci-pr-268-label-13')
+        self.assertEqual(eval_header(group_expr, 'push', '', 0, 99), 'ci-run-99')
+        self.assertEqual(eval_header(group_expr, 'schedule', '', 0, 100), 'ci-run-100')
+        self.assertTrue(eval_header(cancel_expr, 'pull_request', 'opened'))
+        self.assertTrue(eval_header(cancel_expr, 'pull_request', 'synchronize'))
+        self.assertFalse(eval_header(cancel_expr, 'pull_request', 'labeled'))
+        self.assertFalse(eval_header(cancel_expr, 'push', ''))
+        self.assertFalse(eval_header(cancel_expr, 'schedule', ''))
+        self.assertFalse(eval_header(cancel_expr, 'workflow_dispatch', ''))
+
+        # Full DAG contract: unlabeled PR, ui-shots labeled PR, full-ci labeled PR, push, schedule, and
+        # workflow_dispatch each run every job they ran before this PR, while unrelated labels skip all jobs.
+        self.assertEqual(
+            self.active_ci_jobs('pull_request', ['Sources/CassiniKit/Reader.swift'], action='opened', include_ubuntu=True),
+            ['changes', 'build:arm64', 'kit', 'ux_workers', 'ux_app'],
+        )
+        self.assertEqual(
+            self.active_ci_jobs('pull_request', ['Sources/CassiniKit/Reader.swift'], action='synchronize', include_ubuntu=True),
+            ['changes', 'build:arm64', 'kit', 'ux_workers', 'ux_app'],
+        )
+        self.assertEqual(
+            self.active_ci_jobs(
+                'pull_request', ['README.md'], labels=('ui-shots',), action='labeled', added_label='ui-shots', include_ubuntu=True,
+            ),
+            ['changes', 'build:arm64', 'kit', 'ux_workers', 'ux_app', 'boards', 'shots_diff'],
+        )
+        self.assertEqual(
+            self.active_ci_jobs(
+                'pull_request', ['README.md'], labels=('UI-SHOTS',), action='labeled', added_label='UI-SHOTS', include_ubuntu=True,
+            ),
+            ['changes', 'build:arm64', 'kit', 'ux_workers', 'ux_app', 'boards', 'shots_diff'],
+        )
+        expected_full_pr = [
+            'changes', 'build:arm64', 'build:x86_64', 'build_release', 'kit',
+            'native_sink', 'shot', 'boards', 'shots_diff', 'spectrogram', 'whistle', 'package_tests', 'parakeet', 'browser_setup',
+        ]
+        self.assertEqual(
+            self.active_ci_jobs(
+                'pull_request', ['README.md'], labels=('full-ci',), action='labeled', added_label='full-ci', include_ubuntu=True,
+            ),
+            expected_full_pr,
+        )
+        for unrelated in ('bug', 'docs', 'dependencies'):
+            with self.subTest(unrelated=unrelated):
+                self.assertEqual(
+                    self.active_ci_jobs(
+                        'pull_request',
+                        ['Sources/CassiniKit/Reader.swift'],
+                        labels=(unrelated,),
+                        action='labeled',
+                        added_label=unrelated,
+                        include_ubuntu=True,
+                    ),
+                    [],
+                )
+        self.assertEqual(
+            self.active_ci_jobs('push', ['README.md'], include_ubuntu=True),
+            ['changes', 'build:arm64', 'build_release', 'kit', 'ux_workers', 'ux_app'],
+        )
+        expected_nightly = [
+            'changes', 'build:arm64', 'build:x86_64', 'build_release', 'kit',
+            'native_sink', 'shot', 'boards', 'spectrogram', 'whistle', 'package_tests', 'parakeet', 'browser_setup',
+        ]
+        for event in ('schedule', 'workflow_dispatch'):
+            with self.subTest(event=event):
+                self.assertEqual(self.active_ci_jobs(event, ['README.md'], include_ubuntu=True), expected_nightly)
+
+        # Prove eval_job_if models transitive skipped-ancestor propagation for implicit-success jobs (`kit`, or any `if:` without a status function).
+        self.assertFalse(self.eval_job_if(None, {}, build_result='success', changes_result='skipped', ancestors_ok=False))
+        self.assertFalse(
+            self.eval_job_if(
+                "${{ github.event_name == 'pull_request' && needs.boards.result == 'success' }}",
+                {},
+                boards_result='success',
+                changes_result='skipped',
+                ancestors_ok=False,
+            )
+        )
 
 
 if __name__ == '__main__': unittest.main()
