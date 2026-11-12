@@ -11,10 +11,29 @@ public struct MeetingIssue: Codable, Equatable, Sendable {
     public init(id: String, action: String? = nil) { self.id = id; self.action = action }
 }
 public struct MeetingBadge: Codable, Equatable, Sendable {
+    public enum VisualKind: String, Sendable, CaseIterable {
+        case recording, importing, saving, transcribing, attention, interrupted, received
+    }
     public var kind: String
     public var text: String
     public var tint: String
     public var dot: Bool?
+    public init(kind: String, text: String, tint: String, dot: Bool? = nil) {
+        self.kind = kind; self.text = text; self.tint = tint; self.dot = dot
+    }
+    /// Canvas Badge-Mac visual role (L-26), mapped from `kind` rather than legacy `tint`.
+    public var visualKind: VisualKind? {
+        switch kind {
+        case "recording": return .recording
+        case "importing": return .importing
+        case "saving": return .saving
+        case "transcribing": return .transcribing
+        case "needsAttention": return .attention
+        case "interrupted": return .interrupted
+        case "received": return .received
+        default: return nil
+        }
+    }
 }
 /// HARMONY §3. This is derived state, not a second recording manifest.
 public struct MeetingState: Codable, Equatable, Sendable {

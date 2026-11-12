@@ -78,8 +78,28 @@ private enum Golden {
     @Test(arguments: Golden.states) func stateVector(data: Data) throws {
         struct Vector: Decodable { var id: String; var fields: MeetingState; var badge: MeetingBadge?; var canWriteDown: Bool? }
         let vector = try JSONDecoder().decode(Vector.self, from: data)
-        #expect(vector.fields.badge == vector.badge, "\(vector.id)")
+        let derived = vector.fields.badge
+        #expect(derived == vector.badge, "\(vector.id)")
+        if let derived {
+            #expect(derived.visualKind != nil, "Every state vector badge must map to a visual kind: \(vector.id)")
+        }
         if let expected = vector.canWriteDown { #expect(vector.fields.canWriteDown == expected, "\(vector.id)") }
+    }
+    @Test func badgeVisualKindMapsAllSevenCanvasRolesFromKindNotTint() {
+        let pairs: [(String, MeetingBadge.VisualKind?)] = [
+            ("recording", .recording),
+            ("importing", .importing),
+            ("saving", .saving),
+            ("transcribing", .transcribing),
+            ("needsAttention", .attention),
+            ("interrupted", .interrupted),
+            ("received", .received),
+            ("unknown", nil),
+        ]
+        for (kind, expected) in pairs {
+            let badge = MeetingBadge(kind: kind, text: "Label", tint: "legacy-ignored")
+            #expect(badge.visualKind == expected, "\(kind)")
+        }
     }
     @Test func timeZoneUsesCalendarDaysAcrossDSTAndIgnoresTheProcessLocale() throws {
         let zone = try #require(TimeZone(identifier: "America/New_York"))

@@ -37,6 +37,9 @@ targets:
           - "Info.plist"
           - "Cassini.entitlements"
           - "Resources"
+      - path: Components/StatusBadge
+        excludes:
+          - "README.md"
       - path: Cassini/Assets.xcassets
         buildPhase: resources
       - path: COPYING

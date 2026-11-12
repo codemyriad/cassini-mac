@@ -361,7 +361,7 @@ struct LibraryView: View {
                 if let start = meeting.meetingTime { Text(store.format.rowTime(start)).font(.system(size: 11.5)).foregroundStyle(dim).monospacedDigit() }
             }
             HStack(spacing: 6) {
-                if let badge = meeting.state.badge { badgePill(badge, selected: selected) }
+                if let badge = meeting.state.badge { statusBadge(badge) }
                 if let meta = rowMeta(meeting) { Text(meta).foregroundStyle(dim).lineLimit(1) }
             }.font(.system(size: 11.5))
             if let line = rowSecondLine(meeting) { line.font(.system(size: 11.5)).foregroundStyle(dim).lineLimit(1) }
@@ -385,15 +385,10 @@ struct LibraryView: View {
         default: return meeting.quote.map { Text("“") + Text(MeetingPresentation.pullQuote($0)) + Text("”") }
         }
     }
-    private func badgePill(_ badge: MeetingBadge, selected: Bool) -> some View {
-        let tint = CassiniTheme.badgeInk(badge.tint)
-        let wash = CassiniTheme.badgeWash(badge.tint)
-        return HStack(spacing: 4) {
-            if badge.dot == true { Circle().fill(selected ? CassiniTheme.onAccent : tint).frame(width: 5, height: 5) }
-            Text(badge.text).fontWeight(.semibold)
-        }.padding(.horizontal, 7).padding(.vertical, 1)
-            .foregroundStyle(selected ? CassiniTheme.onAccent : tint)
-            .background((selected ? CassiniTheme.onAccent.opacity(0.22) : wash), in: Capsule())
+    private func statusBadge(_ badge: MeetingBadge) -> some View {
+        let kind = badge.visualKind.flatMap { StatusBadgeKind(rawValue: $0.rawValue) } ?? .saving
+        return MeetingStatusBadge(kind: kind, label: badge.text, isAnimating: !store.context.screenshot && scenePhase == .active)
+            .accessibilityAddTraits(.isStaticText)
     }
     private func preview(_ meeting: LibraryMeeting) -> some View {
         ScrollView {
@@ -401,14 +396,13 @@ struct LibraryView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size: 22, weight: .bold)).accessibilityAddTraits(.isHeader)
                     Text(store.format.previewSubtitle(meeting.meetingTime,durationMs:meeting.durationMs,received:meeting.state.origin == .received)).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("preview-subtitle")
+                    if let badge = meeting.state.badge {
+                        statusBadge(badge)
+                            .padding(.top, 2)
+                            .accessibilityIdentifier(badge.visualKind == .transcribing ? "preview-transcribing" : "preview-status-badge")
+                    }
                 }
                 if let line = RecordingOverview.libraryDiskLine { Text(line).foregroundStyle(CassiniTheme.warningNotice) }
-                if meeting.state.transcript == .queued || meeting.state.transcript == .running {
-                    HStack(spacing:8) {
-                        ProgressView().controlSize(.small)
-                        if let badge = meeting.state.badge { Text(badge.text).foregroundStyle(CassiniTheme.ink2) }
-                    }.accessibilityIdentifier("preview-transcribing")
-                }
                 if meeting.state.transcript == .failed { InlineMeetingLine(id: "errors.transcribeFailed.line", actionID: "common.tryAgain", action: { TranscriptionQueue.shared.enqueue(meeting, retry: true) }).disabled(LibraryMoveCoordinator.shared.busy) }
                 if meeting.state.transcript == .damaged { InlineMeetingLine(id: "errors.transcriptDamaged.line", action: nil) }
                 if let folder = meeting.received?.originalFolderName {
