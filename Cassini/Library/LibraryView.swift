@@ -578,7 +578,6 @@ private final class LibraryToolbarActionView: NSView {
     }
     private let button = ActionButton()
     private var action: (() -> Void)?, makeMenu: (() -> NSMenu)?
-    private var currentStyle: LibraryToolbarAction.Style = .bordered
     private var size = NSSize(width:28,height:34)
     override init(frame: NSRect) {
         super.init(frame:frame)
@@ -590,16 +589,8 @@ private final class LibraryToolbarActionView: NSView {
     required init?(coder: NSCoder) { nil }
     override var intrinsicContentSize: NSSize { size }
     override func layout() { super.layout(); button.frame = bounds }
-    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); applyLayerFill() }
-    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); applyLayerFill() }
-    private func applyLayerFill() {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            let fill: NSColor = currentStyle == .stop ? CassiniTheme.nsRecord : [.record,.capsule].contains(currentStyle) ? CassiniTheme.nsChipFill : .clear
-            button.layer?.backgroundColor = fill.cgColor
-        }
-    }
     func update(_ value: LibraryToolbarAction) {
-        action = value.action; makeMenu = value.menu; currentStyle = value.style
+        action = value.action; makeMenu = value.menu
         // SwiftUI otherwise borrows the only child's identifier/label for its
         // representable proxy. Keep the container distinct from the action.
         setAccessibilityIdentifier(value.identifier + "-group"); setAccessibilityLabel("")
@@ -611,7 +602,8 @@ private final class LibraryToolbarActionView: NSView {
         button.imagePosition = .imageLeft
         let tint: NSColor = value.style == .stop ? CassiniTheme.nsOnRecord : CassiniTheme.nsInk
         button.attributedTitle = NSAttributedString(string:value.title,attributes:[.font:font,.foregroundColor:tint])
-        applyLayerFill()
+        let fill: NSColor = value.style == .stop ? CassiniTheme.nsRecord : [.record,.capsule].contains(value.style) ? CassiniTheme.nsChipFill : .clear
+        button.layer?.backgroundColor = fill.cgColor
         let text = ceil((value.title as NSString).size(withAttributes:[.font:font]).width)
         size = NSSize(width:text + 28,height:34)
         switch value.style {
