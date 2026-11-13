@@ -50,7 +50,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(client.waitForExistence(timeout:10),app.debugDescription);client.click()
         // Select the status text rather than the spinner in the shared status row.
         let eta=window.staticTexts["meeting-transcribing"]
-        let etaReady=NSPredicate {_,_ in eta.exists && self.visibleText(eta)=="Transcription · 4 min"}
+        let etaReady=NSPredicate {_,_ in eta.exists && self.visibleText(eta)=="Transcription · environ 4 min restantes"}
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:etaReady,object:nil)],timeout:10),.completed,"French compact ETA in the selected meeting: "+app.debugDescription)
     }
     @MainActor func testFrenchSearchCountWithAmericanRegionalSettings() throws {
@@ -1242,6 +1242,83 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:resumed,object:nil)],timeout:40),.completed,app.debugDescription)
         XCTAssertFalse(window.buttons["Try again"].exists)
         XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
+    }
+    @MainActor func testTranscribingBoardKeepsPartialWordsHiddenAndAudioAvailable() throws {
+        let app = try launch("library", fixture: "main")
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let client = window.outlines.staticTexts.matching(identifier: "meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch
+        XCTAssertTrue(client.waitForExistence(timeout: 20), app.debugDescription); client.click()
+        let details = window.buttons["meeting-transcription-details"]
+        XCTAssertTrue(details.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(visibleText(window.staticTexts["meeting-transcribing"]).contains("Transcribing · about 4 min left"))
+        XCTAssertFalse(window.textFields["meeting-find"].exists)
+        app.menuBars.menuBarItems["Edit"].click()
+        let findCommand = app.menuItems["Find in this meeting"]
+        XCTAssertTrue(findCommand.exists, app.debugDescription)
+        XCTAssertFalse(findCommand.isEnabled, "No invisible Find target while desktop withholds words")
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertFalse(window.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "meeting-turn-")).firstMatch.exists,
+                       "The running Library vector contains partial words; desktop must withhold them")
+        XCTAssertFalse(window.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "speaker-row-")).firstMatch.exists)
+        XCTAssertFalse(window.buttons["Set up the companion"].exists, "No promotional card below the status")
+        XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
+        let before = window.buttons["meeting-play"].label
+        window.buttons["meeting-play"].click()
+        XCTAssertNotEqual(window.buttons["meeting-play"].label, before)
+        window.buttons["meeting-play"].click()
+        XCTAssertFalse(window.buttons["meeting-stop-transcription"].isEnabled, "Sealed read-only fixture cannot be edited")
+        capture(window, name: "transcribing")
+        details.click()
+        let popover = window.descendants(matching: .any)["transcription-popover"]
+        XCTAssertTrue(popover.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(window.staticTexts["transcription-stat-time-left"].exists)
+        XCTAssertEqual(visibleText(window.staticTexts["transcription-stat-time-left"]), "About 4 min")
+        for id in ["model", "speed", "audio-done", "words", "battery"] {
+            XCTAssertFalse(window.staticTexts["transcription-stat-" + id].exists, "Do not present unreported engine stats: " + id)
+        }
+        XCTAssertFalse(window.buttons["transcription-stop-keep-progress"].isEnabled)
+        XCTAssertTrue(text("Keeps going in the background while Cassini is open.", in: window))
+        capture(window, name: "transcribing-details")
+        app.typeKey(.escape, modifierFlags: [])
+        let closed = NSPredicate { _, _ in !popover.exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: closed, object: nil)], timeout: 5), .completed)
+        XCTAssertTrue(window.outlines.firstMatch.exists)
+        let budget = window.outlines.staticTexts.matching(identifier: "meeting-Recording-a0000000-0000-4000-8000-000000000001").firstMatch
+        budget.click()
+        XCTAssertTrue(window.textFields["meeting-find"].waitForExistence(timeout: 10))
+        XCTAssertTrue(window.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "meeting-turn-")).firstMatch.exists)
+        XCTAssertFalse(window.buttons["meeting-transcription-details"].exists)
+    }
+    @MainActor func testTranscriptionStopKeepsAudioAndCanResume() throws {
+        let extra = ["--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString,
+                     "-CassiniTranscriptionFixture", "YES", "-CassiniSlowTranscription", "YES"]
+        let app = try launch("first-run", fixture: "empty", extra: extra); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20), app.debugDescription)
+        window.buttons["first-run-record"].click()
+        XCTAssertTrue(window.sheets.buttons["record-first-start"].waitForExistence(timeout: 10))
+        window.sheets.buttons["record-first-start"].click()
+        XCTAssertTrue(window.buttons["recording-stop"].waitForExistence(timeout: 10))
+        let speech = NSPredicate { _, _ in self.recordedSeconds(window) >= 5 }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: speech, object: nil)], timeout: 10), .completed)
+        window.buttons["recording-stop"].click()
+        let stop = window.buttons["meeting-stop-transcription"]
+        let available = NSPredicate { _, _ in stop.exists && stop.isEnabled }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: available, object: nil)], timeout: 20), .completed, app.debugDescription)
+        window.buttons["meeting-transcription-details"].click()
+        let keep = window.buttons["transcription-stop-keep-progress"]
+        XCTAssertTrue(keep.waitForExistence(timeout: 5)); XCTAssertTrue(keep.isEnabled)
+        XCTAssertTrue(window.staticTexts["transcription-stat-model"].waitForExistence(timeout: 20), "An active queue reports its chosen model")
+        keep.click()
+        let resume = window.buttons["meeting-write-down"]
+        let paused = NSPredicate { _, _ in resume.exists && resume.isEnabled && !stop.exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: paused, object: nil)], timeout: 15), .completed, app.debugDescription)
+        XCTAssertTrue(window.buttons["meeting-play"].isEnabled, "Stop preserves audio")
+        resume.click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: available, object: nil)], timeout: 20), .completed)
+        stop.click()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: paused, object: nil)], timeout: 15), .completed, "Inline Stop uses the same resumable stop operation")
     }
     @MainActor func testMeetingBoard() throws {
         let app = try launch("meeting", fixture: "main"); defer { app.terminate() }

@@ -73,6 +73,10 @@ import Observation
     var namingSpeakerID:String?
     var meeting: LibraryMeeting {
         didSet {
+            if ![.queued, .running].contains(oldValue.state.transcript), !showsTranscript {
+                if listen.active { stopListening() }
+                if speakerSample.active { speakerSample.cancel() }
+            }
             if let id=namingSpeakerID {namingSpeakerID=meeting.speaker(for:id)?.id}
             if MeetingPresentation.turnInputsChanged(from:oldValue,to:meeting) {
                 prepareTurns()
@@ -91,7 +95,7 @@ import Observation
     private(set) var transcriptListening = TranscriptListening()
     private(set) var followRevision = 0
     @ObservationIgnored private var transcriptFollow = TranscriptFollow()
-    var canFollowTranscript: Bool { transcriptFollow.allowsFollow(at:ProcessInfo.processInfo.systemUptime) }
+    var canFollowTranscript: Bool { showsTranscript && transcriptFollow.allowsFollow(at:ProcessInfo.processInfo.systemUptime) }
     func handScrolledTranscript() { transcriptFollow.handScrolled(at:ProcessInfo.processInfo.systemUptime) }
     private func resumeTranscriptFollow() { transcriptFollow.stepped(); followRevision += 1 }
     var listeningHost: Int? { listen.turn.flatMap { transcriptListening.host(forListening:$0.index) } }
@@ -112,6 +116,8 @@ import Observation
     let audio: SessionPlayback
     let listen: ListenController
     private let fileAccessLease: AnyObject?
+    var showsTranscript: Bool { ![.queued, .running].contains(meeting.state.transcript) }
+    var allowsTranscriptionChanges: Bool { !frozen && fileURL == nil && !meeting.metadataReadOnly }
     private let frozen: Bool
     private var fixturePosition = 192_000
     private var fixturePlaying = true
@@ -183,7 +189,7 @@ import Observation
     // Commands observe model state only; AppKit focus is checked when invoked.
     var canUseListeningCommands: Bool { listen.active && canUseTranscriptCommands }
     private var canUseTranscriptCommands: Bool {
-        canPlay && !find.focused && MeetingNavigation.shared.detail === self && !LibrarySearchModel.shared.visible &&
+        showsTranscript && canPlay && !find.focused && MeetingNavigation.shared.detail === self && !LibrarySearchModel.shared.visible &&
         MeetingRenameCoordinator.shared.presentation == nil && !MeetingExportCoordinator.shared.showing &&
         !RecordingDetailsCoordinator.shared.showing && !RecordCoordinator.shared.showingFirst &&
         CompanionSetup.shared.presenter != .library && !RecordingConfirmation.active

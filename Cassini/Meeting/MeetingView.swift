@@ -12,6 +12,7 @@ struct MeetingView: View {
     @State private var controlsHeight: CGFloat = 40
     var showsCompanionSuggestion: Bool { !suggestionDismissed && !CaptureCollection.shared.connected }
     private var meeting: LibraryMeeting { model.meeting }
+    private var transcribing: Bool { !model.showsTranscript }
     /// M11: paragraphs only; an aside is shown inside its host.
     private var visibleTurns: [MeetingPresentation.Turn] { MeetingPresentation.visibleTurns(model.turns) }
     private func name(_ speaker: String) -> String { model.speakerName(speaker) }
@@ -41,7 +42,8 @@ struct MeetingView: View {
         return parts.joined(separator:" ")
     }
     private var currentTurn: Int? {
-        visibleTurns.last { turn in
+        guard !transcribing else { return nil }
+        return visibleTurns.last { turn in
             (turn.items + asides(turn).flatMap(\.items)).contains { $0.startMs <= model.positionMs && model.positionMs < $0.endMs }
         }?.id
     }
@@ -124,12 +126,6 @@ struct MeetingView: View {
     private var transcriptContent: some View {
         LazyVStack(alignment: .leading, spacing: 22) {
             if let line = RecordingOverview.libraryDiskLine { Text(line).foregroundStyle(CassiniTheme.warningNotice) }
-            if [.queued, .running].contains(meeting.state.transcript), let badge = meeting.state.badge {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text(badge.text).foregroundStyle(CassiniTheme.ink2)
-                }.accessibilityIdentifier("meeting-transcribing")
-            }
             if let folder = meeting.received?.originalFolderName {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: "folder").accessibilityHidden(true)
@@ -154,10 +150,17 @@ struct MeetingView: View {
                     LazyVStack(alignment: .leading, spacing: 18, pinnedViews: [.sectionHeaders]) {
                         MeetingPaneHeader(model: model, format: format)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headingHeight = $0 }
-                        Section {
-                            transcriptContent
-                        } header: {
-                            MeetingFindBar(model: model.find).padding(.vertical, 8).background(CassiniTheme.surface)
+                        if transcribing {
+                            MeetingTranscriptionStatus(model: model)
+                            if let line = RecordingOverview.libraryDiskLine {
+                                Text(line).foregroundStyle(CassiniTheme.warningNotice)
+                            }
+                        } else {
+                            Section {
+                                transcriptContent
+                            } header: {
+                                MeetingFindBar(model: model.find).padding(.vertical, 8).background(CassiniTheme.surface)
+                            }
                         }
                     }.padding(.horizontal, 44).padding(.top, 12).padding(.bottom, controlsHeight + 36)
                 }.accessibilityIdentifier("meeting-transcript")
@@ -172,6 +175,7 @@ struct MeetingView: View {
                         if let match { model.handScrolledTranscript(); proxy.scrollTo(match.paragraph, anchor: .center) }
                     }
                     .onChange(of: model.turnsRevision) { _, _ in revealSearchHit(in: proxy) }
+                    .onChange(of: transcribing) { _, active in if !active { revealSearchHit(in: proxy) } }
                     .onChange(of: model.revealTurnID) { _, _ in revealSearchHit(in: proxy) }
                     .onChange(of: model.revealPositionMs) { _, _ in revealSearchHit(in: proxy) }
                     .task {
@@ -199,7 +203,7 @@ struct MeetingView: View {
                     }
             }
             VStack(spacing: 8) {
-                if let presentation = model.listeningPresentation {
+                if !transcribing, let presentation = model.listeningPresentation {
                     ListeningBar(model:model,presentation:presentation,colour:colour(model.listen.speaker.flatMap { meeting.speaker(for:$0) }))
                 }
                 playerBar
@@ -211,13 +215,15 @@ struct MeetingView: View {
         .background(CassiniTheme.surface)
         .accessibilityElement(children: .contain).accessibilityIdentifier("meeting-page")
         .focusedSceneValue(\.listeningMeeting,model)
-        .task(id: FindRequest(query: model.find.query, revision: model.turnsRevision,
+        .task(id: FindRequest(transcribing: transcribing, query: model.find.query, revision: model.turnsRevision,
                               language: UXText.language.rawValue, locale: UXText.locale.identifier,
                               names: meeting.speakerDisplayNames, mergedInto: meeting.mergedInto)) {
+            guard !transcribing else { return }
             await model.find.search(turns: model.turns, meeting: meeting, language: UXText.language, locale: UXText.locale)
         }
     }
     private func revealSearchHit(in proxy: ScrollViewProxy) {
+        guard !transcribing else { return }
         let exact = model.revealTurnID.flatMap { id in visibleTurns.first { $0.id == id } }
         let fallback = model.revealPositionMs.flatMap { position in visibleTurns.first { $0.endMs > position } }
         guard let target = exact ?? fallback else { return }
@@ -225,6 +231,7 @@ struct MeetingView: View {
         model.revealTurnID = nil; model.revealPositionMs = nil
     }
     private struct FindRequest: Hashable {
+        let transcribing: Bool
         let query: String
         let revision: Int
         let language: String

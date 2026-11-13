@@ -59,6 +59,7 @@
 		4894B39EC42F7D4E8AE78059 /* CassiniWhistle in Frameworks */ = {isa = PBXBuildFile; productRef = 3C45C68D469B5B6F4F552DD8 /* CassiniWhistle */; };
 		4A444EA6F34B850173529772 /* CassiniModels in Frameworks */ = {isa = PBXBuildFile; productRef = 4BFD420B8922F647B49598D0 /* CassiniModels */; };
 		4B13F891F062EF653D0D14A2 /* MeetingNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AE03673C71C9FFE43B11FF3 /* MeetingNavigation.swift */; };
+		4B75F2AD2840BEA1DFE89AD5 /* MeetingTranscriptionStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6F3B4017F0B9A54263838BA /* MeetingTranscriptionStatus.swift */; };
 		53B81ABFE589A48A808D5BE7 /* RecordingRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = A251AA6D1A631420C5CC6EDF /* RecordingRuntime.swift */; };
 		54D2347F1AE4784A46C3E6B0 /* CaptureNotices.swift in Sources */ = {isa = PBXBuildFile; fileRef = B35AF9D7D59A27E9AAF9EBA6 /* CaptureNotices.swift */; };
 		5625FA5266F3668423F7B055 /* MeetingFindModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50794BA59A443D732C5F9C0C /* MeetingFindModel.swift */; };
@@ -339,6 +340,7 @@
 		9FD1CB695C71500E69641ABD /* ListeningBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningBar.swift; sourceTree = "<group>"; };
 		A251AA6D1A631420C5CC6EDF /* RecordingRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRuntime.swift; sourceTree = "<group>"; };
 		A6C12D84FB78BFC6CC8C985F /* UXText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UXText.swift; sourceTree = "<group>"; };
+		A6F3B4017F0B9A54263838BA /* MeetingTranscriptionStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingTranscriptionStatus.swift; sourceTree = "<group>"; };
 		AE1EF30C6B5383E3FF70F120 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		AE3EF9C87501A9AA7ECF2828 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		AE55575B68548E992AE03E83 /* CassiniBrowserHost */ = {isa = PBXFileReference; includeInIndex = 0; path = CassiniBrowserHost; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -527,6 +529,7 @@
 				1A85AD4C9B8EEFC8765DCF5B /* MeetingRenameCoordinator.swift */,
 				34778E4E58B9D407C49813FD /* MeetingRenameFixture.swift */,
 				88F83DA445E2AA9E87FC5658 /* MeetingRenameView.swift */,
+				A6F3B4017F0B9A54263838BA /* MeetingTranscriptionStatus.swift */,
 				8DEEE9B7ECB69C54C0B2D9DB /* MeetingTranscriptText.swift */,
 				5F5113D3C4C431936150BE52 /* MeetingView.swift */,
 				85AB63CED296253A35A37DFE /* RecordingConfirmation.swift */,
@@ -1419,6 +1422,7 @@
 				2C7B916D96DA171EB76FAA50 /* MeetingStatusBadge.swift in Sources */,
 				28EBD075457685A189DB8294 /* MeetingTitleAlignment.swift in Sources */,
 				D8A1037C9E49E4B62FD090F1 /* MeetingTranscriptText.swift in Sources */,
+				4B75F2AD2840BEA1DFE89AD5 /* MeetingTranscriptionStatus.swift in Sources */,
 				5B47447A5DB5A5E03A6D33DC /* MeetingTrashCoordinator.swift in Sources */,
 				ECF1884477A253784A867E2C /* MeetingView.swift in Sources */,
 				C920349A20ECCF6C7C8A690C /* ModelDownloadClient.swift in Sources */,

@@ -59,9 +59,9 @@ struct AppCommands: Commands {
         }
         CommandGroup(replacing:.textEditing) {
             Button(UXText.text(detail == nil ? "search.field.a11y" : "meeting.find.placeholder")) {
-                if let detail, detail.meeting.state.lifecycle == .saved { detail.find.requestFocus() }
+                if let detail, detail.meeting.state.lifecycle == .saved, detail.showsTranscript { detail.find.requestFocus() }
                 else { LibrarySearchModel.shared.open() }
-            }.keyboardShortcut("f",modifiers:.command)
+            }.keyboardShortcut("f",modifiers:.command).disabled(detail?.showsTranscript == false)
         }
         CommandMenu(UXText.mac("menu.playback")) {
             Button(UXText.text(detail?.isPlaying == true ? "player.pause" : "common.play")) { detail?.toggle() }

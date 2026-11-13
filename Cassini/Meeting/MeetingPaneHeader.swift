@@ -28,11 +28,13 @@ struct MeetingPaneHeader: View {
                ["needsAttention", "interrupted", "received"].contains(badge.kind) {
                 CatalogStatusBadge(presentation: badge, isAnimating: false).accessibilityIdentifier("meeting-status-badge")
             }
-            ScrollView(.horizontal) {
-                HStack(spacing: 16) {
-                    ForEach(meeting.speakers, id: \.id) { speaker in inlineSpeaker(speaker) }
-                }.padding(.vertical, 2)
-            }.scrollIndicators(.hidden).frame(height: 24)
+            if model.showsTranscript {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 16) {
+                        ForEach(meeting.speakers, id: \.id) { speaker in inlineSpeaker(speaker) }
+                    }.padding(.vertical, 2)
+                }.scrollIndicators(.hidden).frame(height: 24)
+            }
         }.frame(maxWidth: .infinity, alignment: .leading)
             .foregroundStyle(CassiniTheme.ink)
             .accessibilityElement(children: .contain).accessibilityIdentifier("meeting-heading")
