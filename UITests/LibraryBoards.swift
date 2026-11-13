@@ -837,7 +837,10 @@ final class LibraryBoards: XCTestCase {
     @MainActor func testReceivedBoard() throws {
         let app = try launch("received",fixture:"received-only"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
-        XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"received-folder-card").firstMatch.waitForExistence(timeout:20),window.debugDescription)
+        XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"preview-subtitle").firstMatch.waitForExistence(timeout:20),window.debugDescription)
+        XCTAssertTrue(text("Imported · Transcribed on another device",in:window),window.debugDescription)
+        XCTAssertFalse(window.descendants(matching:.any)["received-folder-card"].exists)
+        XCTAssertFalse(window.descendants(matching:.any)["import-summary"].exists)
         XCTAssertTrue(window.buttons["preview-play"].isEnabled)
         XCTAssertTrue(text("Record your own meetings with the button above.",in:window))
         capture(window,name:"received")
@@ -1202,7 +1205,7 @@ final class LibraryBoards: XCTestCase {
         for _ in 0..<2 {
             try await finderOpen(fixture)
             XCTAssertTrue(library.buttons["preview-read-transcript"].waitForExistence(timeout: 15), app.debugDescription)
-            XCTAssertTrue(library.descendants(matching:.any)["received-folder-card"].exists)
+            XCTAssertFalse(library.descendants(matching:.any)["received-folder-card"].exists)
             XCTAssertEqual(app.windows.count, 1)
         }
         library.buttons["_XCUI:CloseWindow"].click()
@@ -1218,7 +1221,7 @@ final class LibraryBoards: XCTestCase {
         let received = library.descendants(matching: .any).matching(identifier: "meeting-Received-a0000000-0000-4000-8000-000000000006").firstMatch
         XCTAssertTrue(received.waitForExistence(timeout: 20), app.debugDescription)
         received.click()
-        let selectedReceived = NSPredicate { _,_ in self.text("Onboarding walkthrough",in:library) && library.descendants(matching:.any).matching(identifier:"received-folder-card").firstMatch.exists }
+        let selectedReceived = NSPredicate { _,_ in self.text("Onboarding walkthrough",in:library) && self.text("Imported · Transcribed on another device",in:library) }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:selectedReceived,object:nil)],timeout:5),.completed,library.debugDescription)
         library.buttons["preview-read-transcript"].click()
         XCTAssertTrue(library.buttons["meeting-back"].waitForExistence(timeout: 15))
