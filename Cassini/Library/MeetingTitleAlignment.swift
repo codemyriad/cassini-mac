@@ -115,6 +115,7 @@ struct MeetingTitleAlignment: NSViewRepresentable {
             backing: .buffered,
             defer: false
         )
+        window.isReleasedWhenClosed = false
         defer { window.close() }
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 900, height: 100))
         window.contentView = root

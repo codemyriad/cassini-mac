@@ -110,12 +110,12 @@ import Observation
         guard case .finished? = await next.next() else { fail("merge preparation did not finish") }
         await mergedDelivered.value
         report["mergedPreparationRecovers"] = detail.turns.allSatisfy { $0.speaker == "b" } && detail.timelineReadout.speaker(at:0) == "b" && detail.speakerName("b") == "Marta Cole"
+        await runSessionModelProof(into: &report)
         for (key,value) in MeetingPositionSlider.nativeSelfTest() { report[key] = value }
         for (key,value) in MeetingTranscriptText.nativeSelfTest() { report[key] = value }
         for (key,value) in MeetingTitleAlignment.nativeSelfTest() { report[key] = value }
         for (key,value) in SpeakerSidebarRow.nativeSelfTest(baseSpeaker:fixture.speakers[0]) { report[key] = value }
         for (key,value) in CassiniTokens.nativeSelfTest() { report[key] = value }
-        await runSessionModelProof(into: &report)
         var asideMeeting = fixture
         asideMeeting.transcriptItems = [.init(speaker:"claire",startMs:0,endMs:800,text:"We agree."),
             .init(speaker:"guest",startMs:750,endMs:1100,text:"Yes."),.init(speaker:"claire",startMs:1000,endMs:1800,text:"Thanks.")]
