@@ -325,7 +325,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // the one visible editor, including with Keyboard Navigation off.
             if event.keyCode == 48,
                event.modifierFlags.intersection([.command,.option,.control]).isEmpty {
-                SpeakerEditorChrome.advanceFocus?(event.modifierFlags.contains(.shift))
+                if let window=event.window ?? NSApp.keyWindow {
+                    SpeakerEditorChrome.advanceFocus(reverse:event.modifierFlags.contains(.shift),in:window)
+                }
                 return nil
             }
             return event
