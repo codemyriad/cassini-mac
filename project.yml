@@ -44,6 +44,9 @@ targets:
         excludes:
           - "README.md"
           - "Contract"
+      - path: Components/MeetingCard
+        excludes:
+          - "README.md"
       - path: Cassini/Assets.xcassets
         buildPhase: resources
       - path: COPYING

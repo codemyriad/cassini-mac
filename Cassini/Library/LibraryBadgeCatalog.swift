@@ -49,4 +49,8 @@ enum LibraryBadgeCatalog {
     static var importingPresentation: CatalogBadgePresentation? {
         presenter().presentation(for: .importingEntry)
     }
+
+    static var needsAttentionPresentation: CatalogBadgePresentation? {
+        presenter().presentation(for: .meeting(BadgeMeetingFields(error: .init(id: "import.failed", action: "dismiss"))))
+    }
 }

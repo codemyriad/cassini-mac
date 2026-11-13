@@ -96,6 +96,7 @@ enum CassiniTheme {
     static let selectedOptionWash = CassiniTokens.accentTint
 
     // Highlights (L-24)
+    static let highlight = CassiniTokens.highlight
     static let nsHighlight: NSColor = CassiniTokens.ns.highlight
     static let nsSearchHighlight: NSColor = CassiniTokens.ns.highlight
     static let nsHighlightInk: NSColor? = CassiniTokens.ns.highlightInk
