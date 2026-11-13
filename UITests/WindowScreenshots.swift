@@ -68,6 +68,17 @@ final class WindowScreenshots: XCTestCase {
             add(image)
         }
         if withSheet {
+            app.activate()
+            let sheetReady = NSPredicate { _, _ in
+                app.state == .runningForeground
+                    && window.sheets.buttons["Keep recording"].isHittable
+                    && window.sheets.buttons["Stop and keep it"].isHittable
+            }
+            XCTAssertEqual(
+                XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: sheetReady, object: nil)], timeout: 10),
+                .completed,
+                app.debugDescription
+            )
             app.typeKey(key, modifierFlags: [])
             let resultID = key == .escape ? "cassini-screenshot-kept" : "cassini-screenshot-stopped"
             XCTAssertTrue(app.windows[resultID].waitForExistence(timeout: 5), app.debugDescription)
@@ -97,11 +108,15 @@ final class WindowScreenshots: XCTestCase {
         let display = CGRect(origin:.zero,size:screen.frame.size)
         let notices = center.descendants(matching:.any)
             .matching(NSPredicate(format:"label BEGINSWITH %@","Login Items,"))
+        let isVisible: (XCUIElement) -> Bool = { element in
+            guard element.exists else { return false }
+            let visible = element.frame.intersection(display)
+            return !visible.isNull && visible.width > 0 && visible.height > 0
+        }
         for _ in 0..<10 {
-            guard let notice = notices.allElementsBoundByIndex.first(where:{
-                let visible = $0.frame.intersection(display)
-                return !visible.isNull && visible.width > 0 && visible.height > 0
-            }) else { break }
+            let currentVisible = notices.allElementsBoundByIndex.filter(isVisible)
+            guard let notice = currentVisible.first else { break }
+            let beforeCount = currentVisible.count
             let identifier = notice.identifier
             let visible = notice.frame.intersection(display), origin = anchor.frame.origin
             let point = anchor.coordinate(withNormalizedOffset:.zero)
@@ -113,8 +128,13 @@ final class WindowScreenshots: XCTestCase {
             let frame = close.frame
             anchor.coordinate(withNormalizedOffset:.zero)
                 .withOffset(CGVector(dx:frame.midX-origin.x,dy:frame.midY-origin.y)).click()
-            let gone = NSPredicate { _,_ in !notices.matching(identifier:identifier).firstMatch.exists }
-            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:gone,object:nil)],timeout:5),.completed)
+            let gone = NSPredicate { _,_ in
+                if !identifier.isEmpty {
+                    return !notices.matching(identifier:identifier).allElementsBoundByIndex.contains(where:isVisible)
+                }
+                return notices.allElementsBoundByIndex.filter(isVisible).count < beforeCount
+            }
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:gone,object:nil)],timeout:5),.completed,center.debugDescription)
         }
 
     }
