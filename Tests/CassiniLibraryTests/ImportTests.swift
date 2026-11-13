@@ -34,6 +34,7 @@ struct LibraryImportTests {
         let imported = try LibraryImport.copy(source,into:library)
         #expect(imported.state.audioAvailable == true && imported.state.transcript == .damaged)
         #expect(imported.transcriptItems.isEmpty && imported.notes.isEmpty && imported.speakers.isEmpty)
+        #expect(!imported.transcriptFromImportedFile)
         #expect(imported.title == "Unknown policy")
         // A legacy importer may have persisted an embedded done reference.
         try MeetingMetadataWriter(directory:imported.folder,id:imported.id).transaction {
@@ -41,6 +42,7 @@ struct LibraryImportTests {
         }
         let legacy = try #require(LibraryScanner(root:library).scan().meetings.first)
         #expect(legacy.state.transcript == .damaged && legacy.transcriptItems.isEmpty)
+        #expect(!legacy.transcriptFromImportedFile)
     }
     @Test func anUnrepresentableParentNameDoesNotRejectValidAudio() throws {
         let f = try Fixture(), folder = f.root.appendingPathComponent("2026\\04")
@@ -60,6 +62,7 @@ struct LibraryImportTests {
         let meeting = try LibraryImport.copy(source,into:library)
         #expect(meeting.state.origin == .received && meeting.state.lifecycle == .saved)
         #expect(meeting.state.transcript == (plain ? .none : .done))
+        #expect(meeting.transcriptFromImportedFile == !plain)
         #expect(meeting.canWriteDown == plain)
         #expect(meeting.received?.originalFolderName == "Downloads")
         #expect(meeting.received?.sha256 == SHA256.hash(data:original).map { String(format:"%02x",$0) }.joined())
@@ -74,6 +77,49 @@ struct LibraryImportTests {
         #expect(try Data(contentsOf:copied) == original)
         #expect(try LibraryScanner(root:library).scan().meetings.first?.state.audioAvailable == true)
         #expect(plain || !meeting.transcriptItems.isEmpty)
+    }
+    @Test func locallyRewrittenWordsDoNotClaimTheyCameFromTheImportedFile() throws {
+        let f = try Fixture(), library = f.root.appendingPathComponent("Library")
+        let source = f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus")
+        let imported = try LibraryImport.copy(source, into: library)
+        #expect(imported.transcriptFromImportedFile)
+        let original = try Data(contentsOf: imported.folder.appendingPathComponent("original.opus"))
+        let body: [String: Any] = ["language": "en", "items": [
+            ["speaker": "local", "startMs": 0, "endMs": 100, "text": "Locally generated words"]
+        ]]
+        try JSONSerialization.data(withJSONObject: body).write(to: imported.folder.appendingPathComponent("transcript.json"))
+        try MeetingMetadataWriter(directory: imported.folder, id: imported.id).transaction {
+            $0["transcript"] = ["status": "done", "reference": ["kind": "sidecar", "file": "transcript.json", "format": "cassini.words.v1"]]
+        }
+        let rewritten = try #require(LibraryScanner(root: library).scan().meetings.first)
+        #expect(rewritten.state.origin == .received && rewritten.state.transcript == .done)
+        #expect(rewritten.transcriptItems.map(\.text) == ["Locally generated words"])
+        #expect(!rewritten.transcriptFromImportedFile)
+        #expect(try Data(contentsOf: imported.folder.appendingPathComponent("original.opus")) == original)
+    }
+    @Test(arguments: ["none", "queued", "running", "failed", "damaged"])
+    func inactiveOrIncompleteEmbeddedReferencesDoNotClaimAnImportedTranscript(status: String) throws {
+        let f = try Fixture(), library = f.root.appendingPathComponent("Library")
+        let source = f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus")
+        let imported = try LibraryImport.copy(source, into: library)
+        try MeetingMetadataWriter(directory: imported.folder, id: imported.id).transaction {
+            $0["transcript"] = ["status": status, "reference": ["kind": "embedded", "file": "original.opus"]]
+        }
+        let meeting = try #require(LibraryScanner(root: library).scan().meetings.first)
+        #expect(meeting.state.audioAvailable == true)
+        #expect(!meeting.transcriptFromImportedFile)
+    }
+    @Test func unknownMetadataVersionCannotAuthenticateImportedTranscriptProvenance() throws {
+        let f = try Fixture(), library = f.root.appendingPathComponent("Library")
+        let source = f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus")
+        let imported = try LibraryImport.copy(source, into: library)
+        let url = imported.folder.appendingPathComponent("meeting.json")
+        var metadata = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        metadata["version"] = 2
+        try JSONSerialization.data(withJSONObject: metadata).write(to: url)
+        // An import whose metadata cannot be understood is not published as a
+        // committed Library meeting, so it cannot acquire a provenance subtitle.
+        #expect(try LibraryScanner(root: library).scan().meetings.isEmpty)
     }
     @Test func duplicateBytesSelectTheExistingMeetingAndKeepEdits() throws {
         let f = try Fixture(), library = f.root.appendingPathComponent("Library")

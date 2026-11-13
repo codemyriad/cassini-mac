@@ -220,6 +220,8 @@ public struct LibraryScanner: Sendable {
         }
         if ![.queued, .running].contains(meeting.state.transcript) { meeting.state.etaMinutes = nil }
         if meeting.state.transcript == .damaged { words = [] }
+        meeting.transcriptFromImportedFile = received && !meeting.metadataReadOnly && readable && meeting.state.transcript == .done &&
+            metadata?.transcript.reference?.kind == "embedded"
         // D84: readable grouping precedes display sorting in the viewer. Preserve canonical
         // producer order here; playback/listening indices sort their own timed projections.
         let sorted = words

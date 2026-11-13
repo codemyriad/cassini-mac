@@ -202,6 +202,9 @@ public struct LibraryMeeting: Sendable {
     public var transcriptModel: String? = nil
     /// meeting.json's transcript names a body (D67.2: a failed write-down stores none).
     public var transcriptReferenced = false
+    /// A validated, completed transcript carried by the imported meeting file.
+    /// A local sidecar never implies that another device supplied the words.
+    public var transcriptFromImportedFile = false
     /// Explicit user Stop paused transcription at status `none`; do not auto-restart it.
     public var transcriptPaused = false
     public var wordEndsBoundedByAudio = false { didSet { transcriptTurns = [] } }
