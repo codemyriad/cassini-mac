@@ -25,9 +25,8 @@ not the result of signing. Results/skips and one-line failures go to
 logs and notarization reports stay under `~/.local/share/cassini-mac-test-releases`.
 
 Build admission requires current main with its latest own-repository
-push/workflow_dispatch/schedule CI green. A newer failing or running nightly
-cannot be bypassed using an older green push. Paginated PR/fork results cannot authorize or
-block it. The admitted SHA stays pinned through signing and publication. Unchanged main
+push CI green. Scheduled nightly and manual perf-gate runs, as well as
+paginated PR/fork results, neither authorize nor block it. The admitted SHA stays pinned through signing and publication. Unchanged main
 skips. Build numbers are reserved atomically and include failed attempts/drafts.
 A stale project version advances beyond the highest published stable patch,
 so post-release betas never claim an already shipped version.

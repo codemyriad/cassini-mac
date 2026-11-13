@@ -49,16 +49,17 @@ class DailyPolicy(unittest.TestCase):
             self.assertFalse(daily.eligible_ci([run],'a'*40))
             self.assertTrue(daily.eligible_ci([{**run,'status':'action_required'},good],'a'*40))
             self.assertFalse(daily.eligible_ci([run,{**good,'conclusion':'failure'},good],'a'*40))
-        self.assertTrue(daily.eligible_ci([{**good,'event':'workflow_dispatch'}],'a'*40))
-        self.assertFalse(daily.eligible_ci([{**good,'event':'workflow_dispatch','status':'in_progress'},good],'a'*40))
 
-    def test_newer_trusted_schedule_blocks_an_old_green_push_until_it_passes(self):
+    def test_schedule_and_manual_runs_cannot_authorize_or_block_push_main(self):
         push=dict(head_sha='a'*40,head_branch='main',status='completed',conclusion='success',event='push',head_repository={'full_name':daily.REPO})
-        scheduled={**push,'event':'schedule'}
-        for outcome in [dict(status='in_progress',conclusion=None),dict(conclusion='failure'),dict(conclusion='cancelled')]:
-            self.assertFalse(daily.eligible_ci([{**scheduled,**outcome},push],'a'*40))
-        self.assertTrue(daily.eligible_ci([scheduled,{**push,'conclusion':'failure'}],'a'*40))
-        self.assertFalse(daily.eligible_ci([{**scheduled,'head_repository':{'full_name':'fork/cassini-mac'}}],'a'*40))
+        for event in ['schedule','workflow_dispatch']:
+            non_push={**push,'event':event}
+            self.assertFalse(daily.eligible_ci([non_push],'a'*40))
+            self.assertEqual(daily.ci_state([non_push],'a'*40),'missing')
+            for outcome in [dict(status='in_progress',conclusion=None),dict(conclusion='failure'),dict(conclusion='cancelled')]:
+                self.assertTrue(daily.eligible_ci([{**non_push,**outcome},push],'a'*40))
+                self.assertEqual(daily.ci_state([{**non_push,**outcome},push],'a'*40),'green')
+            self.assertFalse(daily.eligible_ci([non_push,{**push,'conclusion':'failure'}],'a'*40))
 
     def test_main_ci_searches_past_an_entire_page_of_pr_runs(self):
         good=dict(head_sha='a'*40,head_branch='main',status='completed',conclusion='success',event='push',head_repository={'full_name':daily.REPO})
@@ -66,6 +67,7 @@ class DailyPolicy(unittest.TestCase):
         with patch.object(daily,'gh',return_value=pages) as api:
             self.assertTrue(daily.main_is_green('a'*40))
             self.assertIn('--paginate',api.call_args.args[0]);self.assertIn('--slurp',api.call_args.args[0])
+            self.assertIn('event=push',api.call_args.args[0][-1])
         with patch.object(daily,'gh',return_value=pages[:1]):
             self.assertFalse(daily.main_is_green('a'*40))
 
