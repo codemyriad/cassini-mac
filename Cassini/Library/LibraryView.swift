@@ -30,12 +30,12 @@ struct LibraryView: View {
     private var showsFirstRun: Bool {
         store.loaded && store.meetings.isEmpty && importer.transientItems.isEmpty && !store.offline
     }
+    private var showsSplit: Bool { navigation.detail == nil || navigation.detail?.meeting.state.lifecycle != .saved }
     var body: some View {
         GeometryReader { geometry in
             Group {
-                if let detail = navigation.detail {
-                    if detail.meeting.state.lifecycle != .saved { split }
-                    else { MeetingView(model:detail,format:store.format) }
+                if let detail = navigation.detail, detail.meeting.state.lifecycle == .saved {
+                    MeetingView(model:detail,format:store.format)
                 }
                 else if navigation.loading { ProgressView() }
                 else if search.visible { LibrarySearchView(format:store.format) }
@@ -56,7 +56,7 @@ struct LibraryView: View {
                 ParakeetDefaultNotice()
             }.padding(.horizontal,18)
 
-            if !store.context.screenshot && companionSetup.showLibraryState && navigation.detail == nil && !search.visible {
+            if !store.context.screenshot && companionSetup.showLibraryState && showsSplit && !search.visible {
                 BrowserConnectionStateView(identifier:"library-browser-status",presenter:.library)
                     .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).padding(.horizontal,18).padding(.vertical,8)
             }
@@ -70,28 +70,7 @@ struct LibraryView: View {
         .navigationTitle(navigation.detail?.meeting.title ?? UXText.text("app.name"))
         .toolbar(removing: .title)
         .toolbar {
-            if let detail = navigation.detail, detail.meeting.state.lifecycle != .saved {
-                ToolbarItem(placement:.navigation) {
-                    Button { navigation.back() } label: { Image(systemName:"chevron.left").frame(width:28,height:30) }
-                        .help(UXText.text("common.backToLibrary")).accessibilityLabel(UXText.text("common.backToLibrary")).accessibilityIdentifier("recording-back")
-                }
-                ToolbarItem(placement:.navigation) {
-                    if RecordingOverview.active, let started = RecordingOverview.startedAt {
-                        LiveRecordingPill(started:started,microphone:RecordingOverview.levels["microphone",default:0],output:RecordingOverview.levels["output",default:0])
-                    } else if store.context.screenshot {
-                        LiveRecordingPill(started:store.context.now ?? Date(),microphone:0,output:0.58,frozenMs:detail.meeting.state.liveMs)
-                    } else {
-                        HStack(spacing:6) {
-                            ProgressView().controlSize(.small)
-                            Text(UXText.text("states.badge.saving")).fontWeight(.semibold).foregroundStyle(CassiniTheme.ink2)
-                        }.accessibilityElement(children:.contain).accessibilityIdentifier("recording-toolbar-saving")
-                    }
-                }
-                ToolbarItem(placement:.principal) {
-                    Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size:13,weight:.bold)).lineLimit(1)
-                        .accessibilityIdentifier("recording-header-title")
-                }
-            } else if let detail = navigation.detail {
+            if let detail = navigation.detail, detail.meeting.state.lifecycle == .saved {
                 ToolbarItem(placement:.navigation) {
                     LibraryToolbarAction(title:"",label:UXText.text("common.backToLibrary"),identifier:"meeting-back",style:.back) { navigation.back() }
                 }
@@ -139,6 +118,13 @@ struct LibraryView: View {
                         .padding(.trailing, emptyToolbar ? 0 : 10)
                         .frame(width: search.visible ? 388 : emptyToolbar ? nil : 328, alignment: emptyToolbar ? .leading : .trailing)
                     if search.visible || !emptyToolbar { toolbarTitle }
+                }
+            }
+            if let meeting = store.selected, meeting.state.lifecycle != .saved, !search.visible {
+                ToolbarItem(placement:.primaryAction) {
+                    LibraryToolbarAction(title:"",label:UXText.text("meeting.moreActions"),identifier:"recording-more-actions",style:.more,menu:{
+                        LibraryToolbarAction.menu([.init(title:UXText.text("details.menu"),identifier:"recording-details") { recordingDetails.show(meeting) }])
+                    }) { }
                 }
             }
             if showsFirstRun && !search.visible {
@@ -192,6 +178,7 @@ struct LibraryView: View {
         }
         .onChange(of: store.revision) { _, _ in
             search.update(store.meetings)
+            if !store.offline { RecordingPageModel.reconcile(store.meetings) }
             sessionPlayback.reconcile(store.selected, offline: store.offline)
             navigation.update(store.meetings, offline: store.offline)
             if recordCoordinator.openRecordingWhenReady, RecordingOverview.active,
@@ -225,7 +212,7 @@ struct LibraryView: View {
             LibraryWindowDropDestination(
                 state: $dropState,
                 sidebarDropWidth: showsFirstRun ? nil : 400,
-                showsVisualStates: navigation.detail == nil && !navigation.loading && !search.visible,
+                showsVisualStates: showsSplit && !navigation.loading && !search.visible,
                 onDropFiles: { LegacyOpening.openDocuments($0) }
             )
             .accessibilityHidden(true)
@@ -358,8 +345,8 @@ struct LibraryView: View {
             .background(NativeSidebarMaterial())
             .frame(minWidth: 400, maxWidth: 400)
             Divider()
-            if let detail = navigation.detail, detail.meeting.state.lifecycle != .saved {
-                RecordingPageView(detail:detail,format:store.format).id(detail.meeting.libraryKey)
+            if let meeting = store.selected, meeting.state.lifecycle != .saved {
+                RecordingPageView(meeting:meeting,format:store.format).id(meeting.libraryKey)
             } else if let meeting = store.selected { preview(meeting) }
             else if store.selectedKeys.count > 1 {
                 VStack {

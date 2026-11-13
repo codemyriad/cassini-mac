@@ -3,6 +3,7 @@
 import AppKit
 import CassiniLibrary
 import CassiniRecording
+import CassiniSpectrogram
 import Observation
 import SwiftUI
 
@@ -43,6 +44,15 @@ import SwiftUI
               LibraryLaunchContext.argument("-CassiniSilentMicrophone") == "YES" else { exit(78) }
         let recorder = RecordingController.shared, runtime = RecordingRuntime.shared
         do {
+            let surface = try SpectrogramSurface(style:.row)
+            let strip = RecordingSpectrogramView(style:.row)
+            strip.frame = NSRect(x:0,y:0,width:96,height:32)
+            strip.present(bank:surface,revision:1,displayMs:1000,reduced:false)
+            let clip = try (strip.layer?.sublayers?.first).unwrap("row clip layer")
+            let scrolling = try (clip.sublayers?.first).unwrap("row scrolling layer")
+            try require(clip.frame.width == 96 && scrolling.position.x == 46,"96-point viewport anchors the newest audio at its right edge")
+            strip.present(bank:surface,revision:1,displayMs:1000,reduced:true)
+            try require(scrolling.position.x == 0 && abs(scrolling.transform.m11 - 0.48) < 0.001,"reduced motion fits the entire stationary row inside its viewport")
             runtime.start()
             try require(runtime.shortcut.registered,"global shortcut registration")
             try recorder.useFixtureClock()
@@ -55,6 +65,15 @@ import SwiftUI
             let scanner = LibraryScanner(root:root,activity:CaptureActivitySnapshot([id:.recording]))
             let meeting = try scanner.scan().meetings.first.unwrap("live Library meeting")
             let model = RecordingPageModel.editor(for:meeting)
+            var boundCall = meeting
+            boundCall.title = "Browser call title"
+            model.update(boundCall)
+            try require(model.title == "Browser call title","late browser title updates the untouched editor")
+            boundCall.title = "Title arriving during focus"
+            model.update(boundCall,isEditing:true)
+            try require(model.title == "Browser call title","external titles leave the focused editor alone")
+            model.update(boundCall)
+            try require(model.title == "Title arriving during focus","blur adopts the latest untouched call title")
             model.title = "Temporary title"; model.changeTitle(); await RecordingPageModel.flushAll()
             model.title = ""; model.changeTitle(); await RecordingPageModel.flushAll()
             let cleared = try JSONSerialization.jsonObject(with:Data(contentsOf:folder.appendingPathComponent("meeting.json"))) as! [String:Any]
@@ -64,6 +83,10 @@ import SwiftUI
             let existingNotes: [[String:Any]] = [["atMs":12,"text":"Keep this note\nexactly"],["atMs":3,"text":" Earlier note "]]
             try MeetingMetadataWriter(directory:folder,id:id).transaction { $0["notes"] = existingNotes }
             await RecordingPageModel.flushAll()
+            // A completed write can precede the scanner. Neither that stale
+            // snapshot nor opening another capture may replace the user's title.
+            model.update(meeting)
+            try require(model.title == "Comfort probe title","stale scan cannot undo a completed title write")
             let updated = try scanner.scan().meetings.first.unwrap("updated Library meeting")
             let afterTitle = try JSONSerialization.jsonObject(with:Data(contentsOf:folder.appendingPathComponent("meeting.json"))) as! [String:Any]
             try require(try JSONSerialization.data(withJSONObject:afterTitle["notes"]!,options:.sortedKeys) == JSONSerialization.data(withJSONObject:existingNotes,options:.sortedKeys),"title edit preserves existing notes exactly")
@@ -93,6 +116,7 @@ import SwiftUI
             }
             let duplicate = try LibraryScanner(root:duplicateRoot).scan().meetings.first.unwrap("same-name duplicate")
             let otherEditor = RecordingPageModel.editor(for:duplicate)
+            try require(RecordingPageModel.editor(for:meeting) === model && model.title == "Comfort probe title","switching captures retains the settled editor before rescan")
             try require(duplicate.libraryKey == model.meeting.libraryKey && model.native && !otherEditor.native,"native capture identity includes its folder, not only its basename")
             let payload = RecordingMenuPayload(recorder:recorder,runtime:runtime)
             try require(payload.assertionHeld && payload.levels[0].silent && payload.levels[1].value > 0,"hidden menu runtime state (power=\(payload.assertionHeld), levels=\(payload.levels), recorder=\(recorder.levels))")

@@ -26,9 +26,7 @@ private actor RecordingEdits {
         // View initializers look this up during rendering; lookup must not
         // publish observed changes back into the same render pass.
         if let model = editors[meeting.folder.path] { return model }
-        // Keep the current editor across Back/Open, even before the watcher has
-        // observed its last write. Retain older editors only while writes settle.
-        editors = editors.filter { $0.value.titleTask != nil }
+        // Prune from scanner publications, never when switching live captures.
         let model = RecordingPageModel(meeting,uptime:uptime)
         editors[meeting.folder.path] = model; return model
     }
@@ -38,6 +36,10 @@ private actor RecordingEdits {
         model.titleDirty = false
         model.titleTask?.cancel(); model.voiceTask?.cancel()
         await model.titleTask?.value
+    }
+    static func reconcile(_ meetings: [LibraryMeeting]) {
+        let active = Set(meetings.filter { $0.state.lifecycle != .saved }.map { $0.folder.path })
+        editors = editors.filter { active.contains($0.key) || $0.value.titleTask != nil || $0.value.titleDirty }
     }
     static var hasPendingEdits: Bool { editors.values.contains { $0.titleTask != nil } }
     static func flushAll() async {
@@ -58,6 +60,7 @@ private actor RecordingEdits {
     @ObservationIgnored private var titleTask: Task<Void,Never>?
     @ObservationIgnored private var titleGeneration = 0
     @ObservationIgnored private var titleDirty = false
+    @ObservationIgnored private var awaitingTitle: String?
     @ObservationIgnored private var voiceTask: Task<Void,Never>?
     @ObservationIgnored private var sourceGeneration = 0
     @ObservationIgnored private let uptime: () -> TimeInterval
@@ -74,7 +77,10 @@ private actor RecordingEdits {
         if frozen { cachedVoiceCount = 4 } // Published Recording board's frozen source-count state.
         else { refreshVoices() }
     }
-    func update(_ meeting: LibraryMeeting) {
+    func update(_ meeting: LibraryMeeting, isEditing: Bool = false) {
+        let incomingTitle = meeting.title ?? UXText.text("library.untitled")
+        if let awaitingTitle, incomingTitle == awaitingTitle { self.awaitingTitle = nil }
+        if !titleDirty && !isEditing && titleTask == nil && awaitingTitle == nil { title = incomingTitle }
         // A cached editor may have been hidden since recording stopped. Only
         // extrapolate while the incoming snapshot is still recording; Saving
         // uses the producer's recorded end, not time spent away from the view.
@@ -113,7 +119,7 @@ private actor RecordingEdits {
         return owned?.spectrogram ?? (native ? RecordingController.shared.spectrogram : nil)
     }
     var canStop: Bool { native || owned != nil }
-    var saving: Bool { owned.map { $0.savingSinceMs != nil || $0.snapshot.phase == .saving } ?? (native && RecordingController.shared.isSaving) }
+    var saving: Bool { meeting.state.lifecycle == .saving || (owned.map { $0.savingSinceMs != nil || $0.snapshot.phase == .saving } ?? (native && RecordingController.shared.isSaving)) }
     var me: Bool { owned?.snapshot.me ?? true }
     var others: Bool { owned?.snapshot.others ?? true }
     var othersUnavailable: Bool { owned?.input.failedSides.contains(.others) == true }
@@ -140,7 +146,7 @@ private actor RecordingEdits {
     var output: Float { owned?.levels[.others] ?? (native ? RecordingController.shared.levels["output",default:0] : (frozen ? 0.58 : 0)) }
     var microphoneSilent: Bool {
         if let owned { return owned.microphoneSilent }
-        return native ? RecordingController.shared.microphoneSilent : frozen
+        return native ? RecordingController.shared.microphoneSilent : (frozen && LibraryLaunchContext.argument("-CassiniSilentMicrophone") != "NO")
     }
     var displayTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? UXText.text("library.untitled") : title }
     func changeTitle() {
@@ -150,7 +156,7 @@ private actor RecordingEdits {
         // Older writes cannot replace this value after a later binding update.
         if native { RecordingController.shared.title = displayTitle }
         if owned != nil { CaptureCollection.shared.title(meeting.id,displayTitle) }
-        titleDirty = true; scheduleTitle()
+        awaitingTitle = displayTitle; titleDirty = true; scheduleTitle()
     }
     func flush() { guard !discarded else { return }; if titleDirty { scheduleTitle(immediate:true) } }
     private func scheduleTitle(immediate: Bool = false) {
