@@ -35,6 +35,21 @@ import SwiftUI
             try Task.checkCancellation()
         }
     }
+    private static func waitForLibraryMeeting(_ key:String) async throws {
+        let store = LibraryStore.shared
+        while !store.meetings.contains(where:{ $0.libraryKey == key }) {
+            let (changes,continuation) = AsyncStream<Void>.makeStream()
+            let contains = withObservationTracking {
+                _ = store.revision
+                return store.meetings.contains(where:{ $0.libraryKey == key })
+            } onChange: {
+                Task { @MainActor in continuation.yield(()); continuation.finish() }
+            }
+            if contains { continuation.finish(); return }
+            for await _ in changes { break }
+            try Task.checkCancellation()
+        }
+    }
     static func run() async {
         let environment = ProcessInfo.processInfo.environment
         let hosted = environment["GITHUB_ACTIONS"] == "true" && environment["RUNNER_ENVIRONMENT"] == "github-hosted"
@@ -125,6 +140,35 @@ import SwiftUI
             let browserMeeting = try browserScanner.scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("private browser meeting")
             var browserUptime: TimeInterval = 100
             let editor = RecordingPageModel.editor(for:browserMeeting,uptime:{ browserUptime }), elapsed = editor.elapsedMs
+            var retitled = browserMeeting; retitled.title = "Updated browser window"
+            editor.update(retitled)
+            try require(editor.title == retitled.title && editor.displayTitle == retitled.title,"scanner title reaches cached editor")
+            editor.title = "Pending custom title"; editor.changeTitle()
+            editor.update(browserMeeting)
+            try require(editor.title == "Pending custom title","scanner cannot overwrite pending local title")
+            await RecordingPageModel.flushAll()
+            editor.title = ""; editor.changeTitle(); await RecordingPageModel.flushAll()
+            let restored = try browserScanner.scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("restored browser title")
+            editor.update(restored)
+            try require(editor.displayTitle == "Private browser","clearing custom title restores browser window title")
+            var untitled = restored; untitled.titleIsUntitled = true
+            editor.update(untitled)
+            try require(editor.title.isEmpty,"untitled labels are not persisted as user input")
+            editor.update(restored)
+            let navigation = MeetingNavigation.shared
+            navigation.openLibrary = nil
+            LibraryStore.shared.start()
+            LibraryStore.shared.refresh(affected:restored.folder)
+            try await waitForLibraryMeeting(restored.libraryKey)
+            LibraryStore.shared.selectedKey = saved.libraryKey
+            navigation.open(restored,activate:false)
+            try require(LibraryStore.shared.selectedKey == restored.libraryKey,"opening live capture synchronizes previous sidebar selection")
+            let liveDetail = navigation.detail
+            navigation.captureBeganSaving(at:restored.folder)
+            try require(navigation.detail === liveDetail && navigation.detail?.meeting.state.lifecycle == .saving,"Saving retains the current detail owner")
+            navigation.update([],offline:false)
+            try require(navigation.detail == nil,"discarded empty live capture closes its detail")
+
             try await waitForVoiceCount(editor,1)
             browserUptime += 2
             try require(!editor.native && editor.elapsedMs == elapsed + 2000 && editor.voiceCount == 1,"browser clock advances without a manifest write")

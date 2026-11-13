@@ -14,6 +14,9 @@ import Observation
         guard !LibraryMoveCoordinator.shared.busy || meeting.state.lifecycle != .saved else { return }
         if LibrarySearchModel.shared.visible { LibrarySearchModel.shared.close() }
         readTask?.cancel(); loading = false
+        if LibraryStore.shared.meetings.contains(where: { $0.libraryKey == meeting.libraryKey }) {
+            LibraryStore.shared.selectedKey = meeting.libraryKey
+        }
         if detail?.meeting.libraryKey == meeting.libraryKey {
             detail?.meeting = meeting
             if autoplay, detail?.isPlaying != true { detail?.toggle() }
@@ -55,7 +58,14 @@ import Observation
     func update(_ meetings: [LibraryMeeting], offline: Bool) {
         guard let detail, detail.fileURL == nil else { return }
         // An outage only stops playback: the page stays, and so does its transcript (#118 r2).
-        guard !offline, let meeting = meetings.first(where: { $0.libraryKey == detail.meeting.libraryKey }) else { detail.suspend(); return }
+        guard !offline else { detail.suspend(); return }
+        guard let meeting = meetings.first(where: { $0.libraryKey == detail.meeting.libraryKey }) else {
+            if detail.meeting.state.lifecycle != .saved {
+                if LibraryStore.shared.selectedKey == detail.meeting.libraryKey { LibraryStore.shared.selectedKey = nil }
+                back()
+            } else { detail.suspend() }
+            return
+        }
         if meeting.audioFiles != detail.meeting.audioFiles {
             detail.close(); self.detail = MeetingDetailModel(meeting: meeting); return
         }
@@ -64,7 +74,9 @@ import Observation
         detail.reconcile(offline:offline)
     }
     func captureBeganSaving(at folder: URL) {
-        if let detail, detail.fileURL == nil, detail.meeting.folder.standardizedFileURL.path == folder.standardizedFileURL.path { back() }
+        if let detail, detail.fileURL == nil, detail.meeting.folder.standardizedFileURL.path == folder.standardizedFileURL.path {
+            detail.meeting.state.lifecycle = .saving
+        }
     }
     func back() { readTask?.cancel(); readTask = nil; loading = false; detail?.close(); detail = nil }
 }
