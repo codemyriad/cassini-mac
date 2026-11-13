@@ -67,7 +67,7 @@ private actor RecordingEdits {
     @ObservationIgnored private var liveElapsed: Int64 = 0
     private init(_ meeting: LibraryMeeting, uptime: @escaping () -> TimeInterval) {
         self.uptime = uptime; liveAnchor = uptime()
-        self.meeting = meeting; title = meeting.title ?? UXText.text("library.untitled")
+        self.meeting = meeting; title = meeting.titleIsUntitled ? "" : (meeting.title ?? "")
         edits = RecordingEdits(directory: meeting.folder, id: meeting.id)
         liveElapsed = meeting.state.liveMs ?? meeting.durationMs ?? 0
         #if DEBUG
@@ -82,6 +82,7 @@ private actor RecordingEdits {
         // uses the producer's recorded end, not time spent away from the view.
         let elapsed = meeting.state.lifecycle == .recording ? elapsedMs : (meeting.state.liveMs ?? meeting.durationMs ?? liveElapsed)
         self.meeting = meeting
+        if !titleDirty { title = meeting.titleIsUntitled ? "" : (meeting.title ?? "") }
         liveElapsed = meeting.state.lifecycle == .recording ? max(elapsed,meeting.state.liveMs ?? 0) : elapsed
         liveAnchor = uptime()
         if !frozen { refreshVoices() }
@@ -144,14 +145,19 @@ private actor RecordingEdits {
         if let owned { return owned.microphoneSilent }
         return native ? RecordingController.shared.microphoneSilent : (frozen && RecordingPageFixture.microphoneSilent)
     }
-    var displayTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? UXText.text("library.untitled") : title }
+    var displayTitle: String {
+        guard title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { return title }
+        if let owned { return owned.snapshot.manifest.title ?? UXText.text("library.untitled") }
+        if native { return UXText.text("library.untitled") }
+        return meeting.title ?? UXText.text("library.untitled")
+    }
     func changeTitle() {
         title = String(String.UnicodeScalarView(title.unicodeScalars.prefix(500)))
         guard !frozen, !discarded else { return }
         // Publish the current user input immediately; persistence is debounced.
         // Older writes cannot replace this value after a later binding update.
         if native { RecordingController.shared.title = displayTitle }
-        if owned != nil { CaptureCollection.shared.title(meeting.id,displayTitle) }
+        if owned != nil { CaptureCollection.shared.title(meeting.id,title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty ? nil : title) }
         titleDirty = true; scheduleTitle()
     }
     func flush() { guard !discarded else { return }; if titleDirty { scheduleTitle(immediate:true) } }

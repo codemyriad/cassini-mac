@@ -992,6 +992,13 @@ final class LibraryBoards: XCTestCase {
             XCTAssertTrue(window.staticTexts["recording-page-title"].waitForExistence(timeout:20),app.debugDescription)
             XCTAssertEqual(visibleText(window.staticTexts["recording-page-title"]),"Weekly sync, product team")
             XCTAssertTrue(window.outlines.firstMatch.exists,"Recording stays beside the Library")
+            let importButton = window.buttons["toolbar-import"]
+            XCTAssertTrue(importButton.exists,"Import remains in the persistent sidebar header")
+            let live = window.buttons["recording-open-current"]
+            XCTAssertTrue(live.exists)
+            XCTAssertGreaterThanOrEqual(importButton.frame.minX,window.frame.minX + 170,"Live controls retain trailing sidebar alignment")
+            XCTAssertLessThan(importButton.frame.maxX,live.frame.minX)
+
             XCTAssertEqual(visibleText(window.staticTexts["recording-date"]),"Today, 14:05")
             XCTAssertTrue(text("00:12:48",in:window))
             XCTAssertFalse(text("Recording since 14:05 · saved as it records",in:window))
@@ -1001,6 +1008,14 @@ final class LibraryBoards: XCTestCase {
             XCTAssertTrue(window.buttons["recording-change-sources"].isEnabled)
             XCTAssertTrue(window.descendants(matching:.any)["recording-microphone-meter"].exists)
             XCTAssertTrue(window.descendants(matching:.any)["recording-others-meter"].exists)
+            let sources = window.descendants(matching:.any)["recording-sources"]
+            let othersMeter = window.descendants(matching:.any)["recording-others-meter"]
+            XCTAssertEqual(othersMeter.frame.maxX,sources.frame.maxX - 16,accuracy:2,"Healthy meters align with trailing card padding")
+            if silent {
+                let microphoneMeter = window.descendants(matching:.any)["recording-microphone-meter"]
+                XCTAssertEqual(microphoneMeter.frame.midY,window.buttons["recording-check-microphone"].frame.midY,accuracy:2,"Desktop warning wraps beside its meter instead of stacking")
+            }
+
             XCTAssertFalse(window.buttons["recording-details-link"].exists)
             XCTAssertFalse(window.buttons["recording-back"].exists)
             XCTAssertEqual(window.buttons["recording-page-stop"].label,"Stop")
@@ -1079,6 +1094,12 @@ final class LibraryBoards: XCTestCase {
         let renamed = NSPredicate { _,_ in self.visibleText(window.staticTexts["recording-page-title"]) == "Title from the live page" && !title.exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:renamed,object:nil)],timeout:5),.completed)
         window.buttons["recording-open-current"].click()
+        window.buttons["recording-rename"].click()
+        XCTAssertTrue(waitForPresent(title,timeout:5))
+        app.typeKey("a",modifierFlags:.command); title.typeText("Discard this edit")
+        app.typeKey(.escape,modifierFlags:[])
+        let cancelled = NSPredicate { _,_ in !title.exists && self.visibleText(window.staticTexts["recording-page-title"]) == "Title from the live page" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:cancelled,object:nil)],timeout:5),.completed)
         window.buttons["recording-rename"].click()
         XCTAssertTrue(waitForPresent(title,timeout:5))
         XCTAssertEqual(title.value as? String,"Title from the live page")
