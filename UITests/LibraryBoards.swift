@@ -218,7 +218,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(remember.exists)
         XCTAssertFalse(remember.isEnabled,"Unprepared voices cannot be remembered")
         let explanation=app.staticTexts["speaker-remember-explanation"]
-        XCTAssertEqual(explanation.label,"Cassini hasn’t prepared this meeting’s voices yet. You can still save the name.")
+        XCTAssertEqual(explanation.value as? String ?? explanation.label,"Cassini hasn’t prepared this meeting’s voices yet. You can still save the name.")
         XCTAssertFalse(window.buttons["meeting-back"].isEnabled,"Native toolbar cannot act behind the dialog")
         XCTAssertFalse(window.buttons["meeting-export"].isEnabled)
         capture(window,name:"speakers")
