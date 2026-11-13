@@ -309,11 +309,11 @@ extension MeetingTranscriptText {
         report["asideButtonGeometry"] = (button?.frame.width ?? 0) > 0
         render.update(view,isEnabled:false)
         let disabledButton=button as? MeetingTurnTextView.InlineListenButton
-        let before=listened
+        let listenedBeforeDisable=listened
         _=disabledButton?.accessibilityPerformPress()
         report["disabledEnvironmentBlocksInlineListen"] = disabledButton?.isEnabled == false
             && disabledButton?.acceptsFirstResponder == false && disabledButton?.canBecomeKeyView == false
-            && listened == before && !view.canPlay
+            && listened == listenedBeforeDisable && !view.canPlay
         render.update(view)
         report["enabledEnvironmentRestoresInlineListen"] = button?.isEnabled == true
         do {
