@@ -12,100 +12,13 @@ struct SpeakerEditorView:View {
     var body:some View {
         VStack(alignment:.leading,spacing:18) {
             if let meeting=edit.meeting,let speaker=edit.selectedSpeaker {
-                HStack(spacing:12) {
-                    VStack(alignment:.leading,spacing:4) {
-                        Text(speaker.displayName).font(.system(size:18,weight:.semibold))
-                            .foregroundStyle(CassiniTheme.ink).lineLimit(2)
-                            .accessibilityAddTraits(.isHeader)
-                        if edit.speakerPreparing {ProgressView().controlSize(.small)}
-                        else {
-                            Text(UXText.text("speakers.talkTime",["talkTime":LibraryFormat.talkTime(edit.speakerTalkTime,locale:UXText.locale,language:UXText.language)]))
-                                .foregroundStyle(CassiniTheme.ink2)
-                        }
-                    }
-                    Spacer()
-                    Button {
-                        guard let detail else {return}
-                        if detail.speakerSample.active {detail.speakerSample.cancel()}
-                        else if let range=edit.speakerSampleRange {detail.playSpeakerSample(range)}
-                    } label: {
-                        Image(systemName:detail?.speakerSample.active == true ? "stop.fill" : "play.fill")
-                            .frame(width:30,height:30)
-                    }.buttonStyle(.plain)
-                        .background(CassiniTheme.neutralPillFill,in:Circle())
-                        .accessibilityLabel(UXText.text(detail?.speakerSample.active == true ? "common.stop" : "speakers.playSample"))
-                        .disabled(edit.working || detail?.canPlay != true || edit.speakerSampleRange==nil)
-                        .focusable().focused($focused,equals:.sample)
-                        .accessibilityIdentifier("speaker-play-sample")
-                }
-                if let quote=edit.speakerQuote {
-                    HStack(spacing:12) {
-                        RoundedRectangle(cornerRadius:2).fill(CassiniTheme.line).frame(width:3)
-                        Text(UXText.text("common.quote",["quote":quote])).foregroundStyle(CassiniTheme.ink2).lineLimit(3)
-                            .frame(maxWidth:.infinity,alignment:.leading)
-                    }.fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("speaker-quote")
-                }
-                VStack(alignment:.leading,spacing:7) {
-                    Text(UXText.text("speakers.nameLabel")).fontWeight(.semibold).foregroundStyle(CassiniTheme.ink)
-                    TextField("", text:$edit.name)
-                        .textFieldStyle(.plain).padding(10)
-                        .background(CassiniTheme.field,in:RoundedRectangle(cornerRadius:6))
-                        .overlay(RoundedRectangle(cornerRadius:6).stroke(focused == .name ? CassiniTheme.accent : CassiniTheme.fieldLine,lineWidth:1))
-                        .focused($focused,equals:.name).disabled(edit.working)
-                        .accessibilityLabel(UXText.text("speakers.nameLabel"))
-                        .accessibilityIdentifier("speaker-name-field")
-                        .onSubmit {if edit.canApply {edit.apply()}}
-                }
-                VStack(alignment:.leading,spacing:8) {
-                    Text(UXText.text("common.savedVoices")).fontWeight(.semibold)
-                    Text(UXText.text("savedVoices.empty")).foregroundStyle(CassiniTheme.ink2)
-                        .frame(maxWidth:.infinity,alignment:.leading).padding(12)
-                        .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
-                        .overlay(RoundedRectangle(cornerRadius:12).stroke(CassiniTheme.lineSoft,lineWidth:1))
-                }
-                VStack(alignment:.leading,spacing:8) {
-                    HStack(alignment:.top,spacing:12) {
-                        VStack(alignment:.leading,spacing:5) {
-                            Text(UXText.text("speakers.rememberVoice.title"))
-                            Text(UXText.text("speakers.rememberVoice.notPrepared"))
-                                .accessibilityIdentifier("speaker-remember-explanation")
-                                .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
-                                .fixedSize(horizontal:false,vertical:true)
-                        }
-                        Spacer(minLength:0)
-                        Toggle(UXText.text("speakers.rememberVoice.title"),isOn:.constant(false))
-                            .labelsHidden().toggleStyle(.switch).controlSize(.small).disabled(true)
-                            .accessibilityIdentifier("speaker-remember-voice")
-                    }
-                }.padding(14).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
-                        .overlay(RoundedRectangle(cornerRadius:12).stroke(CassiniTheme.lineSoft,lineWidth:1))
-                if edit.speakerChangeFailed {
-                    HStack(spacing:10) {
-                        Text(UXText.text("speakers.changeFailed")).foregroundStyle(CassiniTheme.error)
-                            .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("speaker-change-error")
-                        Button(UXText.text("common.tryAgain")) {edit.retrySpeakerEdit()}.disabled(!edit.canRetrySpeakerEdit).focusable().focused($focused,equals:.retry)
-                    }.padding(12).background(CassiniTheme.errorTint,in:RoundedRectangle(cornerRadius:7))
-                }
-                HStack {
-                    Menu(UXText.text("speakers.mergeInto")) {
-                        ForEach(meeting.speakers.filter {$0.id != speaker.id},id:\.id) {other in
-                            Button(other.displayName) {edit.mergeSpeaker(into:other.id)}
-                                .accessibilityIdentifier("speaker-merge-into-"+other.id)
-                        }
-                    }.fixedSize().disabled(edit.working || meeting.speakers.count<2)
-                        .focusable().focused($focused,equals:.merge)
-                        .accessibilityIdentifier("speaker-merge-menu")
-                    Spacer(minLength:0)
-                    if edit.working {ProgressView().controlSize(.small)}
-                    Button(UXText.text("common.cancel")) {edit.cancel()}
-                        .keyboardShortcut(.cancelAction).disabled(edit.working)
-                        .focusable().focused($focused,equals:.cancel)
-                        .accessibilityIdentifier("speaker-cancel")
-                    Button(UXText.text("speakers.saveName")) {edit.apply()}
-                        .keyboardShortcut(.defaultAction).disabled(!edit.canApply)
-                        .focusable().focused($focused,equals:.save)
-                        .accessibilityIdentifier("speaker-save-name")
-                }
+                header(speaker)
+                if let quote=edit.speakerQuote {excerpt(quote)}
+                nameEntry
+                savedVoices
+                rememberVoice
+                if edit.speakerChangeFailed {failure}
+                footer(meeting,speaker)
             }
         }.font(.system(size:13)).foregroundStyle(CassiniTheme.ink)
             .padding(24).frame(width:470)
@@ -114,22 +27,129 @@ struct SpeakerEditorView:View {
             .shadow(color:CassiniTheme.shadow,radius:24,y:12)
             .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("speakers.dialog.a11y"))
             .accessibilityAddTraits(.isModal).accessibilityIdentifier("speaker-editor")
-            .environment(\.undoManager,SpeakerEditorChrome.undoManager)
-            .background(SpeakerDialogKeyboard { reverse in
-                var controls:[Control]=[]
-                if !edit.working && detail?.canPlay == true && edit.speakerSampleRange != nil {controls.append(.sample)}
-                if !edit.working {controls.append(.name)}
-                if !edit.working && (edit.meeting?.speakers.count ?? 0)>1 {controls.append(.merge)}
-                if edit.speakerChangeFailed && edit.canRetrySpeakerEdit {controls.append(.retry)}
-                if !edit.working {controls.append(.cancel)}
-                if edit.canApply {controls.append(.save)}
-                guard !controls.isEmpty else {return}
-                let step=reverse ? -1 : 1
-                let index=focused.flatMap {controls.firstIndex(of:$0)} ?? (step == 1 ? -1 : 0)
-                focused=controls[(index+step+controls.count)%controls.count]
-            })
+            .background(SpeakerDialogKeyboard(advance:advanceFocus))
             .onAppear {focused = .name}
-            .onDisappear {detail?.speakerSample.cancel();SpeakerEditorChrome.undoManager.removeAllActions()}
+            .onDisappear {detail?.speakerSample.cancel()}
+    }
+    private func header(_ speaker:MeetingSpeaker)->some View {
+        HStack(spacing:12) {
+            VStack(alignment:.leading,spacing:4) {
+                Text(speaker.displayName).font(.system(size:18,weight:.semibold))
+                    .foregroundStyle(CassiniTheme.ink).lineLimit(2)
+                    .accessibilityAddTraits(.isHeader)
+                if edit.speakerPreparing {ProgressView().controlSize(.small)}
+                else {
+                    Text(UXText.text("speakers.talkTime",["talkTime":LibraryFormat.talkTime(edit.speakerTalkTime,locale:UXText.locale,language:UXText.language)]))
+                        .foregroundStyle(CassiniTheme.ink2)
+                }
+            }
+            Spacer()
+            sampleButton
+        }
+    }
+    private var sampleButton:some View {
+        Button {
+            guard let detail else {return}
+            if detail.speakerSample.active {detail.speakerSample.cancel()}
+            else if let range=edit.speakerSampleRange {detail.playSpeakerSample(range)}
+        } label: {
+            Image(systemName:detail?.speakerSample.active == true ? "stop.fill" : "play.fill")
+                .frame(width:30,height:30)
+        }.buttonStyle(.plain)
+            .background(CassiniTheme.neutralPillFill,in:Circle())
+            .accessibilityLabel(UXText.text(detail?.speakerSample.active == true ? "common.stop" : "speakers.playSample"))
+            .disabled(edit.working || detail?.canPlay != true || edit.speakerSampleRange==nil)
+            .focusable().focused($focused,equals:.sample)
+            .accessibilityIdentifier("speaker-play-sample")
+    }
+    private func excerpt(_ quote:String)->some View {
+        HStack(spacing:12) {
+            RoundedRectangle(cornerRadius:2).fill(CassiniTokens.line).frame(width:3)
+            Text(UXText.text("common.quote",["quote":quote])).foregroundStyle(CassiniTheme.ink2).lineLimit(3)
+                .frame(maxWidth:.infinity,alignment:.leading)
+        }.fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("speaker-quote")
+    }
+    private var nameEntry:some View {
+        VStack(alignment:.leading,spacing:7) {
+            Text(UXText.text("speakers.nameLabel")).fontWeight(.semibold).foregroundStyle(CassiniTheme.ink)
+            TextField("", text:$edit.name)
+                .textFieldStyle(.plain).padding(10)
+                .background(CassiniTheme.field,in:RoundedRectangle(cornerRadius:6))
+                .overlay(RoundedRectangle(cornerRadius:6).stroke(focused == .name ? CassiniTheme.accent : CassiniTheme.fieldLine,lineWidth:1))
+                .focused($focused,equals:.name).disabled(edit.working)
+                .accessibilityLabel(UXText.text("speakers.nameLabel"))
+                .accessibilityIdentifier("speaker-name-field")
+                .onSubmit {if edit.canApply {edit.apply()}}
+        }
+    }
+    private var savedVoices:some View {
+        VStack(alignment:.leading,spacing:8) {
+            Text(UXText.text("common.savedVoices")).fontWeight(.semibold)
+            Text(UXText.text("savedVoices.empty")).foregroundStyle(CassiniTheme.ink2)
+                .frame(maxWidth:.infinity,alignment:.leading).padding(12)
+                .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
+                .overlay(RoundedRectangle(cornerRadius:12).stroke(CassiniTheme.lineSoft,lineWidth:1))
+        }
+    }
+    private var rememberVoice:some View {
+        VStack(alignment:.leading,spacing:8) {
+            HStack(alignment:.top,spacing:12) {
+                VStack(alignment:.leading,spacing:5) {
+                    Text(UXText.text("speakers.rememberVoice.title"))
+                    Text(UXText.text("speakers.rememberVoice.notPrepared"))
+                        .accessibilityIdentifier("speaker-remember-explanation")
+                        .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
+                        .fixedSize(horizontal:false,vertical:true)
+                }
+                Spacer(minLength:0)
+                Toggle(UXText.text("speakers.rememberVoice.title"),isOn:.constant(false))
+                    .labelsHidden().toggleStyle(.switch).controlSize(.small).disabled(true)
+                    .accessibilityIdentifier("speaker-remember-voice")
+            }
+        }.padding(14).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
+                .overlay(RoundedRectangle(cornerRadius:12).stroke(CassiniTheme.lineSoft,lineWidth:1))
+    }
+    private var failure:some View {
+        HStack(spacing:10) {
+            Text(UXText.text("speakers.changeFailed")).foregroundStyle(CassiniTheme.error)
+                .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("speaker-change-error")
+            Button(UXText.text("common.tryAgain")) {edit.retrySpeakerEdit()}.disabled(!edit.canRetrySpeakerEdit).focusable().focused($focused,equals:.retry)
+        }.padding(12).background(CassiniTheme.errorTint,in:RoundedRectangle(cornerRadius:7))
+    }
+    private func footer(_ meeting:LibraryMeeting,_ speaker:MeetingSpeaker)->some View {
+        HStack {
+            Menu(UXText.text("speakers.mergeInto")) {
+                ForEach(meeting.speakers.filter {$0.id != speaker.id},id:\.id) {other in
+                    Button(other.displayName) {edit.mergeSpeaker(into:other.id)}
+                        .accessibilityIdentifier("speaker-merge-into-"+other.id)
+                }
+            }.fixedSize().disabled(edit.working || meeting.speakers.count<2)
+                .focusable().focused($focused,equals:.merge)
+                .accessibilityIdentifier("speaker-merge-menu")
+            Spacer(minLength:0)
+            if edit.working {ProgressView().controlSize(.small)}
+            Button(UXText.text("common.cancel")) {edit.cancel()}
+                .keyboardShortcut(.cancelAction).disabled(edit.working)
+                .focusable().focused($focused,equals:.cancel)
+                .accessibilityIdentifier("speaker-cancel")
+            Button(UXText.text("speakers.saveName")) {edit.apply()}
+                .keyboardShortcut(.defaultAction).disabled(!edit.canApply)
+                .focusable().focused($focused,equals:.save)
+                .accessibilityIdentifier("speaker-save-name")
+        }
+    }
+    private func advanceFocus(_ reverse:Bool) {
+        var controls:[Control]=[]
+        if !edit.working && detail?.canPlay == true && edit.speakerSampleRange != nil {controls.append(.sample)}
+        if !edit.working {controls.append(.name)}
+        if !edit.working && (edit.meeting?.speakers.count ?? 0)>1 {controls.append(.merge)}
+        if edit.speakerChangeFailed && edit.canRetrySpeakerEdit {controls.append(.retry)}
+        if !edit.working {controls.append(.cancel)}
+        if edit.canApply {controls.append(.save)}
+        guard !controls.isEmpty else {return}
+        let step=reverse ? -1 : 1
+        let index=focused.flatMap {controls.firstIndex(of:$0)} ?? (step == 1 ? -1 : 0)
+        focused=controls[(index+step+controls.count)%controls.count]
     }
 }
 struct SpeakerEditFailureNotice:View {
@@ -161,7 +181,6 @@ struct SpeakerEditFailureNotice:View {
 /// strip in the existing frame view as well, so toolbar and traffic-light clicks
 /// cannot pass behind the dialog. Removed as soon as the presentation ends.
 @MainActor enum SpeakerEditorChrome {
-    static let undoManager=UndoManager()
     private static let undoGate=SpeakerUndoGate()
     private static let identifier=NSUserInterfaceItemIdentifier("speaker-titlebar-scrim")
     #if DEBUG
