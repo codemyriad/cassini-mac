@@ -2,6 +2,9 @@
 
 Preparation is stacked after WP6. The shared visible copy and pin still await
 cassini-ux #19; this stage does not rename badges or render the toast.
+The compiled `ImportedMeetingToast` supplies the board's folder glyph, dismiss
+button and inverse pill using existing CassiniTokens roles. Its caller supplies
+the shared catalog message; no pending copy is duplicated locally.
 
 `transcriptFromImportedFile` is a transient scanner fact. Only a readable,
 completed, validated embedded transcript supplies it. Plain audio, local sidecar

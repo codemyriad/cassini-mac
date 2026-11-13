@@ -162,6 +162,7 @@
 		ED4C813AEF17E27AD01C0D57 /* Service.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1306467A5EEEC9D698F5B4E9 /* Service.swift */; };
 		ED5162CC4576829212ED5CDA /* LiveFolderSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 398B916BA60017DC5A45A118 /* LiveFolderSelfTest.swift */; };
 		EFE62DD40AF7F90F7E55A0EF /* MeetingFindBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C00B7DC9DDF9C68ED4B73C48 /* MeetingFindBar.swift */; };
+		F03D2C9A80B1DA7F22BD98E4 /* ImportedMeetingToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0825822A2799ABAF2CD04F3C /* ImportedMeetingToast.swift */; };
 		F07B5EDE369FCD6AD1FC318F /* CassiniBrowserControl in Frameworks */ = {isa = PBXBuildFile; productRef = 15BEED4B6B9896781C2C0BDA /* CassiniBrowserControl */; };
 		F0E35B2C5243D78A5D769FA4 /* BulkZipExportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E73F80C83974956E45C29A80 /* BulkZipExportCoordinator.swift */; };
 		F1C535ADDEC2069F9E186664 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3149977C4C1C582F5CEF23B /* main.swift */; };
@@ -259,6 +260,7 @@
 		010BCF4BD08EDB89185F0894 /* ApplicationUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationUpdates.swift; sourceTree = "<group>"; };
 		0128F0DA36A8F1649E4BFACB /* PlayerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerController.swift; sourceTree = "<group>"; };
 		04C66E21DEC62887CBA957E0 /* COPYING */ = {isa = PBXFileReference; path = COPYING; sourceTree = "<group>"; };
+		0825822A2799ABAF2CD04F3C /* ImportedMeetingToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportedMeetingToast.swift; sourceTree = "<group>"; };
 		0885E2CAB1DA1A45AD4C3EAD /* PlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerBar.swift; sourceTree = "<group>"; };
 		09080E2F396E98099308B88B /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
 		0A2CF8935408378DD526CC43 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
@@ -497,6 +499,7 @@
 			isa = PBXGroup;
 			children = (
 				6A08D81BC5254F08DAD3075A /* ImportedMeetingNotice.swift */,
+				0825822A2799ABAF2CD04F3C /* ImportedMeetingToast.swift */,
 				9B1B9FA44610287C8EB11F1D /* ImportedNoticeWindow.swift */,
 				DB744CF6A1F227F05C2E43D7 /* LegacyDocumentModel.swift */,
 				CD057B32C9901BC49239FFBC /* LegacyOpening.swift */,
@@ -1412,6 +1415,7 @@
 				0D92ED1885E3C15E5482F790 /* ExportSelfTest.swift in Sources */,
 				DCB14460A988FBEB731D578E /* IdleStatusMenu.swift in Sources */,
 				88CC44F21CB362F884F43130 /* ImportedMeetingNotice.swift in Sources */,
+				F03D2C9A80B1DA7F22BD98E4 /* ImportedMeetingToast.swift in Sources */,
 				5101A353D85ED0EB4DF41B78 /* ImportedNoticeWindow.swift in Sources */,
 				5B22C485F9011F2995FB4C70 /* InspectorView.swift in Sources */,
 				D49F9D953C8407319F47424E /* LegacyDocumentModel.swift in Sources */,
