@@ -594,13 +594,15 @@ final class LibraryBoards: XCTestCase {
         }
     }
     @MainActor func testMeetingAccessibility() throws {
-        let app = try launch("meeting",fixture:"main"); defer { app.terminate() }
+        let app = try launch("meeting",fixture:"main",extra:["-CassiniFixtureActivity","none"]); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.buttons["meeting-export"].waitForExistence(timeout:20),app.debugDescription)
         let tree = XCTAttachment(string:app.debugDescription)
         tree.name = "meeting-accessibility-tree"; tree.lifetime = .keepAlways; add(tree)
         XCTAssertFalse(window.buttons["meeting-back"].exists,"No intermediate preview or Back hop")
+        XCTAssertTrue(window.buttons["toolbar-record"].waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertEqual(window.buttons["toolbar-record"].label,"Record")
+        XCTAssertEqual(window.buttons["toolbar-import"].label,"Import Audio…")
         XCTAssertEqual(window.buttons["meeting-export"].label,"Export…")
         let more = window.buttons.matching(identifier:"meeting-more-actions")
         XCTAssertEqual(more.count,1,"Exactly one actionable More control")
