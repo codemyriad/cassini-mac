@@ -200,7 +200,7 @@ private final class RecordingPillControlView: NSView {
     private var onOpen: (() -> Void)?, onStop: (() -> Void)?
     override init(frame: NSRect) {
         super.init(frame:frame)
-        wantsLayer = true; layer?.cornerRadius = 6
+        wantsLayer = true; layer?.cornerRadius = 17
         setAccessibilityElement(true); setAccessibilityRole(.group)
         for button in [openButton,stopButton] {
             button.isBordered = false; button.setButtonType(.momentaryPushIn)
@@ -213,7 +213,7 @@ private final class RecordingPillControlView: NSView {
         openButton.toolTip = UXText.text("hidden.openCassini")
         openWidth = openButton.widthAnchor.constraint(equalToConstant:84); openWidth.isActive = true
         stopWidth = stopButton.widthAnchor.constraint(equalToConstant:44); stopWidth.isActive = true
-        stopButton.wantsLayer = true; stopButton.layer?.cornerRadius = 5
+        stopButton.wantsLayer = true; stopButton.layer?.cornerRadius = 13
         let meters = NSView()
         meters.widthAnchor.constraint(equalToConstant:50).isActive = true
         meters.heightAnchor.constraint(equalToConstant:20).isActive = true

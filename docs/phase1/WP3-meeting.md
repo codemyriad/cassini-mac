@@ -2,11 +2,11 @@
 
 This package follows L-22, L-24, L-43 and L-44 in the Phase 1 decisions log. `LibraryOpen-Mac*.dc.html` is the pane reference; it supersedes the older separate-speakers `Meeting-Mac` board. No summaries exist, so no Summary/Transcript tabs are added.
 
-WP3 is based on main after Foundations #290 (`cf368749`). It retains the final stored-speaker-slot and off-main preparation fixes, plus main's release admission and native probe fixes. Foundations carries the canonical UX pin `5e0c34e0f1bb390298dabdf4eedc494e933fd329`, including the Find/empty-selection strings and final theme helpers. WP2's sidebar/search styling remains with agy-mac.
+WP3 includes main after Foundations #290 (`cf368749`) and Library/Search #293 (`51975621`). It retains the final stored-speaker-slot and off-main preparation fixes, plus main's release admission and native probe fixes. Foundations carries the canonical UX pin `5e0c34e0f1bb390298dabdf4eedc494e933fd329`, including the Find/empty-selection strings and final theme helpers. WP2's sidebar Search, row cards, import controls, transient imports and drop states are retained. Saved meeting panes keep those Library controls; recording pages keep their existing owner.
 
 ## Pane and ownership
 
-LibraryView keeps the Library list beside the real meeting. Single selection and keyboard selection open it directly; multi-selection retains bulk export. Explicit list interaction can switch away from an external document, but a background Library refresh cannot replace one. Global Search keeps its existing entry field until WP2 moves it to the sidebar. Closing global Search restores the selected meeting.
+LibraryView keeps the Library list beside the real meeting. Single selection and keyboard selection open it directly; multi-selection retains bulk export. Explicit list interaction can switch away from an external document, but a background Library refresh cannot replace one. Global Search uses WP2’s sidebar field; the duplicate toolbar field is removed. Closing global Search restores the selected meeting.
 
 MeetingPaneHeader owns the heading, rename pencil, date/duration and inline speakers. Writable names open the existing speaker editor; read-only names remain plain text. Independent speaker Play, provenance, turn timing and talk shares remain accessible through the inline row and its context menu. No saved-voice backend or new persistence is introduced.
 
