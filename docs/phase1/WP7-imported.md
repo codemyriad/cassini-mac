@@ -11,6 +11,8 @@ CassiniTokens roles. No English fallback or local shared label is introduced.
 completed, validated embedded transcript supplies it. Plain audio, local sidecar
 replacements, incomplete jobs and unverified content cannot claim another-device
 words. No new manifest or meeting.json field is written.
+Valid read-only external documents retain that transcript attribution too;
+they remain ineligible for a toast claiming that a Library copy exists.
 
 `ImportedMeetingNotice` prepares a candidate without consuming its appearance.
 Only the rendered notice's acknowledgement persists a seen flag, keyed by the

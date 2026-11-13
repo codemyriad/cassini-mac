@@ -5,6 +5,20 @@ import CassiniKit
 @testable import CassiniLibrary
 
 struct ImportedPresentationTests {
+    @Test(arguments: [("001-minimal-v1", true), ("002-plain-audio", false),
+                      ("009-bad-payload-sha256", false), ("010-stale-audio", false),
+                      ("015-unknown-major-version", false)])
+    func readOnlyDocumentsAttributeOnlyATrustedEmbeddedTranscript(_ name: String, _ expected: Bool) throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let url = repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/" + name + ".opus")
+        let meeting = MeetingPresentation.external(try CassiniReader.read(contentsOf: url), url: url)
+        #expect(meeting.metadataReadOnly)
+        #expect(meeting.transcriptFromImportedFile == expected)
+        let format = LibraryFormat(timeZone: TimeZone(secondsFromGMT: 0)!, locale: Locale(identifier: "en_GB"), language: .en)
+        let text = format.previewSubtitle(meeting.meetingTime, durationMs: meeting.durationMs, received: true,
+                                          transcriptFromImportedFile: meeting.transcriptFromImportedFile)
+        #expect(text.hasSuffix("· Transcribed on another device") == expected)
+    }
     @Test func subtitleAttributesOnlyTheTranscriptCarriedByAnImportedFile() {
         let date = Date(timeIntervalSince1970: 0)
         let format = LibraryFormat(timeZone: TimeZone(secondsFromGMT: 0)!, now: date, locale: Locale(identifier: "en_GB"), language: .en)
