@@ -10,6 +10,8 @@ struct LibraryView: View {
     @State private var bulkExporter = BulkZipExportCoordinator.shared
     @State private var recordingDetails = RecordingDetailsCoordinator.shared
     @State private var store = LibraryStore.shared
+    @State private var importedNotice = ImportedMeetingNotice(defaults: RecordingPreferences.defaults)
+    @State private var importedNoticeWindow = ImportedNoticeWindow()
     @State private var sessionPlayback = SessionPlaybackController()
     @State private var navigation = MeetingNavigation.shared
     #if DEBUG
@@ -164,10 +166,13 @@ struct LibraryView: View {
             window.toolbarStyle = .unified
             window.titleVisibility = .hidden
             RecordingConfirmation.attach(to: window)
+            importedNoticeWindow.window = window
+            updateImportedNotice()
             #if DEBUG
             if store.loaded { ScreenshotFixture.prepareLibrary(window) }
             #endif
         })
+        .onReceive(ImportedNoticeWindow.events) { _ in updateImportedNotice() }
          .sheet(isPresented:Binding(get:{ rename.presentation == .sheet || rename.presentation == .speakers },set:{ if !$0 { rename.cancel() } })) {
             if rename.presentation == .speakers { SpeakerEditorView() } else { MeetingRenameView() }
         }
@@ -248,6 +253,28 @@ struct LibraryView: View {
             .accessibilityHidden(true)
         }
         .preferredColorScheme(LibraryLaunchContext.screenshotDark ? .dark : (store.context.screenshot ? .light : nil))
+    }
+    private var importedNoticeVisibility: ImportedMeetingNotice.Visibility {
+        let window = importedNoticeWindow.window
+        return .init(appIsActive: NSApp.isActive, isKeyWindow: window?.isKeyWindow == true,
+                     hasSheet: window?.attachedSheet != nil || NSApp.modalWindow != nil,
+                     contentIsVisible: window?.isVisible == true && !navigation.loading && !search.visible &&
+                        !store.offline && !LibraryMoveCoordinator.shared.busy)
+    }
+    private func updateImportedNotice() {
+        let candidate: ImportedMeetingNotice.Candidate?
+        if let detail = navigation.detail, detail.fileURL == nil,
+           detail.meeting.state.lifecycle == .saved, detail.meeting.state.origin == .received,
+           !detail.meeting.audioFiles.isEmpty, let received = detail.meeting.received {
+            candidate = .init(id: detail.meeting.id, folderName: received.originalFolderName)
+        } else { candidate = nil }
+        importedNotice.update(candidate: candidate, visibility: importedNoticeVisibility)
+    }
+    private func importedNoticeDidAppear(_ id: UUID) {
+        // Selection or an external-document handoff may have changed since the
+        // notice was prepared. Reconcile before consuming the appearance.
+        updateImportedNotice()
+        importedNotice.didAppear(id, visibility: importedNoticeVisibility)
     }
     private func trashButton(_ meeting: LibraryMeeting) -> some View {
         Button(UXText.text("common.moveToTrash")) {

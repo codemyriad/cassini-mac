@@ -57,6 +57,12 @@ class Selection(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertTrue(changes.select('pull_request','base',PATHS,[path])['boards'])
 
+    def test_imported_notice_probe_changes_run_the_real_state_check(self):
+        for path in ['scripts/test-imported-notice-state.py', 'Tests/ImportedMeetingNoticeStateProbe/main.swift']:
+            with self.subTest(path=path):
+                self.assertTrue(changes.select('pull_request','base',PATHS,[path])['boards'])
+        self.assertIn('python3 -I scripts/test-imported-notice-state.py', (ROOT/'.github/workflows/ux-boards.yml').read_text())
+
     def test_workflow_jobs_have_no_duplicate_top_level_keys(self):
         for workflow in (ROOT/'.github/workflows').glob('*.yml'):
             jobs=workflow.read_text().split('\njobs:\n',1)[-1]
