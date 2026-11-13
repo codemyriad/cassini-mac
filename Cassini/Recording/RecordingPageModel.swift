@@ -38,8 +38,15 @@ private actor RecordingEdits {
         await model.titleTask?.value
     }
     static func reconcile(_ meetings: [LibraryMeeting]) {
-        let active = Set(meetings.filter { $0.state.lifecycle != .saved }.map { $0.folder.path })
-        editors = editors.filter { active.contains($0.key) || $0.value.titleTask != nil || $0.value.titleDirty }
+        let saved = Set(meetings.filter { $0.state.lifecycle == .saved }.map { $0.folder.path })
+        let producing = CaptureActivityStore.shared.snapshot()
+        let nativeActive = RecordingController.shared.isRecording || RecordingController.shared.isSaving
+        // A scan may have started before a producer announced its capture.
+        // Absence is not completion, and current ownership beats an old scan.
+        editors = editors.filter { key, model in
+            !saved.contains(key) || (model.native && nativeActive) || model.owned != nil || producing[model.meeting.id] != nil ||
+                model.titleTask != nil || model.titleDirty
+        }
     }
     static var hasPendingEdits: Bool { editors.values.contains { $0.titleTask != nil } }
     static func flushAll() async {

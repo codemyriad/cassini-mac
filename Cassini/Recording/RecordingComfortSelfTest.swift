@@ -65,6 +65,11 @@ import SwiftUI
             let scanner = LibraryScanner(root:root,activity:CaptureActivitySnapshot([id:.recording]))
             let meeting = try scanner.scan().meetings.first.unwrap("live Library meeting")
             let model = RecordingPageModel.editor(for:meeting)
+            RecordingPageModel.reconcile([])
+            try require(RecordingPageModel.editor(for:meeting) === model,"an older scan omitting a new capture retains its editor")
+            var staleSaved = meeting; staleSaved.state.lifecycle = .saved
+            RecordingPageModel.reconcile([staleSaved])
+            try require(RecordingPageModel.editor(for:meeting) === model,"live ownership beats a stale saved snapshot during editor cleanup")
             var boundCall = meeting
             boundCall.title = "Browser call title"
             model.update(boundCall)
