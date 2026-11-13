@@ -73,6 +73,7 @@
 		63B8705E0C2C6C01FF0B331D /* CassiniLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = B52B47E53FE17F1664D4546F /* CassiniLibrary */; };
 		63F72BC82DB7C4034B45BD6B /* CassiniSearch in Frameworks */ = {isa = PBXBuildFile; productRef = 8BD08799CC3FBB7E2F4951ED /* CassiniSearch */; };
 		66D88998A0953337261A8C61 /* UX in Resources */ = {isa = PBXBuildFile; fileRef = FFDAA113CF52CBA710233AC3 /* UX */; };
+		6783F576899FEBDAFA27D7EC /* MeetingCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14D797660C8DCEB7D4A23580 /* MeetingCard.swift */; };
 		68278762F3B55EA7F2FB4B42 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC01E1B7B594D265434100B /* SidebarView.swift */; };
 		6B9B7E092AFFFFEB1C3869BA /* WindowScreenshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E46C3F38B578B6D1B0DADA /* WindowScreenshots.swift */; };
 		6D2A5DC34D78E97BC4DC039C /* CaptureActivityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CD8CFA53B579FA8BAEF8DC9 /* CaptureActivityStore.swift */; };
@@ -138,6 +139,7 @@
 		CDBCA4DEC8524A0332D55FE1 /* TranscriptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B79AA192F091A681F72D72CE /* TranscriptBuilder.swift */; };
 		D452A448B93E2DBB03D96E4A /* LibraryImportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95B6363B151904ED6F7CAD8B /* LibraryImportCoordinator.swift */; };
 		D49F9D953C8407319F47424E /* LegacyDocumentModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB744CF6A1F227F05C2E43D7 /* LegacyDocumentModel.swift */; };
+		D5C35F39B82EBD10D86C54C6 /* LibraryDropZone.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2BD17D5179958CB9DAD7A4C /* LibraryDropZone.swift */; };
 		D8A1037C9E49E4B62FD090F1 /* MeetingTranscriptText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DEEE9B7ECB69C54C0B2D9DB /* MeetingTranscriptText.swift */; };
 		DA28439058DB6791E960157B /* ListeningBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FD1CB695C71500E69641ABD /* ListeningBar.swift */; };
 		DAC9053F510941A335654DF9 /* CassiniBrowserSetup in Frameworks */ = {isa = PBXBuildFile; productRef = 55A344505230DCDE22F61882 /* CassiniBrowserSetup */; };
@@ -261,6 +263,7 @@
 		12F78C037DFC84998CC4C0EA /* CassiniWindowScreenshots.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CassiniWindowScreenshots.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1306467A5EEEC9D698F5B4E9 /* Service.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Service.swift; sourceTree = "<group>"; };
 		13D10107C4468265FDC81753 /* MeetingExportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingExportCoordinator.swift; sourceTree = "<group>"; };
+		14D797660C8DCEB7D4A23580 /* MeetingCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingCard.swift; sourceTree = "<group>"; };
 		18471E0D1FE5E9C8D968ECB5 /* TrashSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashSelfTest.swift; sourceTree = "<group>"; };
 		19C4A85BA1F7C8A0364F585D /* RecordingPageModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPageModel.swift; sourceTree = "<group>"; };
 		1A85AD4C9B8EEFC8765DCF5B /* MeetingRenameCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRenameCoordinator.swift; sourceTree = "<group>"; };
@@ -334,6 +337,7 @@
 		9CA66E878FEBF819098A3639 /* LocalCompanionInstall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalCompanionInstall.swift; sourceTree = "<group>"; };
 		9FD1CB695C71500E69641ABD /* ListeningBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningBar.swift; sourceTree = "<group>"; };
 		A251AA6D1A631420C5CC6EDF /* RecordingRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRuntime.swift; sourceTree = "<group>"; };
+		A2BD17D5179958CB9DAD7A4C /* LibraryDropZone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDropZone.swift; sourceTree = "<group>"; };
 		A6C12D84FB78BFC6CC8C985F /* UXText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UXText.swift; sourceTree = "<group>"; };
 		AE1EF30C6B5383E3FF70F120 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		AE3EF9C87501A9AA7ECF2828 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -483,6 +487,7 @@
 				DB744CF6A1F227F05C2E43D7 /* LegacyDocumentModel.swift */,
 				CD057B32C9901BC49239FFBC /* LegacyOpening.swift */,
 				89B82369054823AC34F0C526 /* LibraryBadgeCatalog.swift */,
+				A2BD17D5179958CB9DAD7A4C /* LibraryDropZone.swift */,
 				95B6363B151904ED6F7CAD8B /* LibraryImportCoordinator.swift */,
 				0D7A75EA903A55281DA87E2F /* LibraryKeyboardMenu.swift */,
 				71DF7EA2524442AFAEC56D70 /* LibraryStore.swift */,
@@ -798,9 +803,18 @@
 			isa = PBXGroup;
 			children = (
 				4D71210F6A0F4AA3205CFC9C /* BadgeLabels */,
+				DAAC119F564E36F3EB65BBF4 /* MeetingCard */,
 				7A0CBA6613208A0381F40D54 /* StatusBadge */,
 			);
 			path = Components;
+			sourceTree = "<group>";
+		};
+		DAAC119F564E36F3EB65BBF4 /* MeetingCard */ = {
+			isa = PBXGroup;
+			children = (
+				14D797660C8DCEB7D4A23580 /* MeetingCard.swift */,
+			);
+			path = MeetingCard;
 			sourceTree = "<group>";
 		};
 		DFC117ADD93673E5DAC754C8 /* Products */ = {
@@ -1383,6 +1397,7 @@
 				D49F9D953C8407319F47424E /* LegacyDocumentModel.swift in Sources */,
 				335E85C4B4CE9D0332A91D88 /* LegacyOpening.swift in Sources */,
 				B8E9025E2FBCA691CBF6DA86 /* LibraryBadgeCatalog.swift in Sources */,
+				D5C35F39B82EBD10D86C54C6 /* LibraryDropZone.swift in Sources */,
 				D452A448B93E2DBB03D96E4A /* LibraryImportCoordinator.swift in Sources */,
 				CCFA0DA9889584855CF34F1A /* LibraryKeyboardMenu.swift in Sources */,
 				0B6BCBD86C3DB4DE410B64CF /* LibraryLocationModel.swift in Sources */,
@@ -1395,6 +1410,7 @@
 				43982607BC63030CE9219DD9 /* ListeningSelfTest.swift in Sources */,
 				ED5162CC4576829212ED5CDA /* LiveFolderSelfTest.swift in Sources */,
 				6D57DA2EFFCE7EDA4F10CB65 /* LocalCompanionGuide.swift in Sources */,
+				6783F576899FEBDAFA27D7EC /* MeetingCard.swift in Sources */,
 				238E15DAFC4D4A48D9E9A8DB /* MeetingExportCoordinator.swift in Sources */,
 				31F6B817B291D9F91D266F74 /* MeetingExportSheet.swift in Sources */,
 				FC03DD79491FF3EFD61CE9D7 /* MeetingNativeInputs.swift in Sources */,
