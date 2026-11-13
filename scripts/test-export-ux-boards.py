@@ -54,13 +54,13 @@ class ExportUXBoardsTests(unittest.TestCase):
             dark_entries.append({'testIdentifier': f'LibraryBoards/testDark_{idx}()', 'attachments': [att(fn)]})
         (self.dark / 'manifest.json').write_text(json.dumps(dark_entries))
 
-    def test_exports_all_27_light_and_27_dark_pairs_and_writes_pr_shots_manifest(self) -> None:
+    def test_exports_all_29_light_and_29_dark_pairs_and_writes_pr_shots_manifest(self) -> None:
         self.populate()
         with patch.dict(os.environ, {'ImageOS': 'macos15', 'ImageVersion': '20261110.1'}), patch('builtins.print'):
             doc = exporter.export_boards(self.light, self.out, self.dark)
         self.assertEqual((doc['app'], doc['runner']['image_os'], doc['runner']['image_version']), ('mac', 'macos15', '20261110.1'))
         shots = doc['shots']
-        self.assertEqual(len(shots), 54)
+        self.assertEqual(len(shots), 58)
         self.assertEqual({s['path'] for s in shots if s['scheme'] == 'light'}, {f'{n}.png' for n in exporter.EXPECTED_BOARDS})
         self.assertEqual({s['path'] for s in shots if s['scheme'] == 'dark'}, {f'dark/{n}.png' for n in exporter.EXPECTED_BOARDS})
         by_screen: dict[tuple[str, str, str], set[str]] = {}
