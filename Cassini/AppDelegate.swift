@@ -341,6 +341,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             else { detail.stepListeningTurn(direction) }
             return nil
         }
+        if [125,126].contains(event.keyCode),
+           event.modifierFlags.intersection([.command,.option,.control,.shift]).isEmpty,
+           trackingMenus.isEmpty,
+           let window = event.window ?? NSApp.keyWindow,
+           window.accessibilityIdentifier() == "cassini-library-window",
+           window.attachedSheet == nil, NSApp.modalWindow == nil,
+           !(window.firstResponder is NSText), !(window.firstResponder is NSTableView),
+           MeetingNavigation.shared.detail == nil,
+           !MeetingNavigation.shared.loading, !LibrarySearchModel.shared.visible,
+           !LibraryMoveCoordinator.shared.busy,
+           LibraryStore.shared.stepSelection(event.keyCode == 125 ? 1 : -1) {
+            return nil
+        }
         // AppKit's outline consumes Return before SwiftUI onKeyPress. Treat it
         // as the Library selection's primary action, like the native row's
         // double-click; menus and editors keep their own Return behavior.

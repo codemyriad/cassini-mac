@@ -117,6 +117,9 @@ import Observation
         for (key,value) in SpeakerSidebarRow.nativeSelfTest(baseSpeaker:fixture.speakers[0]) { report[key] = value }
         for (key,value) in CassiniTokens.nativeSelfTest() { report[key] = value }
         var asideMeeting = fixture
+        // This replay proof installs completed synthetic words. The selected
+        // Library fixture may instead be running, whose words must stay hidden.
+        asideMeeting.state.transcript = .done
         asideMeeting.transcriptItems = [.init(speaker:"claire",startMs:0,endMs:800,text:"We agree."),
             .init(speaker:"guest",startMs:750,endMs:1100,text:"Yes."),.init(speaker:"claire",startMs:1000,endMs:1800,text:"Thanks.")]
         asideMeeting.speakers = [] // the projection/action proof needs no names or speaker editor
