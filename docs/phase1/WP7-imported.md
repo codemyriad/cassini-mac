@@ -48,8 +48,9 @@ preserved alongside the new upstream badge expectations.
 The received UI case captures both first-open and normal states in light/dark,
 then relaunches with the same isolated preferences. It waits for a read-only
 DEBUG evaluation observation before asserting that the toast stays absent, so
-startup timing cannot pass that check vacuously. A real Finder import from an
-unrepresentable parent name tests the shared no-folder fallback. Duplicate Finder
+startup timing cannot pass that check vacuously. A real native Open-panel import from an
+unrepresentable parent name tests the shared no-folder fallback, including the
+Powerbox grant for the runner-created file outside the app sandbox. Duplicate Finder
 opens keep one viewer and do not restore the retired banner. No fixed sleep is
 used for notice success. Export requires all 35 light/dark pairs.
 

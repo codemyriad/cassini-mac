@@ -947,8 +947,22 @@ final class LibraryBoards: XCTestCase {
         try FileManager.default.copyItem(at: try fixtureDirectory().appendingPathComponent("meeting.opus"), to: file)
         let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
         defer { app.terminate() }
-        try await finderOpen(file)
         let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:20),app.debugDescription)
+        // The runner-created file lives outside Cassini's sandbox. Choose it
+        // through Powerbox so this case tests the notice after an actual grant.
+        // Finder routing is covered separately with the bundled fixture.
+        app.typeKey("o",modifierFlags:.command)
+        let chooser = app.windows["open-panel"]
+        XCTAssertTrue(chooser.waitForExistence(timeout:5),app.debugDescription)
+        app.typeKey("g",modifierFlags:[.command,.shift])
+        app.typeText(file.path); app.typeKey(.return,modifierFlags:[])
+        let open = chooser.buttons["Open"]
+        XCTAssertTrue(open.waitForExistence(timeout:5),app.debugDescription)
+        XCTAssertTrue(open.isEnabled,app.debugDescription)
+        open.click()
+        let closed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:chooser)
+        XCTAssertEqual(XCTWaiter.wait(for:[closed],timeout:10),.completed,app.debugDescription)
         let message = window.staticTexts["imported-notice-message"]
         XCTAssertTrue(message.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertEqual(visibleText(message),"Imported. A copy is kept in your Meeting Library.")
