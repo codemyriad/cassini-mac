@@ -22,6 +22,7 @@ import Observation
             detail = MeetingDetailModel(meeting: meeting, frozen: frozen)
             if autoplay { detail?.toggle() }
         }
+        if meeting.state.lifecycle != .saved { LibraryStore.shared.selectedKey = meeting.libraryKey }
         openLibrary?()
     }
     func openFile(_ url: URL, autoplay: Bool) {

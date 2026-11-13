@@ -19,24 +19,32 @@ struct RecordingPageView: View {
     var body: some View {
         ScrollView {
             VStack(alignment:.leading,spacing:22) {
+                VStack(alignment:.leading,spacing:6) {
+                    TextField(UXText.text("recording.title.label"),text:Binding(get:{ model.title },set:{ value in
+                        model.title = value; model.changeTitle()
+                    })).textFieldStyle(.plain).font(.system(size:24,weight:.bold))
+                        .focused($titleFocused).accessibilityLabel(UXText.text("recording.title.label"))
+                        .accessibilityIdentifier("recording-title")
+                        .disabled(detail.meeting.metadataReadOnly).allowsHitTesting(!model.frozen)
+                    Text(format.previewSubtitle(detail.meeting.meetingTime,durationMs:nil))
+                        .font(.system(size:13)).foregroundStyle(CassiniTheme.ink2)
+                        .accessibilityIdentifier("recording-date")
+                }
                 TimelineView(.periodic(from:.now,by:1)) { _ in
-                    HStack(spacing:22) {
-                        Circle().fill(CassiniTheme.recordInk).frame(width:22,height:22)
-                            .overlay { Circle().stroke(CassiniTheme.recordInk.opacity(0.12),lineWidth:8) }.accessibilityHidden(true)
-                        VStack(alignment:.leading,spacing:2) {
-                            Text(LibraryFormat.liveBig(model.elapsedMs)).font(.system(size:44,weight:.semibold)).monospacedDigit().tracking(-0.9)
-                                .accessibilityIdentifier("recording-big-timer")
-                            if let started = (model.native ? recorder.startedAt : nil) ?? detail.meeting.start {
-                                Text(UXText.text("recording.since",["time":format.rowTime(started)]))
-                                    .font(.system(size:13)).foregroundStyle(CassiniTheme.ink2)
-                            }
-                        }
-                        Spacer(minLength:12)
+                    HStack(spacing:12) {
+                        Circle().fill(CassiniTheme.recordInk).frame(width:8,height:8).accessibilityHidden(true)
+                        Text(LibraryFormat.liveBig(model.elapsedMs))
+                            .font(.system(size:RecordingPaneMetrics.timerSize,weight:.semibold)).monospacedDigit()
+                            .accessibilityIdentifier("recording-big-timer")
+                        Spacer(minLength:8)
                         Button { model.stop() } label: {
-                            HStack(spacing:10) {
-                                RoundedRectangle(cornerRadius:2).fill(CassiniTheme.onRecord).frame(width:12,height:12)
-                                Text(UXText.text((model.saving || detail.meeting.state.lifecycle == .saving) ? "states.badge.saving" : "common.stop")).font(.system(size:16,weight:.bold))
-                            }.padding(.horizontal,26).frame(height:48).foregroundStyle(CassiniTheme.onRecord).background(CassiniTheme.record,in:Capsule())
+                            HStack(spacing:6) {
+                                RoundedRectangle(cornerRadius:1.5).fill(CassiniTheme.onRecord).frame(width:8,height:8)
+                                    .accessibilityHidden(true)
+                                Text(UXText.text((model.saving || detail.meeting.state.lifecycle == .saving) ? "states.badge.saving" : "common.stop"))
+                                    .font(.system(size:12,weight:.semibold))
+                            }.padding(.horizontal,14).frame(height:RecordingPaneMetrics.stopHeight)
+                                .foregroundStyle(CassiniTheme.onRecord).background(CassiniTheme.record,in:Capsule())
                         }.buttonStyle(.plain).disabled(model.saving || detail.meeting.state.lifecycle == .saving || (!model.canStop && !model.frozen))
                             .allowsHitTesting(!model.frozen).accessibilityIdentifier("recording-page-stop")
                     }
@@ -46,19 +54,6 @@ struct RecordingPageView: View {
                 if sourceProblem {
                     Text(UXText.text("recording.sourceProblem")).foregroundStyle(CassiniTheme.warningNotice).fixedSize(horizontal:false,vertical:true)
                         .accessibilityIdentifier("recording-source-problem")
-                }
-                VStack(alignment:.leading,spacing:6) {
-                    caption("recording.title.label")
-                    TextField("",text:Binding(get:{ model.title },set:{ value in
-                        model.title = value; model.changeTitle()
-                    })).textFieldStyle(.plain).font(.system(size:16)).padding(.horizontal,12).frame(height:40)
-                        .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:6))
-                        .overlay { RoundedRectangle(cornerRadius:6).stroke(CassiniTheme.cardStroke) }
-                        .focused($titleFocused).accessibilityLabel(UXText.text("recording.title.label")).accessibilityIdentifier("recording-title")
-                        .disabled(detail.meeting.metadataReadOnly).allowsHitTesting(!model.frozen)
-                    if detail.meeting.isBrowserCapture {
-                        Text(UXText.text("recording.title.caption")).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
-                    }
                 }
                 VStack(spacing:0) {
                     source(microphone:true)
@@ -86,7 +81,7 @@ struct RecordingPageView: View {
                     }.font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("recording-source-notice")
                 }
 
-            }.frame(maxWidth:640).padding(.top,32).padding(.horizontal,32).padding(.bottom,40).frame(maxWidth:.infinity)
+            }.frame(maxWidth:640).padding(.top,28).padding(.horizontal,24).padding(.bottom,40).frame(maxWidth:.infinity)
         }.background(CassiniTheme.paneGround)
             .accessibilityElement(children:.contain).accessibilityIdentifier("recording-page")
             .sheet(isPresented:$changingCapture) { WhatIsRecordedView(model:model) }
@@ -112,7 +107,6 @@ struct RecordingPageView: View {
             .onChange(of:detail.meeting.audioTracks) { _,_ in model.update(detail.meeting) }
             .onDisappear { model.flush() }
     }
-    private func caption(_ id: String) -> some View { Text(UXText.text(id)).font(.system(size:11.5,weight:.bold)).foregroundStyle(CassiniTheme.ink2) }
     private func source(microphone: Bool) -> some View {
         let silent = microphone && model.microphoneSilent
         let enabled = microphone ? model.me : model.others
@@ -131,9 +125,9 @@ struct RecordingPageView: View {
                         Text(UXText.text(browser ? (model.voiceCount > 0 ? "recording.others.browserVoices" : "common.listeningInsideBrowser") : "recordFirst.sound.title",["n":String(model.voiceCount)]))
                     }.font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
                 }
-            }.frame(maxWidth:.infinity,alignment:.leading)
+            }.frame(maxWidth:.infinity,alignment:.leading).layoutPriority(1)
             RecordingSpectrogramStrip(controller:model.spectrogram,lane:microphone ? .me : .others,silent:model.microphoneSilent)
-                .frame(width:200,height:32)
+                .frame(minWidth:32,idealWidth:96,maxWidth:96).frame(height:32)
                 .accessibilityRepresentation {
                     ProgressView(value:Double(max(0,min(1,microphone ? model.microphone : model.output))))
                         .accessibilityLabel(UXText.text(microphone ? "common.yourMicrophone" : "common.theOthers"))
@@ -144,7 +138,7 @@ struct RecordingPageView: View {
                 }.buttonStyle(.plain).font(.system(size:11.5,weight:.bold)).foregroundStyle(amber).frame(width:58,height:30)
                     .background(CassiniTheme.controlFill,in:RoundedRectangle(cornerRadius:6)).accessibilityIdentifier("recording-check-microphone")
                     .allowsHitTesting(!model.frozen)
-            } else { Color.clear.frame(width:58,height:30).accessibilityHidden(true) }
+            }
         }.padding(.horizontal,16).padding(.vertical,12).frame(minHeight:62)
             .background(silent ? CassiniTheme.warnTint : Color.clear)
             .accessibilityElement(children:.contain)
@@ -161,4 +155,10 @@ struct RecordingLevelMeter: View {
                 .overlay(alignment:.leading) { Capsule().fill(silent ? CassiniTheme.warningNotice : CassiniTheme.primaryInk).frame(width:geometry.size.width * Double(max(0,min(1,level)))) }
         }.accessibilityRepresentation { ProgressView(value:Double(max(0,min(1,level)))).accessibilityLabel(label) }
     }
+}
+
+// L-47 drawn Mac values; keep the compact controls adjustable in one place.
+private enum RecordingPaneMetrics {
+    static let timerSize: CGFloat = 30
+    static let stopHeight: CGFloat = 30
 }

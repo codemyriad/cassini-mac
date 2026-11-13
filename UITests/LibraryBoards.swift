@@ -912,7 +912,15 @@ final class LibraryBoards: XCTestCase {
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.textFields["recording-title"].waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(text("00:12:48",in:window))
-        XCTAssertTrue(text("Recording since 14:05 · saved as it records",in:window))
+        XCTAssertEqual(window.staticTexts["recording-date"].label,"Today, 14:05")
+        let title = window.textFields["recording-title"]
+        let timer = window.staticTexts["recording-big-timer"]
+        let stop = window.buttons["recording-page-stop"]
+        XCTAssertGreaterThan(title.frame.minX - window.frame.minX,400,"Recording stays beside the Library list")
+        XCTAssertLessThan(title.frame.minY,timer.frame.minY,"Heading precedes the compact timer")
+        XCTAssertEqual(stop.frame.height,30,accuracy:1)
+        XCTAssertEqual(stop.label,"Stop")
+        XCTAssertTrue(window.buttons["recording-change-sources"].exists)
         XCTAssertTrue(text("Listening inside your browser · 4 voices",in:window))
         XCTAssertTrue(text("No sound from your microphone. Check your sound settings.",in:window))
         XCTAssertTrue(window.buttons["recording-check-microphone"].exists)

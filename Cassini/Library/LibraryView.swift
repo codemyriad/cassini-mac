@@ -34,7 +34,7 @@ struct LibraryView: View {
         GeometryReader { geometry in
             Group {
                 if let detail = navigation.detail {
-                    if detail.meeting.state.lifecycle != .saved { RecordingPageView(detail:detail,format:store.format) }
+                    if detail.meeting.state.lifecycle != .saved { split }
                     else { MeetingView(model:detail,format:store.format) }
                 }
                 else if navigation.loading { ProgressView() }
@@ -182,7 +182,14 @@ struct LibraryView: View {
         .onChange(of: recorder.isSaving) { _,saving in
             if saving, let folder = recorder.directory { navigation.captureBeganSaving(at:folder) }
         }
-        .onChange(of: store.selectedKeys) { _, _ in sessionPlayback.stop() }
+        .onChange(of: store.selectedKeys) { _, _ in
+            sessionPlayback.stop()
+            if let meeting = store.selected, meeting.state.lifecycle != .saved {
+                navigation.open(meeting, frozen:store.context.screenshot)
+            } else if let detail = navigation.detail, detail.meeting.state.lifecycle != .saved {
+                navigation.back()
+            }
+        }
         .onChange(of: store.revision) { _, _ in
             search.update(store.meetings)
             sessionPlayback.reconcile(store.selected, offline: store.offline)
@@ -348,7 +355,9 @@ struct LibraryView: View {
             .background(NativeSidebarMaterial())
             .frame(minWidth: 400, maxWidth: 400)
             Divider()
-            if let meeting = store.selected { preview(meeting) }
+            if let detail = navigation.detail, detail.meeting.state.lifecycle != .saved {
+                RecordingPageView(detail:detail,format:store.format).id(detail.meeting.libraryKey)
+            } else if let meeting = store.selected { preview(meeting) }
             else if store.selectedKeys.count > 1 {
                 VStack {
                     Spacer()
