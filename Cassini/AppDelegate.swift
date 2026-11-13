@@ -321,6 +321,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The floating speaker dialog owns keys just as an attached sheet does.
         if MeetingRenameCoordinator.shared.presentation == .speakers,
            (event.window ?? NSApp.keyWindow)?.accessibilityIdentifier() == "cassini-library-window" {
+            // Text fields consume Tab before SwiftUI key handlers. Route it to
+            // the one visible editor, including with Keyboard Navigation off.
+            if event.keyCode == 48,
+               event.modifierFlags.intersection([.command,.option,.control]).isEmpty {
+                SpeakerEditorChrome.advanceFocus?(event.modifierFlags.contains(.shift))
+                return nil
+            }
             return event
         }
         // AppKit focus/sheet changes are not Observation dependencies. Decide

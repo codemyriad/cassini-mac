@@ -27,9 +27,8 @@ struct SpeakerEditorView:View {
             .shadow(color:CassiniTheme.shadow,radius:24,y:12)
             .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("speakers.dialog.a11y"))
             .accessibilityAddTraits(.isModal).accessibilityIdentifier("speaker-editor")
-            .background(SpeakerDialogKeyboard(advance:advanceFocus))
-            .onAppear {focused = .name}
-            .onDisappear {detail?.speakerSample.cancel()}
+            .onAppear {focused = .name;SpeakerEditorChrome.advanceFocus=advanceFocus}
+            .onDisappear {SpeakerEditorChrome.advanceFocus=nil;detail?.speakerSample.cancel()}
     }
     private func header(_ speaker:MeetingSpeaker)->some View {
         HStack(spacing:12) {
@@ -181,6 +180,7 @@ struct SpeakerEditFailureNotice:View {
 /// strip in the existing frame view as well, so toolbar and traffic-light clicks
 /// cannot pass behind the dialog. Removed as soon as the presentation ends.
 @MainActor enum SpeakerEditorChrome {
+    static var advanceFocus:((Bool)->Void)?
     private static let undoGate=SpeakerUndoGate()
     private static let identifier=NSUserInterfaceItemIdentifier("speaker-titlebar-scrim")
     #if DEBUG
@@ -264,28 +264,4 @@ private final class SpeakerTitlebarShade:NSView {
     }
     @objc func undo(_ sender:Any?) {editingUndo?.undo()}
     @objc func redo(_ sender:Any?) {editingUndo?.redo()}
-}
-
-/// Native text fields consume Tab before SwiftUI's key handlers. Intercept it
-/// for this dialog's window so the AppKit key loop cannot escape to the Library.
-private struct SpeakerDialogKeyboard:NSViewRepresentable {
-    var advance:(Bool)->Void
-    func makeNSView(context:Context)->KeyboardView {KeyboardView()}
-    func updateNSView(_ view:KeyboardView,context:Context) {view.advance=advance}
-    static func dismantleNSView(_ view:KeyboardView,coordinator:()) {view.stop()}
-    final class KeyboardView:NSView {
-        var advance:((Bool)->Void)?
-        private var monitor:Any?
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow();stop()
-            guard window != nil else {return}
-            monitor=NSEvent.addLocalMonitorForEvents(matching:.keyDown) { [weak self] event in
-                guard let self,event.window === self.window,event.keyCode == 48,
-                      event.modifierFlags.intersection([.command,.control,.option]).isEmpty else {return event}
-                self.advance?(event.modifierFlags.contains(.shift))
-                return nil
-            }
-        }
-        func stop() {if let monitor {NSEvent.removeMonitor(monitor)};monitor=nil}
-    }
 }

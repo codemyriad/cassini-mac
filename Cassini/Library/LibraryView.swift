@@ -163,9 +163,12 @@ struct LibraryView: View {
             if rename.presentation == .speakers {
                 ZStack {
                     CassiniTheme.scrim.ignoresSafeArea().contentShape(Rectangle())
-                    ViewThatFits(in:.vertical) {
-                        SpeakerEditorView().padding(24)
-                        ScrollView { SpeakerEditorView().padding(24) }
+                    GeometryReader { geometry in
+                        ScrollView {
+                            SpeakerEditorView().padding(24)
+                                .frame(maxWidth:.infinity)
+                                .frame(minHeight:geometry.size.height)
+                        }
                     }
                 }
             }

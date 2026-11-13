@@ -191,6 +191,8 @@ jobs:
         retention-days: 14
         name: ux-boards-diagnostics
         path: |
+          build/UXSpeakers.xcresult
+          build/ux-speakers.log
           build/UXBoards.xcresult
           build/UXBoardsDark.xcresult
           build/ux-boards.log
