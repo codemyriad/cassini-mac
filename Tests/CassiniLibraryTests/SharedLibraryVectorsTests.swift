@@ -97,6 +97,6 @@ import Testing
                 "startMs": nullable(meeting.start.map { Int64(($0.timeIntervalSince1970 * 1000).rounded()) }),
                 "durationMs": nullable(meeting.durationMs), "names": meeting.speakerNames,
                 "quote": nullable(meeting.quote?.displayText), "canWriteDown": meeting.canWriteDown,
-                "speakers": meeting.speakers.map { ["id": $0.id, "name": $0.displayName, "colourIndex": $0.colourIndex] as [String: Any] }]
+                "speakers": meeting.speakers.map { ["id": $0.id, "name": $0.displayName, "colourIndex": $0.speakingOrder ?? $0.colourIndex] as [String: Any] }]
     }
 }

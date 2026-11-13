@@ -251,7 +251,7 @@ public struct LibraryScanner: Sendable {
             let classification = storedLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
             let embedded = classification.flatMap { $0.isEmpty || $0.range(of: "^Speaker [0-9]+$", options: .regularExpression) != nil ? nil : storedLabel }
             let name = override != nil ? override?.name : embedded
-            return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: firstSpeechColourIndex[id] ?? override?.colourIndex ?? index,label:override?.label ?? (override?.nameCleared == true ? nil : storedLabel))
+            return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: override?.colourIndex ?? firstSpeechColourIndex[id] ?? index, label: override?.label ?? (override?.nameCleared == true ? nil : storedLabel), speakingOrder: index)
         }
         if [.done, .queued, .running].contains(meeting.state.transcript) || meeting.transcriptPaused, !words.isEmpty {
             meeting.quote = normalizedOverride(metadata?.quoteOverride) ?? defaultQuote(chronological)

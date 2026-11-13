@@ -43,4 +43,102 @@ final class TranscriptProgressTests: XCTestCase {
         progress.finish(track:0); progress.finish(track:1)
         XCTAssertEqual(progress.published([.init(word:other,track:2,ordinal:0)]),[other])
     }
+    func testSpeakerMetadataPreservesEstablishedSlotsAcrossPartialsResumeAndRetries() {
+        let tracks: [TranscriptSpeaker] = [
+            .init(id: "track-later", name: nil),
+            .init(id: "track-earlier", name: nil),
+            .init(id: "track-silent", name: nil),
+        ]
+        // Initial running publish before any words: unspoken tracks do not grab slots prematurely.
+        let p0 = MeetingTranscriber.updatedSpeakerMetadata(existing: [], tracks: tracks, ordered: [], status: "running", uiLanguage: .en)
+        XCTAssertTrue(p0.isEmpty)
+
+        // Partial 1: track-later speaks first at 30 s and receives slot 0.
+        let p1 = MeetingTranscriber.updatedSpeakerMetadata(
+            existing: p0,
+            tracks: tracks,
+            ordered: [word("Hello", 30_000, 30_400, speaker: "track-later")],
+            status: "running",
+            uiLanguage: .en
+        )
+        XCTAssertEqual(p1.count, 1)
+        XCTAssertEqual(p1[0]["id"] as? String, "track-later")
+        XCTAssertEqual(p1[0]["colourIndex"] as? Int, 0)
+        XCTAssertEqual(p1[0]["label"] as? String, "Speaker 1")
+
+        // Partial 2: track-earlier arrives at 0 ms. track-later keeps slot 0; track-earlier gets slot 1,
+        // while unnamed labels update to speaking order ("Speaker 1" for earlier, "Speaker 2" for later).
+        let p2 = MeetingTranscriber.updatedSpeakerMetadata(
+            existing: p1,
+            tracks: tracks,
+            ordered: [
+                word("First", 0, 400, speaker: "track-earlier"),
+                word("Hello", 30_000, 30_400, speaker: "track-later"),
+            ],
+            status: "running",
+            uiLanguage: .en
+        )
+        let byID2 = Dictionary(uniqueKeysWithValues: p2.compactMap { entry in (entry["id"] as? String).map { ($0, entry) } })
+        XCTAssertEqual(byID2["track-later"]?["colourIndex"] as? Int, 0)
+        XCTAssertEqual(byID2["track-earlier"]?["colourIndex"] as? Int, 1)
+        XCTAssertEqual(byID2["track-earlier"]?["label"] as? String, "Speaker 1")
+        XCTAssertEqual(byID2["track-later"]?["label"] as? String, "Speaker 2")
+        XCTAssertNil(byID2["track-silent"])
+
+        // Final publish ("done"): silent track gets the next unused slot (2) without shifting 0 or 1.
+        let done = MeetingTranscriber.updatedSpeakerMetadata(
+            existing: p2,
+            tracks: tracks,
+            ordered: [
+                word("First", 0, 400, speaker: "track-earlier"),
+                word("Hello", 30_000, 30_400, speaker: "track-later"),
+            ],
+            status: "done",
+            uiLanguage: .en
+        )
+        let byIDDone = Dictionary(uniqueKeysWithValues: done.compactMap { entry in (entry["id"] as? String).map { ($0, entry) } })
+        XCTAssertEqual(byIDDone["track-later"]?["colourIndex"] as? Int, 0)
+        XCTAssertEqual(byIDDone["track-earlier"]?["colourIndex"] as? Int, 1)
+        XCTAssertEqual(byIDDone["track-silent"]?["colourIndex"] as? Int, 2)
+
+        // Retry against existing nonsequential slots (e.g. from another platform or prior edit):
+        // existing slots [5, 2] and custom speaker keys survive intact; new speakers take unused slots [0, 1].
+        let nonsequentialExisting: [[String: Any]] = [
+            ["id": "a", "name": "Ada", "provenance": "user", "colourIndex": 5, "customField": "keep"],
+            ["id": "unspoken-prev", "name": "Zoe", "provenance": "user", "colourIndex": 2],
+        ]
+        let retryTracks: [TranscriptSpeaker] = [
+            .init(id: "b", name: nil),
+            .init(id: "a", name: "Me"),
+            .init(id: "d", name: "The others"),
+        ]
+        let retryRunning = MeetingTranscriber.updatedSpeakerMetadata(
+            existing: nonsequentialExisting,
+            tracks: retryTracks,
+            ordered: [
+                word("Lead", 100, 300, speaker: "b"),
+                word("Reply", 500, 800, speaker: "a"),
+            ],
+            status: "running",
+            uiLanguage: .en
+        )
+        let retryDone = MeetingTranscriber.updatedSpeakerMetadata(
+            existing: retryRunning,
+            tracks: retryTracks,
+            ordered: [
+                word("Lead", 100, 300, speaker: "b"),
+                word("Reply", 500, 800, speaker: "a"),
+            ],
+            status: "done",
+            uiLanguage: .en
+        )
+        let retryByID = Dictionary(uniqueKeysWithValues: retryDone.compactMap { entry in (entry["id"] as? String).map { ($0, entry) } })
+        XCTAssertEqual(retryByID["a"]?["colourIndex"] as? Int, 5)
+        XCTAssertEqual(retryByID["a"]?["name"] as? String, "Ada")
+        XCTAssertEqual(retryByID["a"]?["customField"] as? String, "keep")
+        XCTAssertEqual(retryByID["unspoken-prev"]?["colourIndex"] as? Int, 2)
+        XCTAssertEqual(retryByID["b"]?["colourIndex"] as? Int, 0)
+        XCTAssertEqual(retryByID["b"]?["label"] as? String, "Speaker 1")
+        XCTAssertEqual(retryByID["d"]?["colourIndex"] as? Int, 1)
+    }
 }

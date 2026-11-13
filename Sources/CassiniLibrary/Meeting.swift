@@ -71,9 +71,10 @@ public struct MeetingSpeaker: Sendable, Equatable {
     public var provenance: NameProvenance?
     public var colourIndex: Int
     public var label: String? = nil
+    public var speakingOrder: Int? = nil
     public var displayName:String { displayName(language:.system) }
     public func displayName(language:CassiniLanguage,locale:Locale = .current) -> String {
-        name ?? label ?? LibraryLocalization.shared.text("common.speaker.unnamed",["n":String(colourIndex+1)],language:language,locale:locale)
+        name ?? label ?? LibraryLocalization.shared.text("common.speaker.unnamed",["n":String((speakingOrder ?? colourIndex)+1)],language:language,locale:locale)
     }
 }
 public struct MeetingQuote: Codable, Equatable, Sendable {

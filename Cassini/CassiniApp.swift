@@ -91,6 +91,14 @@ struct CassiniDocument: FileDocument {
         catch { file = nil; readError = "\(error)" }
     }
 
+    #if DEBUG
+    init(file: CassiniFile) {
+        data = Data()
+        self.file = file
+        readError = nil
+    }
+    #endif
+
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
         FileWrapper(regularFileWithContents: data)
     }
