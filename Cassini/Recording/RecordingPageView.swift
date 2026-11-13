@@ -87,27 +87,32 @@ struct RecordingPageView: View {
             .overlay(alignment: .bottom) { Rectangle().fill(CassiniTheme.lineSoft).frame(height: 1) }
             .accessibilityElement(children: .contain).accessibilityIdentifier("recording-heading")
     }
+    private var timerReadout: some View {
+        HStack(spacing: 12) {
+            Circle().fill(CassiniTheme.recordInk).frame(width: 14, height: 14)
+                .overlay { Circle().stroke(CassiniTheme.recordInk.opacity(0.12), lineWidth: 5) }.accessibilityHidden(true)
+            Text(LibraryFormat.liveBig(model.elapsedMs)).font(.system(size: 30, weight: .semibold))
+                .monospacedDigit().tracking(-0.5).accessibilityIdentifier("recording-big-timer")
+        }.fixedSize(horizontal: true, vertical: false)
+    }
+    private var stopControl: some View {
+        Button { model.flush(); model.stop() } label: {
+            HStack(spacing: 7) {
+                RoundedRectangle(cornerRadius: 2).fill(CassiniTheme.onRecord).frame(width: 9, height: 9)
+                Text(UXText.text((model.saving || detail.meeting.state.lifecycle == .saving) ? "states.badge.saving" : "common.stop"))
+                    .font(.system(size: 13, weight: .semibold))
+            }.padding(.horizontal, 14).frame(height: 30)
+                .foregroundStyle(CassiniTheme.onRecord).background(CassiniTheme.record, in: Capsule())
+        }.buttonStyle(.plain).fixedSize(horizontal: true, vertical: false)
+            .disabled(model.saving || detail.meeting.state.lifecycle == .saving || (!model.canStop && !model.frozen))
+            .allowsHitTesting(!model.frozen).accessibilityIdentifier("recording-page-stop")
+    }
     private var timerRow: some View {
         TimelineView(.periodic(from: .now, by: 1)) { _ in
-            HStack(spacing: 16) {
-                HStack(spacing: 12) {
-                    Circle().fill(CassiniTheme.recordInk).frame(width: 14, height: 14)
-                        .overlay { Circle().stroke(CassiniTheme.recordInk.opacity(0.12), lineWidth: 5) }
-                        .accessibilityHidden(true)
-                    Text(LibraryFormat.liveBig(model.elapsedMs)).font(.system(size: 30, weight: .semibold))
-                        .monospacedDigit().tracking(-0.5).accessibilityIdentifier("recording-big-timer")
-                }
-                Button { model.flush(); model.stop() } label: {
-                    HStack(spacing: 7) {
-                        RoundedRectangle(cornerRadius: 2).fill(CassiniTheme.onRecord).frame(width: 9, height: 9)
-                        Text(UXText.text((model.saving || detail.meeting.state.lifecycle == .saving) ? "states.badge.saving" : "common.stop"))
-                            .font(.system(size: 13, weight: .semibold))
-                    }.padding(.horizontal, 14).frame(height: 30)
-                        .foregroundStyle(CassiniTheme.onRecord).background(CassiniTheme.record, in: Capsule())
-                }.buttonStyle(.plain)
-                    .disabled(model.saving || detail.meeting.state.lifecycle == .saving || (!model.canStop && !model.frozen))
-                    .allowsHitTesting(!model.frozen).accessibilityIdentifier("recording-page-stop")
-                Spacer(minLength: 0)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 16) { timerReadout; stopControl; Spacer(minLength: 0) }
+                VStack(alignment: .leading, spacing: 12) { timerReadout; stopControl }
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }.padding(.top, 2)
         }
     }
@@ -153,41 +158,61 @@ struct RecordingPageView: View {
             .onDisappear { model.flush() }
             .onExitCommand { model.flush(); renaming = false }
     }
-    private func source(microphone: Bool) -> some View {
+    private func sourceCaption(microphone: Bool) -> some View {
         let silent = microphone && model.microphoneSilent
         let enabled = microphone ? model.me : model.others
         let browser = model.owned?.snapshot.browserAlive ?? detail.meeting.isBrowserCapture
-        let amber = CassiniTheme.warnInk
-        return HStack(spacing:14) {
-            VStack(alignment:.leading,spacing:2) {
-                Text(UXText.text(microphone ? "common.yourMicrophone" : "common.theOthers")).fontWeight(.semibold).foregroundStyle(silent ? amber : CassiniTheme.ink)
-                if !enabled { Text(UXText.text("whatIsRecorded.othersHeard.none.title")).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2) }
-                else if silent {
-                    Text(UXText.text("errors.micSilentRow.line")).font(.system(size:11.5,weight:.semibold)).foregroundStyle(amber).fixedSize(horizontal:false,vertical:true)
-                } else if !microphone {
-                    HStack(spacing:4) {
-                        if browser { Image(systemName:"checkmark").accessibilityHidden(true) }
-                        Text(UXText.text(browser ? (model.voiceCount > 0 ? "recording.others.browserVoices" : "common.listeningInsideBrowser") : "recordFirst.sound.title",["n":String(model.voiceCount)]))
-                    }.font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
-                }
-            }.frame(maxWidth:.infinity,alignment:.leading)
-            RecordingSpectrogramStrip(controller:model.spectrogram,lane:microphone ? .me : .others,silent:model.microphoneSilent)
-                .frame(width:200,height:32)
-                .accessibilityRepresentation {
-                    ProgressView(value:Double(max(0,min(1,microphone ? model.microphone : model.output))))
-                        .accessibilityLabel(UXText.text(microphone ? "common.yourMicrophone" : "common.theOthers"))
-                }.accessibilityIdentifier(microphone ? "recording-microphone-meter" : "recording-others-meter")
-            if silent {
-                Button(UXText.text("errors.micSilentRow.action")) {
-                    if !model.frozen { NSWorkspace.shared.open(URL(string:"x-apple.systempreferences:com.apple.Sound-Settings.extension?input")!) }
-                }.buttonStyle(.plain).font(.system(size:11.5,weight:.bold)).foregroundStyle(amber).frame(width:58,height:30)
-                    .background(CassiniTheme.controlFill,in:RoundedRectangle(cornerRadius:6)).accessibilityIdentifier("recording-check-microphone")
-                    .allowsHitTesting(!model.frozen)
-            } else { Color.clear.frame(width:58,height:30).accessibilityHidden(true) }
-        }.padding(.horizontal,16).padding(.vertical,12).frame(minHeight:62)
-            .background(silent ? CassiniTheme.warnTint : Color.clear)
-            .accessibilityElement(children:.contain)
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(UXText.text(microphone ? "common.yourMicrophone" : "common.theOthers")).fontWeight(.semibold)
+                .foregroundStyle(silent ? CassiniTheme.warnInk : CassiniTheme.ink)
+            if !enabled {
+                Text(UXText.text("whatIsRecorded.othersHeard.none.title")).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.ink2)
+            } else if silent {
+                Text(UXText.text("errors.micSilentRow.line")).font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(CassiniTheme.warnInk).fixedSize(horizontal: false, vertical: true)
+            } else if !microphone {
+                HStack(spacing: 4) {
+                    if browser { Image(systemName: "checkmark").accessibilityHidden(true) }
+                    Text(UXText.text(browser ? (model.voiceCount > 0 ? "recording.others.browserVoices" : "common.listeningInsideBrowser") : "recordFirst.sound.title", ["n":String(model.voiceCount)]))
+                }.font(.system(size: 11.5)).foregroundStyle(CassiniTheme.ink2)
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
+    private func sourceMeter(microphone: Bool) -> some View {
+        RecordingSpectrogramStrip(controller: model.spectrogram, lane: microphone ? .me : .others, silent: model.microphoneSilent)
+            .accessibilityRepresentation {
+                ProgressView(value:Double(max(0,min(1,microphone ? model.microphone : model.output))))
+                    .accessibilityLabel(UXText.text(microphone ? "common.yourMicrophone" : "common.theOthers"))
+            }.accessibilityIdentifier(microphone ? "recording-microphone-meter" : "recording-others-meter")
+    }
+    private var microphoneCheck: some View {
+        Button(UXText.text("errors.micSilentRow.action")) {
+            if !model.frozen { NSWorkspace.shared.open(URL(string:"x-apple.systempreferences:com.apple.Sound-Settings.extension?input")!) }
+        }.buttonStyle(.plain).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.warnInk)
+            .frame(width: 58, height: 30).background(CassiniTheme.controlFill, in: RoundedRectangle(cornerRadius: 6))
+            .accessibilityIdentifier("recording-check-microphone").allowsHitTesting(!model.frozen)
+    }
+    private func source(microphone: Bool) -> some View {
+        let silent = microphone && model.microphoneSilent
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) {
+                sourceCaption(microphone: microphone).frame(minWidth: 160)
+                sourceMeter(microphone: microphone).frame(width: 200, height: 32)
+                if silent { microphoneCheck }
+                else { Color.clear.frame(width: 58, height: 30).accessibilityHidden(true) }
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 12) {
+                    sourceCaption(microphone: microphone)
+                    if silent { microphoneCheck }
+                }
+                sourceMeter(microphone: microphone).frame(maxWidth: .infinity).frame(height: 32)
+            }
+        }.padding(.horizontal, 16).padding(.vertical, 12).frame(minHeight: 62)
+            .background(silent ? CassiniTheme.warnTint : Color.clear)
+            .accessibilityElement(children: .contain)
+    }
+
 }
 
 struct RecordingLevelMeter: View {

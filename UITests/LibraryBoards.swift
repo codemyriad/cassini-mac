@@ -999,6 +999,32 @@ final class LibraryBoards: XCTestCase {
             app.terminate()
         }
     }
+    @MainActor func testRecordingNarrowPaneKeepsSourcesAndStopReachable() throws {
+        let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString,"-CassiniSilentMicrophone","YES"])
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:20))
+        window.buttons["first-run-record"].click()
+        XCTAssertTrue(window.sheets.buttons["record-first-start"].waitForExistence(timeout:10))
+        window.sheets.buttons["record-first-start"].click()
+        let stop = window.buttons["recording-page-stop"]
+        XCTAssertTrue(stop.waitForExistence(timeout:10),app.debugDescription)
+        let corner = window.coordinate(withNormalizedOffset:CGVector(dx:1,dy:1)).withOffset(CGVector(dx:-2,dy:-2))
+        corner.press(forDuration:0.1,thenDragTo:corner.withOffset(CGVector(dx:-360,dy:-120)))
+        let narrow = NSPredicate { _,_ in window.frame.width >= 760 && window.frame.width < 805 }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:narrow,object:nil)],timeout:10),.completed,app.debugDescription)
+        XCTAssertTrue(window.outlines.firstMatch.exists)
+        XCTAssertTrue(stop.isHittable && window.frame.contains(stop.frame))
+        let check = window.buttons["recording-check-microphone"]
+        XCTAssertTrue(check.waitForExistence(timeout:5))
+        XCTAssertTrue(check.isHittable && window.frame.contains(check.frame))
+        for id in ["recording-microphone-meter","recording-others-meter","recording-change-sources"] {
+            let control = window.descendants(matching:.any).matching(identifier:id).firstMatch
+            XCTAssertTrue(control.exists && control.frame.width > 0 && window.frame.contains(control.frame),id)
+        }
+        stop.click()
+        XCTAssertTrue(window.buttons["meeting-play"].waitForExistence(timeout:15),app.debugDescription)
+    }
     @MainActor func testRecordingTitleAndHiddenControls() throws {
         let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
         defer { app.terminate() }
