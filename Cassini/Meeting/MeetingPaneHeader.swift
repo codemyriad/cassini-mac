@@ -44,11 +44,11 @@ struct MeetingPaneHeader: View {
                 .frame(width: 7, height: 7).accessibilityHidden(true)
             if rename.canEditSpeakers(meeting) {
                 Button { rename.showSpeaker(meeting, id: speaker.id) } label: {
-                    Text(speaker.displayName).underline(unnamed, color: CassiniTheme.ink2.opacity(0.55))
+                    Text(model.speakerName(speaker.id)).underline(unnamed, color: CassiniTheme.ink2.opacity(0.55))
                 }.buttonStyle(.plain).accessibilityIdentifier("speaker-name-" + speaker.id)
                     .accessibilityLabel(row.accessibilityLabel)
             } else {
-                Text(speaker.displayName).underline(unnamed, color: CassiniTheme.ink2.opacity(0.55))
+                Text(model.speakerName(speaker.id)).underline(unnamed, color: CassiniTheme.ink2.opacity(0.55))
                     .accessibilityIdentifier("speaker-name-label-" + speaker.id)
             }
             Button { model.toggleSpeakerListening(speaker.id) } label: {

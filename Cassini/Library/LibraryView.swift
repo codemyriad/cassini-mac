@@ -124,7 +124,7 @@ struct LibraryView: View {
                             .disabled(!trash.canTrash(detail.meeting))
                             .help(UXText.text("common.moveToTrash")).accessibilityLabel(UXText.text("common.moveToTrash"))
                             .accessibilityIdentifier("meeting-trash")
-                    }.buttonStyle(.borderless).padding(.horizontal, 10).frame(height: 28)
+                    }.buttonStyle(.borderless).foregroundStyle(CassiniTheme.ink).padding(.horizontal, 10).frame(height: 28)
                         .background(CassiniTheme.ink.opacity(0.1), in: Capsule())
                 }
                 ToolbarItem(placement:.primaryAction) {
@@ -340,7 +340,7 @@ struct LibraryView: View {
             .accessibilityLabel(UXText.text("library.listPane.a11y"))
             Divider()
             if let detail = navigation.detail, detail.meeting.state.lifecycle == .saved {
-                MeetingView(model: detail, format: store.format).id(detail.meeting.libraryKey)
+                MeetingView(model: detail, format: store.format).id(ObjectIdentifier(detail))
             } else if navigation.loading { ProgressView().frame(maxWidth: .infinity) }
             else if store.selectedKeys.count > 1 {
                 VStack {

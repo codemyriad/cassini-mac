@@ -25,7 +25,7 @@ import Observation
                       "count": matches.count.formatted(.number.locale(UXText.locale))]
         return UXText.text(matches.isEmpty ? "mac.legacy.match.none" : matches.count == 1 ? "mac.legacy.match.one" : "mac.legacy.match.position", values)
     }
-    func search(turns: [MeetingPresentation.Turn], names: [String:String], language: CassiniLanguage, locale: Locale) async {
+    func search(turns: [MeetingPresentation.Turn], meeting: LibraryMeeting, language: CassiniLanguage, locale: Locale) async {
         revision &+= 1
         let requestedRevision = revision
         let requestedQuery = query
@@ -34,6 +34,10 @@ import Observation
         defer { if requestedRevision == revision { searching = false } }
         guard !requestedQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let task = Task.detached {
+            let fallback = LibraryLocalization.shared.text("common.speaker.unnamed", ["n":"1"], language:language, locale:locale)
+            let names = Dictionary(uniqueKeysWithValues: Set(turns.map(\.speaker)).map { id in
+                (id, meeting.speaker(for:id)?.displayName(language:language,locale:locale) ?? fallback)
+            })
             var paragraphs: [TranscriptFind.Paragraph] = []
             for turn in MeetingPresentation.visibleTurns(turns) {
                 try Task.checkCancellation()

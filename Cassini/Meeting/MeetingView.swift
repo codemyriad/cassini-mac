@@ -166,23 +166,13 @@ struct MeetingView: View {
                     .onChange(of: model.find.selected) { _, match in
                         if let match { model.handScrolledTranscript(); proxy.scrollTo(match.paragraph, anchor: .center) }
                     }
-                    .onChange(of: model.turnsRevision) { _, _ in
-                        if let id = model.revealTurnID { proxy.scrollTo(id, anchor: .center) }
-                        else if let position = model.revealPositionMs,
-                                let turn = visibleTurns.first(where: { $0.endMs > position }) { proxy.scrollTo(turn.id, anchor: .center) }
-                    }
-                    .onChange(of: model.revealTurnID) { _, id in
-                        if let id { proxy.scrollTo(id, anchor: .center) }
-                    }
-                    .onChange(of: model.revealPositionMs) { _, position in
-                        if let position, let turn = visibleTurns.first(where: { $0.endMs > position }) { proxy.scrollTo(turn.id, anchor: .center) }
-                    }
+                    .onChange(of: model.turnsRevision) { _, _ in revealSearchHit(in: proxy) }
+                    .onChange(of: model.revealTurnID) { _, _ in revealSearchHit(in: proxy) }
+                    .onChange(of: model.revealPositionMs) { _, _ in revealSearchHit(in: proxy) }
                     .task {
                         await Task.yield()
                         if let turn = model.listeningHost { proxy.scrollTo(turn,anchor:.center) }
-                        else if let id = model.revealTurnID { proxy.scrollTo(id, anchor: .center) }
-                        else if let position = model.revealPositionMs,
-                                let turn = visibleTurns.first(where: { $0.endMs > position }) { proxy.scrollTo(turn.id, anchor: .center) }
+                        else { revealSearchHit(in: proxy) }
                     }
                     .onChange(of:model.followRevision) { _,_ in
                         if let host = model.listeningHost {
@@ -212,15 +202,22 @@ struct MeetingView: View {
                 .padding(.horizontal, 28).padding(.bottom, 16)
         }
         .animation(reduceMotion ? nil : .easeInOut(duration:0.16),value:model.listen.active)
-        .font(.system(size: 13))
+        .font(.system(size: 13)).foregroundStyle(CassiniTheme.ink)
         .background(CassiniTheme.paneGround)
         .accessibilityElement(children: .contain).accessibilityIdentifier("meeting-page")
         .focusedSceneValue(\.listeningMeeting,model)
         .task(id: FindRequest(query: model.find.query, revision: model.turnsRevision,
                               language: UXText.language.rawValue, locale: UXText.locale.identifier,
-                              names: meeting.speakerDisplayNames)) {
-            await model.find.search(turns: model.turns, names: meeting.speakerDisplayNames, language: UXText.language, locale: UXText.locale)
+                              names: meeting.speakerDisplayNames, mergedInto: meeting.mergedInto)) {
+            await model.find.search(turns: model.turns, meeting: meeting, language: UXText.language, locale: UXText.locale)
         }
+    }
+    private func revealSearchHit(in proxy: ScrollViewProxy) {
+        let exact = model.revealTurnID.flatMap { id in visibleTurns.first { $0.id == id } }
+        let fallback = model.revealPositionMs.flatMap { position in visibleTurns.first { $0.endMs > position } }
+        guard let target = exact ?? fallback else { return }
+        proxy.scrollTo(target.id, anchor: .center)
+        model.revealTurnID = nil; model.revealPositionMs = nil
     }
     private struct FindRequest: Hashable {
         let query: String
@@ -228,6 +225,7 @@ struct MeetingView: View {
         let language: String
         let locale: String
         let names: [String:String]
+        let mergedInto: [String:String]
     }
 
     private var autoTag: some View {
@@ -259,30 +257,50 @@ struct MeetingView: View {
             .background(CassiniTheme.accentTint, in: RoundedRectangle(cornerRadius: 7))
             .accessibilityElement(children: .contain).accessibilityLabel(UXText.text("meeting.companionCard.a11y")).accessibilityIdentifier("meeting-companion-card")
     }
-    private var playerBar: some View {
-        HStack(spacing: 10) {
-            Button { model.skip(-10) } label: { Image(systemName: "gobackward.10").frame(width: 24, height: 36) }.help(UXText.text("player.back10")).accessibilityLabel(UXText.text("player.back10"))
+    private var playerTransport: some View {
+        HStack(spacing: 8) {
+            Button { model.skip(-10) } label: { Image(systemName: "gobackward.10").frame(width: 24, height: 28) }
+                .help(UXText.text("player.back10")).accessibilityLabel(UXText.text("player.back10"))
             Button { model.toggle() } label: {
-                Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").foregroundStyle(CassiniTheme.onAccent).frame(width: 28, height: 28)
-                    .background(CassiniTheme.accentStrong, in: Circle())
+                Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").foregroundStyle(CassiniTheme.onAccent)
+                    .frame(width: 28, height: 28).background(CassiniTheme.accentStrong, in: Circle())
             }.accessibilityLabel(UXText.text(model.isPlaying ? "player.pause" : "common.play")).accessibilityIdentifier("meeting-play")
-            Button { model.skip(10) } label: { Image(systemName: "goforward.10").frame(width: 24, height: 36) }.help(UXText.text("player.forward10")).accessibilityLabel(UXText.text("player.forward10"))
-            Text(LibraryFormat.position(Int64(model.positionMs))).monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk).font(.system(size: 11.5)).accessibilityIdentifier("meeting-elapsed")
+            Button { model.skip(10) } label: { Image(systemName: "goforward.10").frame(width: 24, height: 28) }
+                .help(UXText.text("player.forward10")).accessibilityLabel(UXText.text("player.forward10"))
+        }.fixedSize()
+    }
+    private var playerTimeline: some View {
+        HStack(spacing: 10) {
+            Text(LibraryFormat.position(Int64(model.positionMs))).monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk)
+                .font(.system(size: 11.5)).accessibilityIdentifier("meeting-elapsed").fixedSize()
             MeetingPositionSlider(position:Binding(get:{ Double(model.positionMs) },set:{ model.seek(Int($0)) }),duration:Double(max(1,model.durationMs)),
-                                  readout:model.timelineReadout,names:meeting.speakerDisplayNames,
-                                  timeline:model.listen.timeline)
+                                  readout:model.timelineReadout,names:meeting.speakerDisplayNames,timeline:model.listen.timeline)
                 .frame(minWidth:80,maxWidth:.infinity).frame(height:22)
-            Text(LibraryFormat.position(Int64(model.durationMs))).monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk).font(.system(size: 11.5))
-            Button(UXText.text("format.playbackRate", ["rate": model.rate.formatted(.number.precision(.fractionLength(0...2)).locale(UXText.locale))])) { model.cycleRate() }
-                .fontWeight(.semibold).padding(.horizontal, 9).frame(height: 30).background(CassiniTheme.ratePillFill, in: RoundedRectangle(cornerRadius: 5))
-                .accessibilityIdentifier("meeting-speed")
-                .accessibilityLabel(UXText.text("player.speed.a11y",["rate":UXText.text("format.playbackRate",["rate":model.rate.formatted(.number.precision(.fractionLength(0...2)).locale(UXText.locale))])]))
-        }.buttonStyle(.plain).padding(.horizontal, 10).frame(height: 40)
+            Text(LibraryFormat.position(Int64(model.durationMs))).monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk)
+                .font(.system(size: 11.5)).fixedSize()
+        }
+    }
+    private var playerRate: some View {
+        Button(UXText.text("format.playbackRate", ["rate": model.rate.formatted(.number.precision(.fractionLength(0...2)).locale(UXText.locale))])) { model.cycleRate() }
+            .fontWeight(.semibold).padding(.horizontal, 9).frame(height: 22)
+            .background(CassiniTheme.ratePillFill, in: RoundedRectangle(cornerRadius: 5)).fixedSize()
+            .accessibilityIdentifier("meeting-speed")
+            .accessibilityLabel(UXText.text("player.speed.a11y",["rate":UXText.text("format.playbackRate",["rate":model.rate.formatted(.number.precision(.fractionLength(0...2)).locale(UXText.locale))])]))
+    }
+    private var playerBar: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) { playerTransport; playerTimeline; playerRate }
+            VStack(spacing: 6) {
+                playerTimeline
+                HStack { playerTransport; Spacer(minLength: 8); playerRate }
+            }
+        }.buttonStyle(.plain).padding(.horizontal, 10).padding(.vertical, 6)
             .background(CassiniTokens.raised, in: RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(CassiniTokens.lineSoft, lineWidth: 1))
             .shadow(color: CassiniTokens.shadow, radius: 10, y: 5)
             .disabled(!model.canPlay).accessibilityElement(children: .contain).accessibilityLabel(UXText.text("player.a11y"))
     }
+
 }
 
 struct NoSpeechTranscriptLine: View {

@@ -171,7 +171,7 @@ import Observation
         else { listenTo(speaker) }
     }
     func speakerName(_ id: String) -> String {
-        meeting.speaker(for:id)?.displayName ?? UXText.text("common.speaker.unnamed",["n":"1"])
+        meeting.speaker(for:id)?.displayName(language:UXText.language,locale:UXText.locale) ?? UXText.text("common.speaker.unnamed",["n":"1"])
     }
     var listeningPresentation: ListeningBarPresentation? {
         guard let turn = listen.turn, let first = listen.turns(of:turn.speaker).first else { return nil }
