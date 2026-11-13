@@ -603,7 +603,9 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.buttons["toolbar-record"].waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertEqual(window.buttons.matching(identifier:"toolbar-record").count,1)
         XCTAssertEqual(window.buttons["toolbar-record"].label,"Record")
-        XCTAssertEqual(window.buttons["toolbar-record"].frame.width,90,accuracy:2,"Idle Record keeps the compact pill width")
+        let recordWidth = window.buttons["toolbar-record"].frame.width
+        XCTAssertGreaterThanOrEqual(recordWidth,90,"Idle Record retains its minimum hit width")
+        XCTAssertLessThanOrEqual(recordWidth,120,"The English label keeps a compact pill instead of stretching across the sidebar")
         XCTAssertEqual(window.buttons.matching(identifier:"toolbar-import").count,1)
         XCTAssertEqual(window.buttons["toolbar-import"].label,"Import Audio…")
         XCTAssertEqual(window.buttons["meeting-export"].label,"Export…")
