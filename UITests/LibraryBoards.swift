@@ -912,7 +912,7 @@ final class LibraryBoards: XCTestCase {
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.textFields["recording-title"].waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(text("00:12:48",in:window))
-        XCTAssertEqual(window.staticTexts["recording-date"].label,"Today, 14:05")
+        XCTAssertEqual(visibleText(window.staticTexts["recording-date"]),"Today, 14:05")
         let title = window.textFields["recording-title"]
         let timer = window.staticTexts["recording-big-timer"]
         let stop = window.buttons["recording-page-stop"]
