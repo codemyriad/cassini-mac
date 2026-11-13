@@ -76,6 +76,7 @@ struct MeetingPositionSlider: View {
         report["nativeStopClearsSnap"] = sought == 9900
         let window = NSWindow(contentRect:NSRect(x:0,y:0,width:360,height:120),
                               styleMask:.borderless,backing:.buffered,defer:false)
+        window.isReleasedWhenClosed = false
         defer { window.close() }
         let host = NSView(frame:NSRect(x:0,y:0,width:360,height:120))
         window.contentView = host

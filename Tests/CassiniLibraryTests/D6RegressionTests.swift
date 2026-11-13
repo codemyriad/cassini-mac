@@ -104,7 +104,10 @@ private func row(_ f: Fixture) throws -> LibraryMeeting { try #require(LibrarySc
             ["speaker": "b", "startMs": 600000, "endMs": 999999, "text": "Excluded"]])
         let meeting = try row(f)
         #expect(meeting.speakerNames == ["Speaker 1", "Speaker 2"])
-        #expect(meeting.speakers.map(\.colourIndex) == [0, 1])
+        // R7.1 / HARMONY 10.11 (L-41): stored colourIndex wins when present, while fallback
+        // unnamed numbering ("Speaker 1", "Speaker 2") follows speakingOrder [0, 1] (R7.2).
+        #expect(meeting.speakers.map(\.colourIndex) == [99, 1])
+        #expect(meeting.speakers.map(\.speakingOrder) == [0, 1])
         #expect(meeting.quote?.displayText == "“Second part says \"yes\"”")
         try f.metadata {
             $0["transcript"] = ["status": "done", "reference": sidecar]

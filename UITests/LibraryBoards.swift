@@ -51,8 +51,8 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(client.waitForExistence(timeout:10),app.debugDescription);client.click()
         // SwiftUI gives every child of the preview-transcribing HStack the
         // stack's identifier, so select the typed StaticText (not the spinner).
-        let eta=window.staticTexts["preview-transcribing"]
-        let etaReady=NSPredicate {_,_ in eta.exists && self.visibleText(eta)=="Transcription, environ 4 minutes"}
+        let eta=window.descendants(matching:.any)["preview-transcribing"]
+        let etaReady=NSPredicate {_,_ in eta.exists && self.visibleText(eta)=="Transcription · 4 min"}
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:etaReady,object:nil)],timeout:10),.completed,"Full French ETA in the selected preview: "+app.debugDescription)
     }
     @MainActor func testFrenchSearchCountWithAmericanRegionalSettings() throws {
@@ -1123,7 +1123,7 @@ final class LibraryBoards: XCTestCase {
         let speech = NSPredicate { _,_ in self.recordedSeconds(window) >= 5 }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:speech,object:nil)],timeout:10),.completed)
         window.buttons["recording-stop"].click()
-        XCTAssertTrue(waitForPresent(window.staticTexts["Transcribing…"],timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(window.descendants(matching:.any)["Transcribing…"],timeout:10),app.debugDescription)
         app.typeKey("q",modifierFlags:.command)
         let exited = NSPredicate { _,_ in app.state == .notRunning }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:exited,object:nil)],timeout:5),.completed)

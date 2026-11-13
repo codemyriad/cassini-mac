@@ -95,7 +95,7 @@ final class Fixture {
         let result = try #require(LibraryScanner(root: f.root).scan().meetings.first)
         #expect(result.durationMs == 1000)
         #expect(result.state.interruptedAtMs == 1000)
-        #expect(result.state.badge?.text == "Interrupted at 00:00:01")
+        #expect(result.state.badge?.text == "Interrupted")
         #expect(result.issues.contains(.unknownStartOffset))
         #expect(result.start == nil && result.audioFiles.count == 2)
         #expect(try Data(contentsOf: f.folder.appendingPathComponent("session.json")) == original)
@@ -198,5 +198,29 @@ final class Fixture {
         let result = try LibraryScanner(root: f.root).scan()
         #expect(result.meetings.count == 1 && result.issues.contains(.unsafePath))
         #expect(try #require(result.meetings.first).issues.contains(.invalidMetadata))
+    }
+    @Test func storedSpeakerColourSlotsTakePrecedenceOverTranscriptOrderWhileUnnamedNumberingStaysSpeakingOrder() throws {
+        let f = try Fixture()
+        try f.metadata {
+            $0["transcript"] = ["status": "done", "reference": ["kind": "sidecar", "file": "transcript.json", "format": "cassini.words.v1"]]
+            $0["speakers"] = [
+                ["id": "a", "name": "Marta", "provenance": "user", "colourIndex": 4],
+                ["id": "b", "name": NSNull(), "provenance": "unnamed", "colourIndex": 9],
+                ["id": "silent", "name": "Zoe", "provenance": "user", "colourIndex": 0],
+            ]
+        }
+        let words: [String: Any] = ["language": "en", "items": [
+            ["speaker": "b", "startMs": 1000, "endMs": 1400, "text": "Unnamed speaks first."],
+            ["speaker": "a", "startMs": 2000, "endMs": 2400, "text": "Marta speaks second."],
+            ["speaker": "c", "startMs": 3000, "endMs": 3400, "text": "Unstored speaker speaks third."],
+        ]]
+        try JSONSerialization.data(withJSONObject: words).write(to: f.folder.appendingPathComponent("transcript.json"))
+        let result = try #require(LibraryScanner(root: f.root).scan().meetings.first)
+        #expect(result.speakers.map(\.id) == ["b", "a", "c"])
+        // Stored colourIndex values win over transcript order; unstored c falls back to speaking order (2).
+        #expect(result.speakers.map(\.colourIndex) == [9, 4, 2])
+        // Unnamed numbering follows speaking order (1, 3), completely independent of stored colourIndex (9).
+        #expect(result.speakers.map { $0.displayName(language: .en) } == ["Speaker 1", "Marta", "Speaker 3"])
+        #expect(result.speakerNames == ["Speaker 1", "Marta", "Speaker 3"])
     }
 }

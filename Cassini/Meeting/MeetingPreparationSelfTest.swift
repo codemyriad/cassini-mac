@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #if DEBUG
 import AppKit
+import CassiniKit
 import CassiniLibrary
 import Observation
 
@@ -109,6 +110,7 @@ import Observation
         guard case .finished? = await next.next() else { fail("merge preparation did not finish") }
         await mergedDelivered.value
         report["mergedPreparationRecovers"] = detail.turns.allSatisfy { $0.speaker == "b" } && detail.timelineReadout.speaker(at:0) == "b" && detail.speakerName("b") == "Marta Cole"
+        await runSessionModelProof(into: &report)
         for (key,value) in MeetingPositionSlider.nativeSelfTest() { report[key] = value }
         for (key,value) in MeetingTranscriptText.nativeSelfTest() { report[key] = value }
         for (key,value) in MeetingTitleAlignment.nativeSelfTest() { report[key] = value }
@@ -131,9 +133,140 @@ import Observation
         report["audioDevicesOpened"] = false
 
         MeetingDetailModel.preparerForSelfTest = nil
+        SessionModel.preparerForSelfTest = nil
         navigation.back()
         guard let output = try? JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) else { fail("report") }
         FileHandle.standardOutput.write(output + Data([10])); exit(0)
+    }
+
+    private static func runSessionModelProof(into report: inout [String: Any]) async {
+        let receivedURL = LibraryStore.shared.context.root
+            .appendingPathComponent("Received-a0000000-0000-4000-8000-000000000006/original.opus")
+        guard let bytes = try? Data(contentsOf: receivedURL),
+              var file = try? CassiniReader.read(bytes),
+              let firstPair = file.transcripts.first,
+              case .available(var firstBody) = firstPair.load else {
+            fail("missing received onboarding opus fixture for SessionModel proof")
+        }
+        var firstEntry = firstPair.entry
+        firstEntry.id = "tx-primary"; firstEntry.isDefault = true
+        var secondEntry = firstPair.entry
+        secondEntry.id = "tx-alt"; secondEntry.isDefault = false
+        firstBody.items = (0..<10_000).map { i in
+            let speaker = i % 2 == 0 ? "guest" : "alex"
+            let start = (9_999 - i) * 200
+            return Word(speaker: speaker, startMs: start, endMs: start + 150, text: "Word \(i)")
+        }
+        var secondBody = firstBody
+        // In tx-alt, i = 9_999 has start = 0 and speaker = "unlisted" (speaks first at 0 ms),
+        // i = 9_998 has start = 200 and speaker = "alex" (speaks second at 200 ms).
+        secondBody.items = (0..<10_000).map { i in
+            let speaker = i % 2 == 0 ? "alex" : "unlisted"
+            let start = (9_999 - i) * 200
+            return Word(speaker: speaker, startMs: start, endMs: start + 150, text: "Alt \(i)")
+        }
+        file.manifest?.transcripts = [firstEntry, secondEntry]
+        file.transcripts = [(firstEntry, .available(firstBody)), (secondEntry, .available(secondBody))]
+
+        func observeNextChange(_ read: @MainActor () -> Void) -> AsyncStream<Void> {
+            let (stream, continuation) = AsyncStream<Void>.makeStream()
+            withObservationTracking { read() } onChange: {
+                continuation.yield(())
+                continuation.finish()
+            }
+            return stream
+        }
+
+        final class Gate: @unchecked Sendable {
+            private let cond = NSCondition()
+            private var opened = false
+            func wait() {
+                cond.lock()
+                while !opened { cond.wait() }
+                cond.unlock()
+            }
+            func open() {
+                cond.lock()
+                opened = true
+                cond.broadcast()
+                cond.unlock()
+            }
+            deinit { open() }
+        }
+        enum SessionEvent: Sendable {
+            case started(call: Int, onMain: Bool, gate: Gate)
+            case cancelled(call: Int)
+            case finished(call: Int)
+        }
+        final class Counter: @unchecked Sendable {
+            private let lock = NSLock()
+            private var calls = 0
+            func next() -> Int { lock.lock(); defer { lock.unlock() }; calls += 1; return calls }
+            var value: Int { lock.lock(); defer { lock.unlock() }; return calls }
+        }
+        let (events, emit) = AsyncStream<SessionEvent>.makeStream()
+        let counter = Counter()
+        SessionModel.preparerForSelfTest = { items, known, bounded in
+            let call = counter.next()
+            let gate = Gate()
+            emit.yield(.started(call: call, onMain: Thread.isMainThread, gate: gate))
+            gate.wait()
+            if Task.isCancelled { emit.yield(.cancelled(call: call)); throw CancellationError() }
+            let prepared = try Timeline.PreparedSessionTranscript.preparing(items, knownSpeakerIDs: known, endsBoundedByAudio: bounded)
+            emit.yield(.finished(call: call))
+            return prepared
+        }
+        var next = events.makeAsyncIterator()
+        let session = SessionModel(document: CassiniDocument(file: file), url: nil)
+        guard case .started(1, let onMain, let gate1)? = await next.next() else { fail("SessionModel preparation did not start") }
+        report["sessionPreparedOffMain"] = !onMain
+
+        var progressed = false
+        await Task { @MainActor in progressed = true }.value
+        report["sessionMainActorProgressed"] = progressed && session.preparingTranscript && session.timeline == nil
+
+        // Switching transcripts cancels in-flight preparation of tx-primary (call 1) and starts tx-alt (call 2).
+        session.selectedTranscriptId = "tx-alt"
+        gate1.open()
+        var sawCancel1 = false
+        var gate2: Gate?
+        for _ in 0..<2 {
+            guard let ev = await next.next() else { fail("missing SessionModel switch event") }
+            switch ev {
+            case .cancelled(1): sawCancel1 = true
+            case .started(2, _, let g): gate2 = g
+            default: fail("unexpected SessionModel switch event: \(ev)")
+            }
+        }
+        guard let gate2 else { fail("SessionModel tx-alt did not start") }
+        report["sessionSwitchCancelled"] = sawCancel1
+
+        var altChanges = observeNextChange { _ = session.timeline }.makeAsyncIterator()
+        gate2.open()
+        guard case .finished(2)? = await next.next() else { fail("SessionModel tx-alt did not finish") }
+        _ = await altChanges.next()
+        report["sessionSpeakerSlotsMatchFirstSpeech"] =
+            session.speakerColourIndexForSelfTest(for: "unlisted") == 0 &&
+            session.speakerColourIndexForSelfTest(for: "alex") == 1 &&
+            session.speakers.contains(where: { $0.id == "unlisted" })
+
+        // Let tx-primary prepare once (call 3), then switch back to cached tx-alt without invoking the preparer again.
+        session.selectedTranscriptId = "tx-primary"
+        guard case .started(3, _, let gate3)? = await next.next() else { fail("SessionModel tx-primary restart did not start") }
+        var primaryChanges = observeNextChange { _ = session.timeline }.makeAsyncIterator()
+        gate3.open()
+        guard case .finished(3)? = await next.next() else { fail("SessionModel tx-primary restart did not finish") }
+        _ = await primaryChanges.next()
+        let callsBeforeCachedSwitch = counter.value
+        session.selectedTranscriptId = "tx-alt"
+        report["sessionCachedSwitchSkipsPreparation"] =
+            counter.value == callsBeforeCachedSwitch &&
+            !session.preparingTranscript &&
+            session.timeline?.words.count == 10_000 &&
+            session.speakerColourIndexForSelfTest(for: "unlisted") == 0 &&
+            session.speakerColourIndexForSelfTest(for: "alex") == 1
+        session.close()
+        SessionModel.preparerForSelfTest = nil
     }
 }
 #endif

@@ -9,7 +9,7 @@ struct SpeakerEditorView:View {
         VStack(alignment:.leading,spacing:18) {
             Text(UXText.text("common.speakers")).font(.system(size:18,weight:.bold)).accessibilityAddTraits(.isHeader)
             if let meeting=edit.meeting,let speaker=edit.selectedSpeaker {
-                Text(speaker.displayName).font(.headline).lineLimit(2)
+                Text(speaker.displayName).font(.headline).foregroundStyle(CassiniTheme.speakerInk(speaker)).lineLimit(2)
                 if edit.speakerPreparing {ProgressView().controlSize(.small)}
                 else {
                     Text(UXText.text("speakers.talkTime",["talkTime":LibraryFormat.talkTime(edit.speakerTalkTime,locale:UXText.locale,language:UXText.language)]))
@@ -17,7 +17,12 @@ struct SpeakerEditorView:View {
                 }
                 HStack {
                     Text(UXText.text("speakers.nameLabel"))
-                    TextField(UXText.text("speakers.nameLabel"),text:$edit.name).textFieldStyle(.roundedBorder)
+                    TextField("", text: $edit.name, prompt: Text(UXText.text("speakers.nameLabel")).foregroundStyle(CassiniTheme.ink3))
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(CassiniTheme.field, in: RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(CassiniTheme.fieldLine, lineWidth: 1))
                         .disabled(edit.working).accessibilityIdentifier("speaker-name-field")
                         .onSubmit {if edit.canApply {edit.apply()}}
                 }
@@ -40,8 +45,12 @@ struct SpeakerEditorView:View {
                 }
             }
             if edit.speakerChangeFailed {
-                Text(UXText.text("speakers.changeFailed")).foregroundStyle(CassiniTheme.secondaryInk).fixedSize(horizontal:false,vertical:true)
-                Button(UXText.text("common.tryAgain")) {edit.retrySpeakerEdit()}.disabled(!edit.canRetrySpeakerEdit)
+                HStack(spacing:10) {
+                    Text(UXText.text("speakers.changeFailed")).foregroundStyle(CassiniTheme.error).fixedSize(horizontal:false,vertical:true)
+                        .accessibilityIdentifier("speaker-change-error")
+                    Spacer(minLength:0)
+                    Button(UXText.text("common.tryAgain")) {edit.retrySpeakerEdit()}.disabled(!edit.canRetrySpeakerEdit)
+                }.padding(12).background(CassiniTheme.errorTint,in:RoundedRectangle(cornerRadius:7))
             }
             HStack {
                 Spacer()
@@ -51,6 +60,7 @@ struct SpeakerEditorView:View {
                     .accessibilityIdentifier("speaker-save-name")
             }
         }.font(.system(size:13)).padding(24).frame(width:470)
+            .background(CassiniTheme.windowGround)
             .accessibilityElement(children:.contain).accessibilityIdentifier("speaker-editor")
             .onDisappear {detail?.speakerSample.cancel()}
     }
@@ -63,7 +73,19 @@ struct SpeakerEditFailureNotice:View {
                 Text(UXText.text("speakers.changeFailed"))
                 Button(UXText.text("common.tryAgain")) {edit.retrySpeakerEdit()}.disabled(!edit.canEditSpeakers(edit.meeting))
                 Button {edit.dismissSpeakerFailure()} label: {Image(systemName:"xmark")}.accessibilityLabel(UXText.text("common.close"))
-            }.font(.system(size:13)).padding(14).background(.regularMaterial,in:RoundedRectangle(cornerRadius:8)).padding()
+            }.font(.system(size:13)).padding(14)
+                .foregroundStyle(CassiniTheme.toastUsesInverse ? CassiniTheme.onInverse : CassiniTheme.ink)
+                .buttonStyle(ToastButtonStyle(warning: false))
+                .background {
+                    if CassiniTheme.toastUsesInverse {
+                        RoundedRectangle(cornerRadius:8).fill(CassiniTheme.inverse)
+                            .shadow(color:CassiniTheme.shadow,radius:6,y:2)
+                    } else {
+                        RoundedRectangle(cornerRadius:8).fill(.regularMaterial)
+                    }
+                }
+                .tint(CassiniTheme.toastUsesInverse ? CassiniTheme.inverseAccent : nil)
+                .padding()
         }
     }
 }

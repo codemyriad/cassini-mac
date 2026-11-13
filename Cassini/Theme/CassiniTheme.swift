@@ -1,183 +1,275 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
+import CassiniLibrary
 import CassiniSpectrogram
 import SwiftUI
 
-/// Semantic colour roles for the macOS app.
-/// W1.1 plumbing: every role is routed through this single theme enum while returning
-/// today's pre-W1 colours so zero pixels change. PR B switches roles to `CassiniTokens`
-/// and empties `unappliedDecidedTokens`.
-enum CassiniTheme {
-    /// Decided roles from `brand/tokens.json` not yet applied to visible surfaces in PR A.
-    /// PR B (`W1 look preview`) applies every decided role and leaves this set empty.
-    static let unappliedDecidedTokens: Set<String> = [
-        "ground", "surface", "sunken", "raised",
-        "sidebar", "sidebar-mac", "field", "field-line",
-        "line", "line-soft",
-        "ink", "ink-2", "ink-3",
-        "accent", "accent-strong", "on-accent", "accent-ink", "accent-tint",
-        "record", "record-ink", "record-tint", "on-record",
-        "error-fill", "success-fill",
-        "error", "error-tint", "success", "success-tint",
-        "warn-ink", "warn-tint", "neutral-ink", "neutral-tint",
-        "highlight", "highlight-ink",
-        "speaker-1", "speaker-2", "speaker-3", "speaker-4", "speaker-5", "speaker-6", "speaker-0",
-        "avatar-1", "avatar-2", "avatar-3", "avatar-4", "avatar-5", "avatar-6", "avatar-0",
-        "inverse", "on-inverse", "inverse-accent", "scrim", "shadow",
-        "card-rest",
-    ]
-
-    private static func adaptive(light: NSColor, dark: NSColor) -> Color {
-        Color(nsColor: adaptiveNS(light: light, dark: dark))
+/// Native macOS sidebar material (`HARMONY 10.14`, `L-42`: Mac keeps the native sidebar material;
+/// `sidebar` / `sidebar-mac` are reference values for mocks and tests, never a sidebar fill).
+struct NativeSidebarMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+        return view
     }
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = .sidebar
+        nsView.blendingMode = .behindWindow
+        nsView.state = .followsWindowActiveState
+    }
+}
+
+/// Semantic colour roles for the macOS app, backed by `CassiniTokens` (`brand/tokens.json` `5e0c34e`).
+enum CassiniTheme {
+    /// All decided roles from `brand/tokens.json` are wired in Phase 1 WP1: Foundations.
+    static let unappliedDecidedTokens: Set<String> = []
 
     private static func adaptiveNS(light: NSColor, dark: NSColor) -> NSColor {
         NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light }
     }
 
-    // Scene tint (W1: CassiniTokens.accent)
-    static let sceneTint: Color? = nil
+    // Scene tint: ignore macOS system accent colour (L-06, L-18, L-39)
+    static let sceneTint: Color? = CassiniTokens.accent
 
-    // Grounds & surfaces (W1: ground, surface, sunken, raised, cardRest)
-    static let paneGround = Color(nsColor: .textBackgroundColor)
-    static let nsPaneGround: NSColor = .textBackgroundColor
-    static let windowGround = Color(nsColor: .windowBackgroundColor)
-    static let sidebarGround = adaptive(
-        light: NSColor(red: 241/255, green: 240/255, blue: 245/255, alpha: 1),
-        dark: .windowBackgroundColor
-    )
-    static let surface = Color(nsColor: .textBackgroundColor)
-    static let nsChipFill = adaptiveNS(
-        light: NSColor(red: 239/255, green: 239/255, blue: 243/255, alpha: 1),
-        dark: .controlBackgroundColor
-    )
-    static let chipFill = Color(nsColor: nsChipFill)
-    static let controlFill = Color(nsColor: .controlBackgroundColor)
-    static let subtleWash = Color.secondary.opacity(0.07)
-    static let ratePillFill = Color.secondary.opacity(0.10)
+    // Grounds, surfaces & text fields (L-16, L-17, L-18, L-19, L-42; HARMONY 10.9, 10.14)
+    static let paneGround = CassiniTokens.ground
+    static let nsPaneGround: NSColor = CassiniTokens.ns.ground
+    static let windowGround = CassiniTokens.ground
+    static let surface = CassiniTokens.surface
+    static let raised = CassiniTokens.raised
+    static let subtleWash = CassiniTokens.sunken
+    static let cardRest = CassiniTokens.cardRest
+    static let controlFill = CassiniTokens.surface
+    static let field = CassiniTokens.field
+    static let nsField: NSColor = CassiniTokens.ns.field
+    static let fieldLine = CassiniTokens.fieldLine
+    static let nsFieldLine: NSColor = CassiniTokens.ns.fieldLine
+    /// Mock/test reference values only (HARMONY 10.14: live Mac sidebars use `NativeSidebarMaterial`).
+    static let sidebarReference = CassiniTokens.sidebar
+    static let sidebarMacReference = CassiniTokens.sidebarMac
 
-    // Lines & borders (W1: line, lineSoft)
-    static let cardStroke = Color.secondary.opacity(0.25)
-    static let modelCardStroke = ink2.opacity(0.2)
-    static let tagStroke = ink2.opacity(0.3)
-    static let secondaryTagStroke = Color.secondary.opacity(0.3)
-    static let nsSeparator: NSColor = .separatorColor
-
-    // Inks (W1: ink, ink2, ink3)
-    static let ink = Color(nsColor: .labelColor)
-    static let nsInk: NSColor = .labelColor
-    static let primaryInk = Color.primary
-    static let ink2 = adaptive(
-        light: NSColor(red: 106/255, green: 106/255, blue: 112/255, alpha: 1),
-        dark: .secondaryLabelColor
+    // Neutral pills & secondary buttons: `ink` at 10% over whatever is behind (L-46, L-54; HARMONY 10.15)
+    static let neutralPillFill = CassiniTokens.ink.opacity(0.10)
+    static let nsNeutralPillFill = adaptiveNS(
+        light: CassiniTokens.inkEntry.resolvedNSColor(dark: false).withAlphaComponent(0.10),
+        dark: CassiniTokens.inkEntry.resolvedNSColor(dark: true).withAlphaComponent(0.10)
     )
-    static let secondaryInk = HierarchicalShapeStyle.secondary
-    static let secondaryColor = Color.secondary
-    static let nsInk2: NSColor = .secondaryLabelColor
-    static let nsInk3: NSColor = .tertiaryLabelColor
-    static let nsUpcomingWordInk: NSColor = .secondaryLabelColor
+    static let nsChipFill: NSColor = nsNeutralPillFill
+    static let chipFill = neutralPillFill
+    static let ratePillFill = neutralPillFill
+
+    // Lines & borders (L-16, L-18, L-42)
+    static let cardStroke = CassiniTokens.line
+    static let modelCardStroke = CassiniTokens.line
+    static let tagStroke = CassiniTokens.line
+    static let secondaryTagStroke = CassiniTokens.line
+    static let lineSoft = CassiniTokens.lineSoft
+    static let nsSeparator: NSColor = CassiniTokens.ns.line
+
+    // Inks & placeholders (L-16, L-18, L-36, L-42; HARMONY 10.8)
+    static let ink = CassiniTokens.ink
+    static let nsInk: NSColor = CassiniTokens.ns.ink
+    static let primaryInk = CassiniTokens.ink
+    static let ink2 = CassiniTokens.ink2
+    static let secondaryInk = CassiniTokens.ink2
+    static let secondaryColor = CassiniTokens.ink2
+    static let ink3 = CassiniTokens.ink3
+    static let nsInk2: NSColor = CassiniTokens.ns.ink2
+    static let nsInk3: NSColor = CassiniTokens.ns.ink3
+    static let nsUpcomingWordInk: NSColor = CassiniTokens.ns.ink3
     static func nsInactiveChipFill(dark: Bool) -> NSColor {
-        dark ? NSColor.white.withAlphaComponent(0.06) : NSColor.black.withAlphaComponent(0.035)
+        CassiniTokens.inkEntry.resolvedNSColor(dark: dark).withAlphaComponent(0.10)
     }
 
-    // Accents (W1: accent, accentStrong, onAccent, accentInk, accentTint)
-    static let accent = Color.accentColor
-    static let nsAccent: NSColor = .controlAccentColor
-    static let accentStrong = Color.accentColor
-    static let onAccent = Color.white
-    static let onAccentDim = Color.white.opacity(0.86)
-    static let accentInk = Color.accentColor
-    static let accentTint = Color.accentColor.opacity(0.11)
-    static let activeModelWash = Color.accentColor.opacity(0.07)
-    static let listeningRowWash = Color.accentColor.opacity(0.08)
-    static let selectedOptionWash = Color.accentColor.opacity(0.10)
+    // Accents (L-06, L-17, L-18, L-39)
+    static let accent = CassiniTokens.accent
+    static let nsAccent: NSColor = CassiniTokens.ns.accent
+    static let accentStrong = CassiniTokens.accentStrong
+    static let onAccent = CassiniTokens.onAccent
+    static let onAccentDim = CassiniTokens.onAccent.opacity(0.82)
+    static let accentInk = CassiniTokens.accentInk
+    static let accentTint = CassiniTokens.accentTint
+    static let activeModelWash = CassiniTokens.accentTint
+    static let listeningRowWash = CassiniTokens.accent.opacity(0.08)
+    static let selectedOptionWash = CassiniTokens.accentTint
 
-    // Highlights (W1: highlight, highlightInk)
-    static let nsHighlight = NSColor(srgbRed: 253/255, green: 230/255, blue: 138/255, alpha: 1)
-    static let nsSearchHighlight = NSColor(red: 253/255, green: 230/255, blue: 138/255, alpha: 1)
-    static let nsHighlightInk: NSColor? = nil
-    static let nsSelectedSearchHighlight = NSColor.white.withAlphaComponent(0.28)
-    static func nsLegacyMatchFill(dark: Bool, isCurrent: Bool) -> NSColor {
-        dark
-            ? NSColor(srgbRed: 1, green: 0.84, blue: 0.04, alpha: isCurrent ? 0.7 : 0.45)
-            : NSColor(srgbRed: 1, green: 0.8, blue: 0, alpha: isCurrent ? 0.7 : 0.45)
-    }
-
-    // Record & spectrogram roles (W1: record, recordInk, recordTint, onRecord, warnInk, ink)
-    static let nsRecord = adaptiveNS(
-        light: NSColor(red: 215/255, green: 0, blue: 21/255, alpha: 1),
-        dark: .systemRed
+    // Highlights (L-24)
+    static let nsHighlight: NSColor = CassiniTokens.ns.highlight
+    static let nsSearchHighlight: NSColor = CassiniTokens.ns.highlight
+    static let nsHighlightInk: NSColor? = CassiniTokens.ns.highlightInk
+    static let nsSelectedSearchHighlight = adaptiveNS(
+        light: CassiniTokens.onAccentEntry.resolvedNSColor(dark: false).withAlphaComponent(0.28),
+        dark: CassiniTokens.onAccentEntry.resolvedNSColor(dark: true).withAlphaComponent(0.14)
     )
-    static let record = Color(nsColor: nsRecord)
-    static let nsRecordInk = nsRecord
-    static let recordInk = record
-    static let recordTint = record.opacity(0.10)
-    static let onRecord = Color.white
-    static let nsOnRecord: NSColor = .white
+    static func nsLegacyMatchFill(dark: Bool, isCurrent: Bool) -> NSColor {
+        CassiniTokens.highlightEntry.resolvedNSColor(dark: dark).withAlphaComponent(isCurrent ? 1.0 : 0.65)
+    }
+
+    // Record & spectrogram roles (L-07, L-20; HARMONY 10.2, 10.3)
+    static let nsRecord: NSColor = CassiniTokens.ns.record
+    static let record = CassiniTokens.record
+    static let nsRecordInk: NSColor = CassiniTokens.ns.recordInk
+    static let recordInk = CassiniTokens.recordInk
+    static let recordTint = CassiniTokens.recordTint
+    static let onRecord = CassiniTokens.onRecord
+    static let nsOnRecord: NSColor = CassiniTokens.ns.onRecord
     static func nsLivePillInk(dark: Bool) -> NSColor {
-        dark
-            ? NSColor(red: 1, green: 69/255, blue: 58/255, alpha: 1)
-            : NSColor(red: 215/255, green: 0, blue: 21/255, alpha: 1)
+        CassiniTokens.recordInkEntry.resolvedNSColor(dark: dark)
     }
     static func nsLivePillStopFill(dark: Bool) -> NSColor {
-        nsLivePillInk(dark: dark)
+        CassiniTokens.recordEntry.resolvedNSColor(dark: dark)
     }
     static func nsLivePillWash(dark: Bool) -> NSColor {
-        dark
-            ? NSColor(srgbRed: 67/255, green: 33/255, blue: 31/255, alpha: 1)
-            : NSColor(srgbRed: 253/255, green: 228/255, blue: 230/255, alpha: 1)
+        CassiniTokens.recordTintEntry.resolvedNSColor(dark: dark)
     }
     static let spectrogramColors = SpectrogramThemeColors(
-        pillInkLight: 0xd70015, pillInkDark: 0xff6961,
-        rowInkLight: 0x1d1d1f, rowInkDark: 0xf5f5f7,
-        pillSilentLight: 0xff9f0a, pillSilentDark: 0xff9f0a,
-        rowSilentLight: 0xc47a00, rowSilentDark: 0xff9f0a
+        pillInkLight: CassiniTokens.recordInkEntry.lightRGB,
+        pillInkDark: CassiniTokens.recordInkEntry.darkRGB,
+        rowInkLight: CassiniTokens.inkEntry.lightRGB,
+        rowInkDark: CassiniTokens.inkEntry.darkRGB,
+        pillSilentLight: CassiniTokens.warnInkEntry.lightRGB,
+        pillSilentDark: CassiniTokens.warnInkEntry.darkRGB,
+        rowSilentLight: CassiniTokens.warnInkEntry.lightRGB,
+        rowSilentDark: CassiniTokens.warnInkEntry.darkRGB
     )
 
-    // Status, destructive/success fills & inverse roles
-    static let warnInk = adaptive(
-        light: NSColor(red: 122/255, green: 77/255, blue: 0, alpha: 1),
-        dark: .systemOrange
-    )
-    static let warnTint = adaptive(
-        light: NSColor(red: 1, green: 240/255, blue: 199/255, alpha: 1),
-        dark: NSColor.systemOrange.withAlphaComponent(0.16)
-    )
-    static let inlineWarnInk = Color(red: 122/255, green: 77/255, blue: 0)
-    static let inlineWarnTint = Color(red: 1, green: 240/255, blue: 199/255)
-    static let warningNotice = Color.orange
-    static let neutralInk = ink2
-    static let neutralTint = ink2.opacity(0.10)
-    static func badgeInk(_ tint: String) -> Color {
-        switch tint {
-        case "red": return recordInk
-        case "amber": return inlineWarnInk
-        case "accent": return accent
-        default: return neutralInk
-        }
-    }
-    static func badgeWash(_ tint: String) -> Color {
-        badgeInk(tint).opacity(0.10)
-    }
-    static let success = Color.green
-    static let successTint = Color.green.opacity(0.12)
-    static let successFill = Color(red: 31/255, green: 122/255, blue: 63/255)
-    static let stepDoneFill = successFill
-    static let onSuccess = Color.white
-    static let error = record
-    static let errorTint = recordTint
-    static let errorFill = record
-    static let onErrorFill = Color.white
-    static let inverse = Color(nsColor: .labelColor)
-    static let onInverse = Color(nsColor: .windowBackgroundColor)
-    static let inverseAccent = Color.accentColor
-    static let scrim = Color.black.opacity(0.45)
-    static let shadow = Color.black.opacity(0.25)
-    static let toastUsesInverse = false
+    // Status, destructive/success fills & inverse roles (L-16, L-26, L-37, L-38, L-40, L-46; HARMONY 10.4–10.7, 10.15)
+    static let warnInk = CassiniTokens.warnInk
+    static let warnTint = CassiniTokens.warnTint
+    static let inlineWarnInk = CassiniTokens.warnInk
+    static let inlineWarnTint = CassiniTokens.warnTint
+    static let warningNotice = CassiniTokens.warnInk
+    static let neutralInk = CassiniTokens.neutralInk
+    static let neutralTint = CassiniTokens.neutralTint
+    static let success = CassiniTokens.success
+    static let successTint = CassiniTokens.successTint
+    static let successFill = CassiniTokens.successFill
+    static let stepDoneFill = CassiniTokens.successFill
+    static let onSuccess = CassiniTokens.onRecord
+    static let error = CassiniTokens.error
+    static let errorTint = CassiniTokens.errorTint
+    static let errorFill = CassiniTokens.errorFill
+    static let nsErrorFill: NSColor = CassiniTokens.ns.errorFill
+    static let onErrorFill = CassiniTokens.onRecord
+    static let inverse = CassiniTokens.inverse
+    static let onInverse = CassiniTokens.onInverse
+    static let inverseAccent = CassiniTokens.inverseAccent
+    static let scrim = CassiniTokens.scrim
+    static let shadow = CassiniTokens.shadow
+    static let toastUsesInverse = true
 
-    // Speaker & avatar roles (W1: speaker-1..6 + speaker-0, avatar-1..6 + avatar-0)
-    static func speakerColour(_ index: Int) -> Color {
-        [Color.accentColor, Color(red: 179/255, green: 71/255, blue: 0), Color(red: 125/255, green: 60/255, blue: 152/255)][index % 3]
+    // Speaker & avatar roles (L-14, L-41; HARMONY 10.10–10.12)
+    static func speakerSlot(colourIndex: Int, unnamed: Bool) -> Int {
+        guard !unnamed else { return 0 }
+        return ((colourIndex % 6) + 6) % 6 + 1
     }
-    static let legacySpeakerPalette: [NSColor] = [.systemOrange, .systemIndigo, .systemTeal, .systemGreen, .systemPink]
+
+    static func speakerSlot(_ speaker: MeetingSpeaker?) -> Int {
+        guard let speaker else { return 0 }
+        let unnamed = speaker.provenance == .unnamed
+            || (speaker.provenance == nil && speaker.name == nil && speaker.label == nil)
+        return speakerSlot(colourIndex: speaker.colourIndex, unnamed: unnamed)
+    }
+
+    /// Saved-voice avatar/ink slot (HARMONY 10.12, L-41): assigned once in 0-based save order, invariant under sorting.
+    static func savedVoiceSlot(saveOrder: Int) -> Int {
+        ((saveOrder % 6) + 6) % 6 + 1
+    }
+
+    private static let speakerInks: [Color] = [
+        CassiniTokens.speaker0,
+        CassiniTokens.speaker1,
+        CassiniTokens.speaker2,
+        CassiniTokens.speaker3,
+        CassiniTokens.speaker4,
+        CassiniTokens.speaker5,
+        CassiniTokens.speaker6,
+    ]
+
+    private static let nsSpeakerInks: [NSColor] = [
+        CassiniTokens.ns.speaker0,
+        CassiniTokens.ns.speaker1,
+        CassiniTokens.ns.speaker2,
+        CassiniTokens.ns.speaker3,
+        CassiniTokens.ns.speaker4,
+        CassiniTokens.ns.speaker5,
+        CassiniTokens.ns.speaker6,
+    ]
+
+    private static let speakerWashes: [Color] = [
+        CassiniTokens.avatar0,
+        CassiniTokens.avatar1,
+        CassiniTokens.avatar2,
+        CassiniTokens.avatar3,
+        CassiniTokens.avatar4,
+        CassiniTokens.avatar5,
+        CassiniTokens.avatar6,
+    ]
+
+    private static let nsSpeakerWashes: [NSColor] = [
+        CassiniTokens.ns.avatar0,
+        CassiniTokens.ns.avatar1,
+        CassiniTokens.ns.avatar2,
+        CassiniTokens.ns.avatar3,
+        CassiniTokens.ns.avatar4,
+        CassiniTokens.ns.avatar5,
+        CassiniTokens.ns.avatar6,
+    ]
+
+    static func speakerInk(_ speaker: MeetingSpeaker?) -> Color {
+        speakerInks[speakerSlot(speaker)]
+    }
+
+    static func nsSpeakerInk(_ speaker: MeetingSpeaker?) -> NSColor {
+        nsSpeakerInks[speakerSlot(speaker)]
+    }
+
+    static func speakerWash(_ speaker: MeetingSpeaker?) -> Color {
+        speakerWashes[speakerSlot(speaker)]
+    }
+
+    static func nsSpeakerWash(_ speaker: MeetingSpeaker?) -> NSColor {
+        nsSpeakerWashes[speakerSlot(speaker)]
+    }
+
+    static func speakerInk(colourIndex: Int, unnamed: Bool = false) -> Color {
+        speakerInks[speakerSlot(colourIndex: colourIndex, unnamed: unnamed)]
+    }
+
+    static func nsSpeakerInk(colourIndex: Int, unnamed: Bool = false) -> NSColor {
+        nsSpeakerInks[speakerSlot(colourIndex: colourIndex, unnamed: unnamed)]
+    }
+
+    static func savedVoiceInk(saveOrder: Int) -> Color {
+        speakerInks[savedVoiceSlot(saveOrder: saveOrder)]
+    }
+
+    static func savedVoiceWash(saveOrder: Int) -> Color {
+        speakerWashes[savedVoiceSlot(saveOrder: saveOrder)]
+    }
+}
+
+/// High-contrast pill button style for inverse toasts (`inverse` + `inverse-accent`, L-16/L-39/L-42)
+/// and warning banners (`warn-tint` + `warn-ink`), avoiding AppKit `.bordered` label mismatch in dark mode.
+struct ToastButtonStyle: ButtonStyle {
+    var warning: Bool = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        let useInverse = !warning && CassiniTheme.toastUsesInverse
+        let fg = warning ? CassiniTheme.warnInk : (useInverse ? CassiniTheme.inverseAccent : CassiniTheme.ink)
+        let fillBase = warning ? CassiniTheme.warnInk : (useInverse ? CassiniTheme.onInverse : CassiniTheme.ink)
+        configuration.label
+            .font(.system(size: 12.5, weight: .semibold))
+            .foregroundStyle(fg)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 24)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(fillBase.opacity(configuration.isPressed ? 0.22 : 0.12))
+            )
+            .opacity(isEnabled ? 1 : 0.45)
+    }
 }

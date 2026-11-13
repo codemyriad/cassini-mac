@@ -16,7 +16,12 @@ struct MeetingView: View {
     private func name(_ speaker: String) -> String { model.speakerName(speaker) }
     private func asides(_ turn: MeetingPresentation.Turn) -> [MeetingTranscriptText.Aside] {
         turn.asides.compactMap { aside in
-            model.turns.indices.contains(aside.turn) ? .init(id:aside.turn,listeningWords:model.transcriptListening.words(in:aside.turn,listeningTo:model.listen.turn?.index),after:aside.after,name:name(model.turns[aside.turn].speaker),items:model.turns[aside.turn].items) : nil
+            guard model.turns.indices.contains(aside.turn) else { return nil }
+            let asideTurn = model.turns[aside.turn]
+            let speaker = meeting.speaker(for:asideTurn.speaker)
+            return .init(id:aside.turn,listeningWords:model.transcriptListening.words(in:aside.turn,listeningTo:model.listen.turn?.index),
+                         after:aside.after,name:name(asideTurn.speaker),items:asideTurn.items,
+                         speakerInk:CassiniTheme.nsSpeakerInk(speaker),speakerWash:CassiniTheme.nsSpeakerWash(speaker))
         }
     }
     /// D55.1 meeting.turn.over: the other speakers whose words overlap this turn.
@@ -39,8 +44,8 @@ struct MeetingView: View {
             (turn.items + asides(turn).flatMap(\.items)).contains { $0.startMs <= model.positionMs && model.positionMs < $0.endMs }
         }?.id
     }
-    private func colour(_ index: Int) -> Color {
-        CassiniTheme.speakerColour(index)
+    private func colour(_ speaker: MeetingSpeaker?) -> Color {
+        CassiniTheme.speakerInk(speaker)
     }
     private func turnLabel(_ turn: MeetingPresentation.Turn) -> String {
         var parts: [String] = [name(turn.speaker), LibraryFormat.position(turn.startMs)]
@@ -79,7 +84,7 @@ struct MeetingView: View {
                 if !turn.continuation { HStack(spacing: 5) {
                     Button { model.listenFromReadingTurn(turn.id) } label: {
                         Text(name(turn.speaker)).fontWeight(.semibold)
-                            .foregroundStyle(colour(meeting.speaker(for:turn.speaker)?.colourIndex ?? 0))
+                            .foregroundStyle(colour(meeting.speaker(for:turn.speaker)))
                     }.buttonStyle(.borderless).disabled(!model.canPlay)
                         .help(UXText.text("listen.speakerName.tooltip",["name":name(turn.speaker)]))
                         .accessibilityLabel(UXText.text("listen.speakerName.tooltip",["name":name(turn.speaker)]))
@@ -138,7 +143,7 @@ struct MeetingView: View {
             Spacer(minLength: 0)
         }.padding(.horizontal, 19).padding(.top, 14)
             .frame(width: 260).frame(maxHeight: .infinity)
-            .background(CassiniTheme.sidebarGround)
+            .background(NativeSidebarMaterial())
             .accessibilityElement(children: .contain).accessibilityLabel(UXText.text("meeting.speakersPane.a11y"))
     }
     var body: some View {
@@ -191,7 +196,7 @@ struct MeetingView: View {
             // Keep the controls in the main layout/hit-test tree. On macOS 15,
             // safeAreaInset paints this bar but its buttons fail AX hit testing.
             if let presentation = model.listeningPresentation {
-                ListeningBar(model:model,presentation:presentation,colour:colour(model.listen.speaker.flatMap { meeting.speaker(for:$0) }?.colourIndex ?? 0))
+                ListeningBar(model:model,presentation:presentation,colour:colour(model.listen.speaker.flatMap { meeting.speaker(for:$0) }))
                     .transition(reduceMotion ? .identity : .move(edge:.bottom).combined(with:.opacity))
             }
             Divider()
@@ -212,7 +217,7 @@ struct MeetingView: View {
         return SpeakerSidebarRow(
             speaker:speaker,
             row:row,
-            colour:colour(speaker.colourIndex),
+            colour:colour(speaker),
             listening:listening,
             canEdit:MeetingRenameCoordinator.shared.canEditSpeakers(meeting),
             canPlay:model.canPlay && (listening || !turns.isEmpty),
@@ -465,10 +470,10 @@ extension SpeakerSidebarRow {
             }
             return Double(maxX) / sx
         }
-        let readOnlyView = SpeakerSidebarRow(speaker:speaker,row:presentation,colour:CassiniTheme.accent,listening:false,canEdit:false,canPlay:true,onName:{},onToggleListen:{})
-        let editableView = SpeakerSidebarRow(speaker:speaker,row:presentation,colour:CassiniTheme.accent,listening:false,canEdit:true,canPlay:true,onName:{},onToggleListen:{})
+        let readOnlyView = SpeakerSidebarRow(speaker:speaker,row:presentation,colour:CassiniTheme.speakerInk(speaker),listening:false,canEdit:false,canPlay:true,onName:{},onToggleListen:{})
+        let editableView = SpeakerSidebarRow(speaker:speaker,row:presentation,colour:CassiniTheme.speakerInk(speaker),listening:false,canEdit:true,canPlay:true,onName:{},onToggleListen:{})
         let dimmedMutant = HStack(alignment:.top,spacing:10) {
-            Circle().fill(CassiniTheme.accent).frame(width:10,height:10).padding(.top,5)
+            Circle().fill(CassiniTheme.speakerInk(speaker)).frame(width:10,height:10).padding(.top,5)
             Button {} label: {
                 HStack(spacing:6) {
                     Text(speaker.displayName).fontWeight(.semibold).lineLimit(1)

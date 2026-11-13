@@ -6,10 +6,11 @@ import SwiftUI
 struct CatalogStatusBadge: View {
     let presentation: CatalogBadgePresentation?
     var isAnimating = true
+    var onAccent = false
 
     var body: some View {
         if let presentation, let kind = Self.visualKind(presentation.kind) {
-            MeetingStatusBadge(kind: kind, label: presentation.text, isAnimating: isAnimating)
+            MeetingStatusBadge(kind: kind, label: presentation.text, isAnimating: isAnimating, onAccent: onAccent)
         }
     }
 
