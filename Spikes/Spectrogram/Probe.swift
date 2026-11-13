@@ -434,7 +434,7 @@ private final class SpectrogramProbeInputs: @unchecked Sendable {
     init(root: URL, browser: Bool) throws {
         chunk = browser ? 8192 : 4096
         if browser {
-            let capture = try OwnedBrowserCapture(parent:root,title:"Private generated meeting",microphone:true)
+            let capture = try OwnedBrowserCapture(parent:root,title:"Private generated meeting",microphone:true,captureLocal:false)
             owner = capture; observers = capture.pcmObservers
             sink = capture.nativeSink(side:.me,originHostTime:AVAudioTime.hostTime(forSeconds:origin),failure:{ _ in })
             for n in 0..<4 { try capture.browserTrack(id:"remote-\(n)",label:"Remote",kind:"remote",sampleRate:48000,channels:1) }
