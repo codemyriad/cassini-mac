@@ -13,22 +13,56 @@ private struct BrowserSourceObservation: Equatable {
     let active: Bool
 }
 
-struct LiveCapture {
+/// Only state displayed by live controls. Frame counts and PCM meter samples
+/// in producer snapshots must not invalidate the page or the Library.
+@MainActor struct CapturePresentation: Equatable {
+    let directory: URL
+    let recording: Bool, saving: Bool
+    let title: String
+    let me: Bool, others: Bool, browserAlive: Bool
+    let fallbackReason: String?
+    let voiceCount: Int
+    let failedSides: Set<CaptureSide>
+    let refusedSides: [CaptureSide:String]
+    var othersDenied: Bool { refusedSides[.others] == CaptureRefusal.permissionDenied }
+    init(_ snapshot: OwnedCaptureSnapshot, input: CaptureInputLifecycle) {
+        failedSides = input.failedSides; refusedSides = input.refusedSides
+        directory = snapshot.directory
+        recording = snapshot.phase == .recording; saving = snapshot.phase == .saving
+        title = snapshot.manifest.title
+        me = snapshot.me; others = snapshot.others; browserAlive = snapshot.browserAlive
+        fallbackReason = snapshot.fallbackReason
+        voiceCount = snapshot.manifest.tracks.filter { ["remote","media","tab"].contains($0.kind) && $0.ended != true }.count
+    }
+}
+
+// Reference identity keeps meter/policy mutations from publishing a dictionary
+// replacement. Views track only the capture properties they actually display.
+@MainActor @Observable final class LiveCapture {
     let owner: OwnedBrowserCapture
     let input: CaptureInputLifecycle
     let captureID: String
     let originUptime: TimeInterval
     let spectrogram: RecordingSpectrogram?
-    var snapshot: OwnedCaptureSnapshot
+    @ObservationIgnored var snapshot: OwnedCaptureSnapshot {
+        didSet {
+            refreshPresentation()
+        }
+    }
+    private(set) var presentation: CapturePresentation
+    func refreshPresentation() {
+        let next = CapturePresentation(snapshot,input:input)
+        if next != presentation { presentation = next }
+    }
     var key: BrowserMeetingKey?
     var levels: [CaptureSide:Float] = [:]
     var sourceProblem = false
     var displayTitle: String?
-    var lastMicSound: TimeInterval = ProcessInfo.processInfo.systemUptime
+    @ObservationIgnored var lastMicSound: TimeInterval = ProcessInfo.processInfo.systemUptime
     var diskMinutes: Int?
     var fallbackAnnounced = false
     /// D52 M3: every browser recording follows its call by this policy (0.2.12+ only, D51).
-    var callPolicy = BrowserCallPolicy()
+    @ObservationIgnored var callPolicy = BrowserCallPolicy()
     /// D52.1 R67: this native stand-in already asked one call to join (never retried).
     var standInAttempt = BrowserStandInAttempt()
     var stoppingReason: CaptureEndReason?
@@ -40,14 +74,14 @@ struct LiveCapture {
     /// a native Start can precede the control status that binds it to its peer.
     var peerKnown = false
     var changingSource = false
-    fileprivate var sourceObservation: BrowserSourceObservation?
-    var lastNavigationAt: TimeInterval?
+    @ObservationIgnored fileprivate var sourceObservation: BrowserSourceObservation?
+    @ObservationIgnored var lastNavigationAt: TimeInterval?
     var savingSinceMs: Int64?
     var inputsAdmitted = false
     var signalReservation: UUID? = nil
     var admissionCancelled = false
     #if DEBUG
-    var fixtureMicrophoneUptime: TimeInterval?
+    @ObservationIgnored var fixtureMicrophoneUptime: TimeInterval?
     #endif
     var microphoneUptime: TimeInterval {
         #if DEBUG
@@ -55,8 +89,18 @@ struct LiveCapture {
         #endif
         return ProcessInfo.processInfo.systemUptime
     }
-    @MainActor var microphoneSilent: Bool {
-        snapshot.me && !input.failedSides.contains(.me) && microphoneUptime-lastMicSound >= 20
+    private(set) var microphoneSilent = false
+    func refreshMicrophoneSilence() {
+        let silent = snapshot.me && !input.failedSides.contains(.me) && microphoneUptime-lastMicSound >= 20
+        if microphoneSilent != silent { microphoneSilent = silent }
+    }
+    init(owner: OwnedBrowserCapture, input: CaptureInputLifecycle, captureID: String,
+         originUptime: TimeInterval, spectrogram: RecordingSpectrogram?, snapshot: OwnedCaptureSnapshot,
+         key: BrowserMeetingKey?, peerKnown: Bool = false) {
+        self.owner = owner; self.input = input; self.captureID = captureID
+        self.originUptime = originUptime; self.spectrogram = spectrogram
+        self.snapshot = snapshot; presentation = CapturePresentation(snapshot,input:input)
+        self.key = key; self.peerKnown = peerKnown
     }
     var elapsedMs: Int64 {
         if let savingSinceMs { return savingSinceMs }
@@ -252,9 +296,9 @@ private final class CaptureFiles: @unchecked Sendable {
     var connected: Bool { peers.contains { $0.reconciled && $0.supportsMultiStream } }
     var needsUpdate: Bool { !connected && peers.contains { $0.reconciled && !$0.supportsMultiStream } }
     var hasCalls: Bool { peers.contains { $0.reconciled && $0.independent && $0.supportsMultiStream && $0.browserRecordableMeetings.contains { $0.sourceCount > 0 } } }
-    var isRecording: Bool { captures.values.contains { $0.snapshot.phase == .recording && $0.savingSinceMs == nil } }
-    var isSaving: Bool { captures.values.contains { $0.snapshot.phase == .saving || $0.savingSinceMs != nil } || !stopping.isEmpty || !settling.isEmpty }
-    var first: LiveCapture? { captures.values.filter { $0.snapshot.phase == .recording && $0.savingSinceMs == nil }.min { $0.originUptime < $1.originUptime } }
+    var isRecording: Bool { captures.values.contains { $0.presentation.recording && $0.savingSinceMs == nil } }
+    var isSaving: Bool { captures.values.contains { $0.presentation.saving || $0.savingSinceMs != nil } || !stopping.isEmpty || !settling.isEmpty }
+    var first: LiveCapture? { captures.values.filter { $0.presentation.recording && $0.savingSinceMs == nil }.min { $0.originUptime < $1.originUptime } }
     func start(root: URL? = nil) async {
         guard !started, !shuttingDown else { return }
         #if DEBUG
@@ -493,6 +537,7 @@ private final class CaptureFiles: @unchecked Sendable {
         let id = snapshot.manifest.id
         guard captures[id] != nil else { if snapshot.phase == .saved { settle(snapshot) }; return }
         captures[id]?.snapshot = snapshot
+        captures[id]?.refreshMicrophoneSilence()
         captures[id]?.spectrogram?.update(events:snapshot.manifest.events ?? [])
         if snapshot.phase != .recording, let value = captures[id] { value.spectrogram?.stop(atMs:Double(value.elapsedMs)) }
         if snapshot.phase == .saving { MeetingNavigation.shared.captureBeganSaving(at:snapshot.directory) }
@@ -869,19 +914,24 @@ private final class CaptureFiles: @unchecked Sendable {
         }
     }
     private func refreshLevels(_ id: UUID, _ value: LiveCapture) {
+        value.refreshPresentation()
         let status = value.input.availableStatus()
         // Read the latest cached meter even when no later packet publishes a UI snapshot.
         let source = value.owner.snapshot
-        var levels = status.mapValues { $0?.levels.values.max() ?? 0 }
-        for (side, sample) in status where sample == nil { levels[side] = value.levels[side] }
+        var levels = CaptureInputLifecycle.displayedLevels(status:status,previous:value.levels)
         if source.browserAlive && source.others {
             levels[.others] = ProcessInfo.processInfo.systemUptime - source.levelTimestamp <= 1 ? source.browserLevel : 0
         }
         if !value.owner.nativeMe {
             levels[.me] = source.me && source.browserAlive && ProcessInfo.processInfo.systemUptime - source.meLevelTimestamp <= 1 ? source.browserMeLevel : 0
         }
-        if levels != value.levels { captures[id]?.levels = levels }
-        if (levels[.me] ?? 0) >= 0.01 { captures[id]?.lastMicSound = value.microphoneUptime }
+        if levels != value.levels { value.levels = levels }
+        // A busy native sink retained its displayed level, but supplied no new
+        // evidence of sound. Do not extend the silence deadline with that level.
+        if (!value.owner.nativeMe || status[.me].flatMap({ $0 }) != nil), (levels[.me] ?? 0) >= 0.01 {
+            value.lastMicSound = value.microphoneUptime
+        }
+        value.refreshMicrophoneSilence()
     }
     func title(_ id: UUID, _ text: String) { captures[id]?.displayTitle = text }
     private func applyDiskBudget(_ ids: [UUID], _ budget: DiskBudget) {
@@ -907,6 +957,7 @@ private final class CaptureFiles: @unchecked Sendable {
     func ageMicrophoneForTesting(_ id: UUID,seconds: TimeInterval) {
         guard CaptureFixture.enabled else { return }
         captures[id]?.lastMicSound = ProcessInfo.processInfo.systemUptime-seconds
+        captures[id]?.refreshMicrophoneSilence()
     }
     func pollLifetimeForTesting(at now: TimeInterval) {
         guard CaptureFixture.enabled else { return }; poll(at:now)
@@ -918,7 +969,7 @@ private final class CaptureFiles: @unchecked Sendable {
         guard CommandLine.arguments.contains("--recording-saving-self-test") else { throw POSIXError(.EINVAL) }
         try FileManager.default.createDirectory(at:parent,withIntermediateDirectories:true)
         let id = UUID()
-        let owner = try OwnedBrowserCapture(parent:parent,title:"Browser saving probe",microphone:false,browser:true,id:id,managedBrowser:true,changed:{ [weak self] snapshot in
+        let owner = try OwnedBrowserCapture(parent:parent,title:"Browser saving probe",microphone:true,browser:true,id:id,managedBrowser:true,changed:{ [weak self] snapshot in
             DispatchQueue.main.async { self?.changed(snapshot) }
         })
         try MeetingMetadataWriter(directory:owner.snapshot.directory,id:id).createIfNeeded()

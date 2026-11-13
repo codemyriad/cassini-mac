@@ -468,6 +468,12 @@ private final class SourceChangeToken: @unchecked Sendable {
     public func availableStatus() -> [CaptureSide:Status?] {
         inputs.mapValues { $0.sink.statusIfAvailable() }
     }
+    /// Keep a busy side's displayed level, but remove sides no longer selected.
+    public static func displayedLevels(status: [CaptureSide:Status?], previous: [CaptureSide:Float]) -> [CaptureSide:Float] {
+        var levels = status.mapValues { $0?.levels.values.max() ?? 0 }
+        for (side, sample) in status where sample == nil { levels[side] = previous[side] }
+        return levels
+    }
     private func reconcile(preparedMicrophone: (any CaptureInput)? = nil, refusingAt atMs: Double? = nil) async throws {
         if closed { if !admission() { throw CancellationError() }; return }
         guard capture.snapshot.phase == .recording else { return }

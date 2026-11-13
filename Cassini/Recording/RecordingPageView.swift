@@ -42,7 +42,7 @@ struct RecordingPageView: View {
                     }
                 }
                 if let line = model.owned?.diskMinutes.map({ UXText.text("errors.diskLow.line",["n":String($0)]) }) ?? (model.native ? recorder.diskLine : nil) { Text(line).foregroundStyle(CassiniTheme.warningNotice).fixedSize(horizontal:false,vertical:true) }
-                if let owned = model.owned, owned.input.failedSides.contains(.me) { CapturePermissionNotice(side:.me,refusal:owned.input.refusedSides[.me]) }
+                if let owned = model.owned, owned.presentation.failedSides.contains(.me) { CapturePermissionNotice(side:.me,refusal:owned.presentation.refusedSides[.me]) }
                 if sourceProblem {
                     Text(UXText.text("recording.sourceProblem")).foregroundStyle(CassiniTheme.warningNotice).fixedSize(horizontal:false,vertical:true)
                         .accessibilityIdentifier("recording-source-problem")
@@ -74,11 +74,11 @@ struct RecordingPageView: View {
                         .accessibilityIdentifier("recording-details-link")
                 }.background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:10))
                     .clipShape(RoundedRectangle(cornerRadius:10)).overlay { RoundedRectangle(cornerRadius:10).stroke(CassiniTheme.cardStroke) }
-                if let owned = model.owned, owned.snapshot.others && !owned.snapshot.browserAlive,
-                   owned.input.failedSides.contains(.others) || owned.snapshot.fallbackReason != nil {
+                if let owned = model.owned, owned.presentation.others && !owned.presentation.browserAlive,
+                   owned.presentation.failedSides.contains(.others) || owned.presentation.fallbackReason != nil {
                     HStack(alignment:.top,spacing:8) {
                         // D58.1: the permission line and its settings action only for a denial.
-                        let failed = owned.input.failedSides.contains(.others), denied = failed && owned.input.othersDenied
+                        let failed = owned.presentation.failedSides.contains(.others), denied = failed && owned.presentation.othersDenied
                         Text(UXText.text(!failed ? "errors.othersFallback.line" : denied ? "errors.othersPermission.line" : "errors.deviceUnavailable.others")).fixedSize(horizontal:false,vertical:true)
                         if denied {
                             Button(UXText.text("errors.othersPermission.action")) { CaptureSettings.open(.others) }
@@ -121,7 +121,7 @@ private struct RecordingSourceRow: View {
     var body: some View {
         let silent = microphone && model.microphoneSilent
         let enabled = microphone ? model.me : model.others
-        let browser = model.owned?.snapshot.browserAlive ?? model.meeting.isBrowserCapture
+        let browser = model.owned?.presentation.browserAlive ?? model.meeting.isBrowserCapture
         let amber = CassiniTheme.warnInk
         return HStack(spacing:14) {
             Image(systemName:microphone ? "mic" : "macwindow").font(.system(size:16)).frame(width:20).foregroundStyle(silent ? amber : CassiniTheme.primaryInk).accessibilityHidden(true)

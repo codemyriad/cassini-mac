@@ -55,15 +55,17 @@ private func buffer(channels: UInt32, interleaved: Bool = false, frames: UInt32 
     @Test @MainActor func uiStatusSkipsBusyConversionAndRetainsPendingPeak() async throws {
         let writer = SinkWriter()
         let entered = DispatchSemaphore(value:0), release = DispatchSemaphore(value:0)
-        let sink = RecordingSink(session:writer,originHostTime:1,onFailure:{ _ in },admit:{
-            entered.signal(); release.wait(); return true
-        })
-        // Admission runs under the same lock as sample conversion. Hold it with
-        // an event gate, so a blocking UI status implementation cannot pass.
+        let sink = RecordingSink(session:writer,originHostTime:1,onFailure:{ _ in })
+        let loud = try buffer(channels:1,frames:800)
+        for i in 0..<800 { loud.floatChannelData![0][i] = i.isMultiple(of:2) ? 0.6 : -0.6 }
+        sink.receive(loud,hostTime:1,id:"mic",label:"Mic",kind:"microphone")
+        // Leave the first peak unread, then hold a quieter second chunk inside
+        // the conversion lock. A skipped poll must not consume the first peak.
+        sink.beforeConversionForTesting = { entered.signal(); release.wait() }
         let producer = Task.detached {
             let input = try buffer(channels:1,frames:800)
-            for i in 0..<800 { input.floatChannelData![0][i] = i.isMultiple(of:2) ? 0.25 : -0.25 }
-            sink.receive(input,hostTime:1,id:"mic",label:"Mic",kind:"microphone")
+            for i in 0..<800 { input.floatChannelData![0][i] = i.isMultiple(of:2) ? 0.1 : -0.1 }
+            sink.receive(input,hostTime:1+AVAudioTime.hostTime(forSeconds:0.1),id:"mic",label:"Mic",kind:"microphone")
         }
         #expect(await Task.detached { waitForGate(entered) }.value)
         defer { release.signal() }
@@ -71,8 +73,8 @@ private func buffer(channels: UInt32, interleaved: Bool = false, frames: UInt32 
         release.signal()
         try await producer.value
         let status = try #require(sink.statusIfAvailable())
-        #expect(status.levels["mic"] == 0.25)
-        #expect(status.frames["mic"] == 800)
+        #expect(status.levels["mic"] == 0.6)
+        #expect(status.frames["mic"] == 1600)
         #expect(sink.statusIfAvailable()?.levels.isEmpty == true)
         try await Task.detached { try sink.finish(problem:nil) }.value
     }

@@ -378,6 +378,15 @@ jobs:
     - run: test "$RUNNER_ENVIRONMENT" = github-hosted
     - name: Snapshot clean Debug app bundle for isolated smoke phases
       run: ditto build/Build/Products/Debug/Cassini.app "$RUNNER_TEMP/clean-Debug-Cassini.app"
+    - name: Recording status observation and immediate Saving feedback without devices
+      run: python3 scripts/test-recording-saving.py build/Build/Products/Debug/Cassini.app --output build/recording-status/saving-clock.json
+    - uses: actions/upload-artifact@v5
+      if: always()
+      continue-on-error: true
+      with:
+        name: recording-status-${{ github.sha }}
+        path: build/recording-status
+        retention-days: 14
     - name: Real scoped bookmark follows a renamed Library root
       run: |
         python3 scripts/run-swift-tests.py --output build/unit-tests/scoped-bookmark -- swift test --skip-build --filter recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication

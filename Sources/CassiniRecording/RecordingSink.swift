@@ -145,6 +145,8 @@ public final class RecordingSink: @unchecked Sendable {
     /// refused, so an expired input records nothing (#120 r3).
     private let admit: (@Sendable () -> Bool)?
     private var admitted = false
+    /// Event fence for package tests; installed before receiving PCM. Runs under the conversion lock.
+    package var beforeConversionForTesting: (@Sendable () -> Void)?
 
     public init(session: any RecordingSinkWriter, capacitySeconds: Double = 10,
                 originHostTime: UInt64 = AVAudioTime.hostTime(forSeconds: ProcessInfo.processInfo.systemUptime),
@@ -164,6 +166,7 @@ public final class RecordingSink: @unchecked Sendable {
               buffer.format.sampleRate.isFinite, buffer.format.sampleRate.rounded() == buffer.format.sampleRate, (8_000...192_000).contains(buffer.format.sampleRate) else {
             lock.unlock(); fail("The audio source changed to an unsupported format. The recorded audio was preserved."); return
         }
+        beforeConversionForTesting?()
         if !admitted {
             // The signal's own lock decides; nothing here calls back into this sink.
             guard admit?() ?? true else { accepting = false; lock.unlock(); return }
