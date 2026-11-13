@@ -95,4 +95,32 @@ private final class AdmittedPCMProbe: RecordedPCMObserver, @unchecked Sendable {
         #expect(a.snapshot.first?.source.id != b.snapshot.first?.source.id)
         try await first.finish(); try await second.finish()
     }
+    @Test func nativeMicrophoneAndBrowserRemoteAudioPublishBothSidesOnlyWhenLocalCaptureIsOff() async throws {
+        let root = try parent(); defer { try? FileManager.default.removeItem(at:root) }
+        let bytes = Data(repeating:1,count:1600)
+        let hybrid = try OwnedBrowserCapture(parent:root,title:"Legacy microphone plus remote",microphone:true,captureLocal:false)
+        let hybridProbe = AdmittedPCMProbe(); hybrid.pcmObservers.set(hybridProbe)
+        let hybridMic = hybrid.nativeWriter(side:.me)
+        try hybridMic.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:8000,channels:1)
+        try hybridMic.appendNative(id:"mic",pcm:bytes,offsetMs:0)
+        hybridMic.recordedPCM?.offer(inputID:"mic",pcm:bytes,offsetMs:0)
+        try hybrid.browserTrack(id:"remote",label:"Remote",kind:"remote",sampleRate:8000,channels:1)
+        try hybrid.browserAudio(id:"remote",sequence:0,offsetMs:0,pcm:bytes)
+        #expect(Set(hybridProbe.snapshot.map(\.source.kind)) == ["microphone","remote"])
+        try hybridMic.finish(problem:nil)
+        try await hybrid.finish()
+
+        let separated = try OwnedBrowserCapture(parent:root,title:"Browser local Me",microphone:true,captureLocal:true)
+        let separatedProbe = AdmittedPCMProbe(); separated.pcmObservers.set(separatedProbe)
+        let ignoredNative = separated.nativeWriter(side:.me)
+        try ignoredNative.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:8000,channels:1)
+        try ignoredNative.appendNative(id:"mic",pcm:bytes,offsetMs:0)
+        ignoredNative.recordedPCM?.offer(inputID:"mic",pcm:bytes,offsetMs:0)
+        #expect(separatedProbe.snapshot.isEmpty,"Browser-owned Me must not publish native microphone spans")
+        try separated.browserTrack(id:"local",label:"Me",kind:"local",sampleRate:8000,channels:1)
+        try separated.browserAudio(id:"local",sequence:0,offsetMs:0,pcm:bytes)
+        #expect(separatedProbe.snapshot.map(\.source.kind) == ["local"])
+        try ignoredNative.finish(problem:nil)
+        try await separated.finish()
+    }
 }

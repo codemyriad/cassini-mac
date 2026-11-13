@@ -194,6 +194,25 @@ class NativeSpectrogramScheduling(unittest.TestCase):
         wired_theme = {'Cassini/Theme/CassiniTheme.swift': 'enum CassiniTheme { static let c = CassiniTokens.record }'}
         self.assertIn('CassiniTokens', self._missing_probe_app_types(without_tokens, wired_theme).get('Cassini/Theme/CassiniTheme.swift', {}))
 
+    @staticmethod
+    def _unconfigured_native_me_owners(src):
+        clean = NativeSpectrogramScheduling._strip_swift_for_probe(src)
+        bad = []
+        if 'nativeSink(side:.me' in clean.replace(' ', '') or 'nativeWriter(side:.me' in clean.replace(' ', ''):
+            for match in re.finditer(r'OwnedBrowserCapture\(([^)]*)\)', clean):
+                args = match.group(1).replace(' ', '')
+                if 'browser:false' not in args and 'captureLocal:false' not in args:
+                    bad.append(match.group(0))
+        return bad
+
+    def test_spectrogram_probe_browser_case_enables_native_me_for_native_sink(self):
+        probe_src = (ROOT/'Spikes/Spectrogram/Probe.swift').read_text()
+        self.assertIn('nativeSink(side:.me', probe_src.replace(' ', ''))
+        self.assertEqual(self._unconfigured_native_me_owners(probe_src), [])
+        regressed = probe_src.replace(',captureLocal:false)', ')')
+        self.assertNotEqual(regressed, probe_src)
+        self.assertTrue(self._unconfigured_native_me_owners(regressed))
+
 
 def ci_job(name):
     """The body of one top-level job in ci.yml (its lines up to the next two-space key)."""
