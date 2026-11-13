@@ -104,7 +104,8 @@ struct LibraryView: View {
                         HStack(spacing: 8) {
                             Text(detail.meeting.title ?? UXText.text("library.untitled")).fontWeight(.semibold).lineLimit(1)
                             Text(store.format.previewSubtitle(detail.meeting.meetingTime, durationMs: detail.meeting.durationMs,
-                                                              received: detail.meeting.state.origin == .received))
+                                                              received: detail.meeting.state.origin == .received,
+                                                              transcriptFromImportedFile: detail.meeting.transcriptFromImportedFile))
                                 .foregroundStyle(CassiniTheme.ink2).lineLimit(1)
                         }.accessibilityElement(children: .contain).accessibilityIdentifier("meeting-compact-header")
                     } else {
@@ -180,11 +181,19 @@ struct LibraryView: View {
         .sheet(isPresented:$recordingDetails.showing) { RecordingDetailsSheet() }
         .overlay(alignment:.bottom) { MeetingExportNotice() }
         .overlay(alignment:.bottom) { SpeakerEditFailureNotice() }
+        .overlay(alignment:.bottom) { importedNoticeOverlay }
         #if DEBUG
         .overlay(alignment:.topLeading) {
-            if RecordingFixture.enabled {
+            VStack {
+              if RecordingFixture.enabled {
                 Text(CaptureNotifications.savedFixtureTitles.joined(separator:"\n")).font(.system(size:1))
                     .frame(width:1,height:1).opacity(0.01).accessibilityIdentifier("recording-notification-fixture")
+              }
+              if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" {
+                Text(importedNotice.evaluatedMeetingID?.uuidString.lowercased() ?? "")
+                    .font(.system(size:1)).frame(width:1,height:1).opacity(0.01)
+                    .accessibilityIdentifier("imported-notice-evaluated")
+              }
             }
         }
         #endif
@@ -256,10 +265,21 @@ struct LibraryView: View {
     }
     private var importedNoticeVisibility: ImportedMeetingNotice.Visibility {
         let window = importedNoticeWindow.window
+        let sheetRequested = rename.presentation == .sheet || rename.presentation == .speakers ||
+            exporter.showing || recordingDetails.showing || recordCoordinator.showingFirst || companionSetup.presenter == .library
         return .init(appIsActive: NSApp.isActive, isKeyWindow: window?.isKeyWindow == true,
-                     hasSheet: window?.attachedSheet != nil || NSApp.modalWindow != nil,
+                     hasSheet: sheetRequested || window?.attachedSheet != nil || NSApp.modalWindow != nil,
                      contentIsVisible: window?.isVisible == true && !navigation.loading && !search.visible &&
                         !store.offline && !LibraryMoveCoordinator.shared.busy)
+    }
+    @ViewBuilder private var importedNoticeOverlay: some View {
+        if let notice = importedNotice.notice {
+            ImportedMeetingToast(
+                message: notice.folderName.map { UXText.text("received.importedToast", ["folder": $0]) } ?? UXText.text("received.importedToast.noFolder"),
+                didAppear: { importedNoticeDidAppear(notice.id) },
+                dismiss: { importedNotice.dismiss(notice.id) }
+            ).id(notice.id).padding(.horizontal, 24).padding(.bottom, 72)
+        }
     }
     private func updateImportedNotice() {
         let candidate: ImportedMeetingNotice.Candidate?

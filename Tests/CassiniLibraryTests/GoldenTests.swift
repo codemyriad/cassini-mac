@@ -41,8 +41,8 @@ private enum Golden {
         #expect(format.searchContext(date,durationMs:0,positionMs:300000) == "Today, 00:00 · under 1 min · at 00:05:00")
     }
     @Test func goldenBytesAndCounts() throws {
-        let hashes = ["format-vectors": "561e2acb1f44473904d87280447ea98e45f8185ae399a47084bec50f82595960",
-                      "states-vectors": "2857b5af75191714b04b9974aebe7903b41e9dd96857c6b79c969bac0ae2ce67",
+        let hashes = ["format-vectors": "e418d48c7e551a90756699f42e939c7dd918f444deb302e4410af312afc32279",
+                      "states-vectors": "2b946da58459452cb9fd17cacef58a3f10585a69142796cdd693e2f90fd9f497",
                       "meeting.schema": "b20f930cdd689c779a225939e2c35f2379c965d81454b54a80aa70478c7b679e"]
         for (name, expected) in hashes {
             #expect(SHA256.hash(data: try Golden.data(name)).map { String(format: "%02x", $0) }.joined() == expected)

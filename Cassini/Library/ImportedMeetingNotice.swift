@@ -16,11 +16,21 @@ import Observation
         var permitsNotice: Bool { appIsActive && isKeyWindow && !hasSheet && contentIsVisible }
     }
     private(set) var notice: Candidate?
+    #if DEBUG
+    /// Read-only delivery observation for hosted UI assertions; never a decision input.
+    private(set) var evaluatedMeetingID: UUID?
+    #endif
     @ObservationIgnored private let defaults: UserDefaults
 
     init(defaults: UserDefaults) { self.defaults = defaults }
 
     func update(candidate: Candidate?, visibility: Visibility) {
+        #if DEBUG
+        defer {
+            let evaluated = visibility.permitsNotice ? candidate?.id : nil
+            if evaluatedMeetingID != evaluated { evaluatedMeetingID = evaluated }
+        }
+        #endif
         guard visibility.permitsNotice, let candidate else { setNotice(nil); return }
         // A receipt already on screen stays until dismissed or navigation changes,
         // including after didAppear has persisted its seen flag.

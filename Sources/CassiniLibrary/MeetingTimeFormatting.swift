@@ -25,13 +25,13 @@ extension LibraryFormat {
     public func rowTime(_ time: MeetingTime) -> String { meetingLabel(time) { $0.rowTime($1) } }
     public func absoluteDate(_ time: MeetingTime) -> String { meetingLabel(time) { $0.absoluteDate($1) } }
     public func absoluteDateLine(_ time: MeetingTime, durationMs: Int64?) -> String { meetingLabel(time) { $0.absoluteDateLine($1,durationMs:durationMs) } }
-    public func previewSubtitle(_ time: MeetingTime, durationMs: Int64?, received: Bool = false) -> String { meetingLabel(time) { $0.previewSubtitle($1,durationMs:durationMs,received:received) } }
+    public func previewSubtitle(_ time: MeetingTime, durationMs: Int64?, received: Bool = false, transcriptFromImportedFile: Bool = false) -> String { meetingLabel(time) { $0.previewSubtitle($1,durationMs:durationMs,received:received,transcriptFromImportedFile:transcriptFromImportedFile) } }
     public func searchDate(_ time: MeetingTime) -> String { meetingLabel(time) { $0.searchDate($1) } }
     public func searchContext(_ time: MeetingTime, durationMs: Int64?, positionMs: Int64) -> String { meetingLabel(time) { $0.searchContext($1,durationMs:durationMs,positionMs:positionMs) } }
     private var unknownDate:String {LibraryLocalization.shared.text("library.group.unknownDate",language:language,locale:locale)}
-    public func previewSubtitle(_ time:MeetingTime?,durationMs:Int64?,received:Bool=false) -> String {
-        if let time {return previewSubtitle(time,durationMs:durationMs,received:received)}
-        return Self.text(received ? "format.previewSubtitle.received" : "format.previewSubtitle",
+    public func previewSubtitle(_ time:MeetingTime?,durationMs:Int64?,received:Bool=false,transcriptFromImportedFile:Bool=false) -> String {
+        if let time {return previewSubtitle(time,durationMs:durationMs,received:received,transcriptFromImportedFile:transcriptFromImportedFile)}
+        return Self.text(Self.previewSubtitleKey(received:received,transcriptFromImportedFile:transcriptFromImportedFile),
             ["day":unknownDate,"duration":durationMs.map {Self.meetingDuration($0,locale:locale,language:language)} ?? ""],
             locale:locale,language:language,omitting:durationMs == nil ? ["time","duration"] : ["time"])
     }

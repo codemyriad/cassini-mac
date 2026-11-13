@@ -18,11 +18,20 @@ import Foundation
 
         state.update(candidate: a, visibility: inactive)
         try expect(state.notice == nil, "A background window cannot present a notice")
+        #if DEBUG
+        try expect(state.evaluatedMeetingID == nil, "The UI observation must not claim an inactive decision completed")
+        #endif
         state.update(candidate: a, visibility: appInactive)
         try expect(state.notice == nil, "An inactive app cannot present even if its window retains key state")
         state.update(candidate: a, visibility: visible)
         try expect(state.notice == a, "The inactive update must not consume the first appearance")
+        #if DEBUG
+        try expect(state.evaluatedMeetingID == a.id, "The UI observation follows the actual eligible decision")
+        #endif
         state.update(candidate: a, visibility: sheet)
+        #if DEBUG
+        try expect(state.evaluatedMeetingID == nil, "The UI observation clears when a sheet defers presentation")
+        #endif
         state.didAppear(a.id, visibility: sheet)
         try expect(state.notice == nil, "A sheet arriving before appearance defers the notice")
         state.update(candidate: a, visibility: visible)

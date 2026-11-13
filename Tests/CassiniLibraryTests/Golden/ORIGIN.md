@@ -1,6 +1,6 @@
-Coordinator-owned copies from cassini-ux (pinned at 5e0c34e0f1bb390298dabdf4eedc494e933fd329, Phase 1 WP1):
-- format-vectors.json v5: 561e2acb1f44473904d87280447ea98e45f8185ae399a47084bec50f82595960 (76 cases).
-- states-vectors.json v3: 2857b5af75191714b04b9974aebe7903b41e9dd96857c6b79c969bac0ae2ce67 (18 persisted cases + 1 transient importing entry vector).
+Format/status copies from merged cassini-ux a08ee0aff82d58448b42d9799747088ae01ce1ea (Phase 1 WP7, L-57); other resources retain their origins below:
+- format-vectors.json v5: e418d48c7e551a90756699f42e939c7dd918f444deb302e4410af312afc32279 (76 cases).
+- states-vectors.json v3: 2b946da58459452cb9fd17cacef58a3f10585a69142796cdd693e2f90fd9f497 (18 persisted cases + 1 transient importing entry vector).
 - meeting.schema.json: D6.1 / D11.2 schema (nullable in-progress ETA; required names for source provenance); identical copy in the core Schema resource.
 - LIBRARY-RULES.md: 415d866eb4a098400c76a3975969d9764bb70eed905726fbdcf7e90e42f85ce8 (cassini-ux 5e0c34e0f1bb390298dabdf4eedc494e933fd329).
 

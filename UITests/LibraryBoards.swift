@@ -911,12 +911,46 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.buttons["meeting-play"].waitForExistence(timeout:5),window.debugDescription)
     }
     @MainActor func testReceivedBoard() throws {
-        let app = try launch("received",fixture:"received-only"); defer { app.terminate() }
-        let window = app.windows["cassini-library-window"]
-        XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"received-folder-card").firstMatch.waitForExistence(timeout:20),window.debugDescription)
+        let preferences = UUID().uuidString
+        var app = try launch("received",fixture:"received-only",extra:["-CassiniDefaultsID",preferences]); defer { app.terminate() }
+        var window = app.windows["cassini-library-window"]
+        let notice = window.descendants(matching:.any)["imported-notice"]
+        XCTAssertTrue(notice.waitForExistence(timeout:20),window.debugDescription)
+        XCTAssertTrue(text("Imported from Downloads. A copy is kept in your Meeting Library.",in:window))
+        XCTAssertTrue(visibleText(window.staticTexts["meeting-subtitle"]).hasSuffix("· Imported · Transcribed on another device"))
+        XCTAssertFalse(window.descendants(matching:.any)["received-folder-card"].exists)
+        capture(window,name:"received-first-open")
+        window.buttons["imported-notice-close"].click()
+        let dismissed = NSPredicate { _,_ in !notice.exists }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:dismissed,object:nil)],timeout:5),.completed)
         XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
         XCTAssertTrue(text("Record your own meetings with the button above.",in:window))
         capture(window,name:"received")
+        app.terminate()
+        app = try launch("received",fixture:"received-only",extra:["-CassiniDefaultsID",preferences])
+        window = app.windows["cassini-library-window"]
+        let evaluated = NSPredicate { _,_ in
+            let signal = window.staticTexts["imported-notice-evaluated"]
+            return signal.exists && self.visibleText(signal) == "a0000000-0000-4000-8000-000000000006"
+        }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:evaluated,object:nil)],timeout:20),.completed,window.debugDescription)
+        XCTAssertFalse(window.descendants(matching:.any)["imported-notice"].exists,"The real presentation decision completed without repeating a seen notice")
+    }
+    @MainActor func testImportedNoticeUsesTheSharedFallbackForAnUnrepresentableFolderName() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniImportedFolder-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = root.appendingPathComponent("2026\\04")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("Lesson.opus")
+        try FileManager.default.copyItem(at: try fixtureDirectory().appendingPathComponent("meeting.opus"), to: file)
+        let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
+        defer { app.terminate() }
+        try await finderOpen(file)
+        let window = app.windows["cassini-library-window"]
+        let message = window.staticTexts["imported-notice-message"]
+        XCTAssertTrue(message.waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertEqual(visibleText(message),"Imported. A copy is kept in your Meeting Library.")
+        XCTAssertFalse(window.descendants(matching:.any)["received-folder-card"].exists)
     }
     @MainActor func testExportBoardAndKeyboardChoices() throws {
         let app = try launch("export",fixture:"main"); defer { app.terminate() }
@@ -1404,10 +1438,14 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [cancelled], timeout: 5), .completed)
         XCTAssertFalse(library.exists)
         let fixture = try fixtureDirectory().appendingPathComponent("meeting.opus")
-        for _ in 0..<2 {
+        for attempt in 0..<2 {
             try await finderOpen(fixture)
             XCTAssertTrue(library.textFields["meeting-find"].waitForExistence(timeout: 15), app.debugDescription)
-            XCTAssertTrue(library.descendants(matching:.any)["received-folder-card"].exists)
+            XCTAssertFalse(library.descendants(matching:.any)["received-folder-card"].exists)
+            if attempt == 0 {
+                XCTAssertTrue(library.buttons["imported-notice-close"].waitForExistence(timeout:10),app.debugDescription)
+                library.buttons["imported-notice-close"].click()
+            }
             XCTAssertEqual(app.windows.count, 1)
         }
         library.buttons["_XCUI:CloseWindow"].click()
@@ -1423,8 +1461,9 @@ final class LibraryBoards: XCTestCase {
         let received = library.descendants(matching: .any).matching(identifier: "meeting-Received-a0000000-0000-4000-8000-000000000006").firstMatch
         XCTAssertTrue(received.waitForExistence(timeout: 20), app.debugDescription)
         received.click()
-        let selectedReceived = NSPredicate { _,_ in self.text("Onboarding walkthrough",in:library) && library.descendants(matching:.any).matching(identifier:"received-folder-card").firstMatch.exists }
+        let selectedReceived = NSPredicate { _,_ in self.text("Onboarding walkthrough",in:library) && library.staticTexts["meeting-subtitle"].exists && self.visibleText(library.staticTexts["meeting-subtitle"]).hasSuffix("· Imported · Transcribed on another device") }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:selectedReceived,object:nil)],timeout:5),.completed,library.debugDescription)
+        XCTAssertFalse(library.descendants(matching:.any)["received-folder-card"].exists)
         XCTAssertTrue(library.descendants(matching:.any)["meeting-page"].exists)
         XCTAssertTrue(library.buttons["meeting-export"].waitForExistence(timeout: 15))
         XCTAssertEqual(app.windows.count, 1)

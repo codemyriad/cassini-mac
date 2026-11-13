@@ -1,19 +1,19 @@
 {
   "repository": "codemyriad/cassini-ux",
-  "commit": "5e0c34e0f1bb390298dabdf4eedc494e933fd329",
-  "scope": "Phase 1 WP1: Foundations; pinned to codemyriad/cassini-ux 5e0c34e0f1bb390298dabdf4eedc494e933fd329",
+  "commit": "a08ee0aff82d58448b42d9799747088ae01ce1ea",
+  "scope": "Phase 1 WP7 Imported (L-57); merged codemyriad/cassini-ux #19",
   "files": {
     "strings.json": {
       "path": "strings/strings.json",
-      "sha256": "4bbe42b47bbf2e6e61ed15b1c54cabf4096e92aca63b9ed84d428070baa52acf"
+      "sha256": "0222c1d471993a6f9b0810929fa17d0ec00e140bc36c44d4499b166281bc8604"
     },
     "states-vectors.json": {
       "path": "vectors/states/states-vectors.json",
-      "sha256": "2857b5af75191714b04b9974aebe7903b41e9dd96857c6b79c969bac0ae2ce67"
+      "sha256": "2b946da58459452cb9fd17cacef58a3f10585a69142796cdd693e2f90fd9f497"
     },
     "format-vectors.json": {
       "path": "vectors/format/format-vectors.json",
-      "sha256": "561e2acb1f44473904d87280447ea98e45f8185ae399a47084bec50f82595960"
+      "sha256": "e418d48c7e551a90756699f42e939c7dd918f444deb302e4410af312afc32279"
     },
     "STATUS-BADGES.md": {
       "path": "contract/STATUS-BADGES.md",
@@ -29,7 +29,7 @@
     },
     "library-expected/main.json": {
       "path": "vectors/library-vectors/expected/main.json",
-      "sha256": "7f5020acf49c66f710f028c150a15718d47da36ab71988733042edbfe40c8a2d"
+      "sha256": "d179f5f123092051e5126d7189aa257d2454cd9a1b12b205fc17f408360b013b"
     },
     "library-expected/r1-discovery.json": {
       "path": "vectors/library-vectors/expected/r1-discovery.json",
@@ -41,7 +41,7 @@
     },
     "library-expected/r3-transcript-precedence.json": {
       "path": "vectors/library-vectors/expected/r3-transcript-precedence.json",
-      "sha256": "59fe2214aa8492ff1d72558b3b08f7cd8cc3fada713b9f727c740fbb8aebd2f4"
+      "sha256": "52eebb7c00ed9e8e1b58809fe14ff2b7636d79957c130a7e90a722b2315c6dc9"
     },
     "library-expected/r4-capture-history.json": {
       "path": "vectors/library-vectors/expected/r4-capture-history.json",
@@ -65,11 +65,11 @@
     },
     "library-expected/r9-received-once.json": {
       "path": "vectors/library-vectors/expected/r9-received-once.json",
-      "sha256": "296890651d48b3809b13b5bb59ac4018045cfb3cd642ebdccecbf5c69f5d65b7"
+      "sha256": "281e184f9cb930307950dac90625eff0f9aa47588763ff16021f52f798ea8a12"
     },
     "library-expected/received-only.json": {
       "path": "vectors/library-vectors/expected/received-only.json",
-      "sha256": "85cfce2282d4cc0113dc4c9113f8db32eaac7555788671838be6f0fb0a8e2709"
+      "sha256": "ee8286857d33b8355d5a700909b08262777eff8ac395dac36c3463344b515ab7"
     },
     "library-expected/t8-control-others-spoke.json": {
       "path": "vectors/library-vectors/expected/t8-control-others-spoke.json",

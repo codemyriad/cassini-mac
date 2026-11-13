@@ -22,7 +22,8 @@ struct MeetingPaneHeader: View {
                     .popover(isPresented: Binding(get: { rename.presentation == .title && rename.meeting?.folder == meeting.folder },
                                                   set: { if !$0 { rename.cancel() } })) { MeetingRenameView() }
             }
-            Text(format.previewSubtitle(meeting.meetingTime, durationMs: meeting.durationMs, received: meeting.state.origin == .received))
+            Text(format.previewSubtitle(meeting.meetingTime, durationMs: meeting.durationMs, received: meeting.state.origin == .received,
+                                        transcriptFromImportedFile: meeting.transcriptFromImportedFile))
                 .foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("meeting-subtitle")
             if let badge = LibraryBadgeCatalog.presentation(for: meeting),
                ["needsAttention", "interrupted", "received"].contains(badge.kind) {

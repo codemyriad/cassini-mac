@@ -126,14 +126,6 @@ struct MeetingView: View {
     private var transcriptContent: some View {
         LazyVStack(alignment: .leading, spacing: 22) {
             if let line = RecordingOverview.libraryDiskLine { Text(line).foregroundStyle(CassiniTheme.warningNotice) }
-            if let folder = meeting.received?.originalFolderName {
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "folder").accessibilityHidden(true)
-                    Text(UXText.text("received.folderCard", ["folder": folder])).fixedSize(horizontal: false, vertical: true)
-                }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(CassiniTheme.chipFill, in: RoundedRectangle(cornerRadius: 8))
-                    .accessibilityIdentifier("received-folder-card")
-            }
             if meeting.hasNoSpeech {
                 // A Library move disables Write down again only (the line disables it); the
                 // permission hint's Open System Settings stays available, as in Recording details.
