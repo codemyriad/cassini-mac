@@ -59,13 +59,16 @@ struct TranscriptFindTests {
         let child = try #require(turns.first { $0.speaker == "guest" })
         let host = try #require(child.host)
         let paragraphs = MeetingPresentation.visibleTurns(turns).map {
-            TranscriptFind.Paragraph(id: $0.id, text: MeetingPresentation.prose($0, in: turns, names: ["guest": "Dario"], locale: locale, language: .en).text)
+            TranscriptFind.Paragraph(id: $0.id, prose: MeetingPresentation.prose($0, in: turns, names: ["guest": "Dario"], locale: locale, language: .en))
         }
         let hits = try TranscriptFind.matches(in: paragraphs, query: "Yes.", locale: locale)
         #expect(hits.count == 1)
         #expect(hits.first?.paragraph == host)
         let paragraph = try #require(paragraphs.first { $0.id == host })
         #expect(hits.map { (paragraph.text as NSString).substring(with: $0.range) } == ["Yes."])
+        #expect(try TranscriptFind.matches(in: paragraphs, query: "Dario", locale: locale).isEmpty)
+        #expect(try TranscriptFind.matches(in: paragraphs, query: "Dario: Yes", locale: locale).isEmpty)
+        #expect(try TranscriptFind.matches(in: paragraphs, query: "We agree.", locale: locale).count == 1)
     }
     @Test func cancellationStopsAQueryBeforePublishingMatches() async throws {
         let ready = AsyncStream<Void>.makeStream()
@@ -84,6 +87,23 @@ struct TranscriptFindTests {
             _ = try await task.value
             Issue.record("Cancelled query returned matches")
         } catch is CancellationError { }
+    }
+
+    @Test func aSpokenSpeakerNameStillMatchesWithoutMatchingItsSyntheticLabel() throws {
+        let words: [LibraryTranscriptItem] = [
+            .init(speaker: "host", startMs: 0, endMs: 800, text: "We agree."),
+            .init(speaker: "guest", startMs: 750, endMs: 1100, text: "Dario café."),
+            .init(speaker: "host", startMs: 1000, endMs: 1800, text: "Thanks.")]
+        let turns = MeetingPresentation.turns(words)
+        let paragraphs = MeetingPresentation.visibleTurns(turns).map {
+            TranscriptFind.Paragraph(id: $0.id, prose: MeetingPresentation.prose($0, in: turns, names: ["guest": "Dario"], locale: locale, language: .en))
+        }
+        let hits = try TranscriptFind.matches(in: paragraphs, query: "Dario cafe", locale: locale)
+        #expect(hits.count == 1)
+        let paragraph = try #require(paragraphs.first { $0.id == hits.first?.paragraph })
+        #expect(hits.map { (paragraph.text as NSString).substring(with: $0.range) } == ["Dario café"])
+        #expect(try TranscriptFind.matches(in: paragraphs, query: "Dario", locale: locale).count == 1)
+        #expect(try TranscriptFind.matches(in: paragraphs, query: "Thanks.)", locale: locale).isEmpty)
     }
 
 }

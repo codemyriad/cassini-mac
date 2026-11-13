@@ -1,4 +1,4 @@
-# WP3 Meeting view (big-mac)
+# WP3 Meeting view
 
 This package follows L-22, L-24, L-43 and L-44 in the Phase 1 decisions log. `LibraryOpen-Mac*.dc.html` is the pane reference; it supersedes the older separate-speakers `Meeting-Mac` board. No summaries exist, so no Summary/Transcript tabs are added.
 
@@ -20,7 +20,7 @@ The native scrubber uses its public trackFillColor with CassiniTheme.nsAccent, p
 
 The pinned native Find field stays reachable during next/previous navigation. Cmd-F focuses it while a meeting is open. A detached cancellable task searches the shared MeetingPresentation.prose projection; inline asides appear once in their visible host. Foundation's case/diacritic-insensitive literal search returns UTF-16 ranges for the exact TextKit string. No range recomputation or normalization changes the displayed transcript.
 
-TextKit applies shared token highlight colours without replacing native selection or seek/listen attributes. A query/revision guard rejects obsolete results. Empty queries skip paragraph construction. Find focus yields keyboard input, including spaces, rather than executing playback/transcript shortcuts. Finding and changing matches scrolls without seeking or starting playback.
+TextKit applies shared token highlight colours without replacing native selection or seek/listen attributes. Find searches contiguous spoken spans from the projection's seek anchors, excluding synthetic aside labels and delimiters while retaining exact UTF-16 offsets. Spoken names remain searchable. A query/revision guard rejects obsolete results. Empty queries skip paragraph construction. Find focus yields keyboard input, including spaces, rather than executing playback/transcript shortcuts. Finding and changing matches scrolls without seeking or starting playback.
 
 Global Search supplies the exact prepared row ID for hit revelation, with position as fallback when no row context is available. The existing audio seek/autoplay policy is retained independently. Background selection opens the pane without activating the window, so it cannot steal focus from Settings. The retained list keeps its Shift-F10 menu when it has keyboard focus. Trash blocks automatic opening during its transaction and an empty selection clears an app-owned pane; another remaining meeting may open after deletion.
 

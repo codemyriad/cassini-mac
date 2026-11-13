@@ -41,7 +41,7 @@ import Observation
             var paragraphs: [TranscriptFind.Paragraph] = []
             for turn in MeetingPresentation.visibleTurns(turns) {
                 try Task.checkCancellation()
-                paragraphs.append(.init(id: turn.id, text: MeetingPresentation.prose(turn, in: turns, names: names, locale: locale, language: language).text))
+                paragraphs.append(.init(id: turn.id, prose: MeetingPresentation.prose(turn, in: turns, names: names, locale: locale, language: language)))
             }
             let found = try TranscriptFind.matches(in: paragraphs, query: requestedQuery, locale: locale)
             try Task.checkCancellation()
