@@ -127,7 +127,7 @@ struct RecordingPageView: View {
                 }
             }.frame(maxWidth:.infinity,alignment:.leading).layoutPriority(1)
             RecordingSpectrogramStrip(controller:model.spectrogram,lane:microphone ? .me : .others,silent:model.microphoneSilent)
-                .frame(minWidth:32,idealWidth:96,maxWidth:96).frame(height:32)
+                .frame(minWidth:32,idealWidth:96,maxWidth:96).frame(height:32).clipped()
                 .accessibilityRepresentation {
                     ProgressView(value:Double(max(0,min(1,microphone ? model.microphone : model.output))))
                         .accessibilityLabel(UXText.text(microphone ? "common.yourMicrophone" : "common.theOthers"))
