@@ -961,23 +961,26 @@ final class LibraryBoards: XCTestCase {
         capture(window,name:"recording-non-silent")
     }
     @MainActor func testRecordingEditedTitleSurvivesSavedSelection() throws {
-        let captureID = UUID().uuidString
-        let parent = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniLibrary-" + captureID)
-        try FileManager.default.createDirectory(at:parent,withIntermediateDirectories:true)
-        try FileManager.default.copyItem(at:fixtureDirectory().appendingPathComponent("Library/main/root"),to:parent.appendingPathComponent("root"))
-        let app = try launch("library",fixture:"main",extra:["--fixture-library-recording","-CassiniCaptureID",captureID])
-        defer { app.terminate(); try? FileManager.default.removeItem(at:parent) }
+        let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
+        defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
-        XCTAssertTrue(window.buttons["toolbar-import"].waitForExistence(timeout:20))
-        app.typeKey("r",modifierFlags:.command)
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:20))
+        window.buttons["first-run-record"].click()
         XCTAssertTrue(window.sheets.buttons["record-first-start"].waitForExistence(timeout:10))
+        window.sheets.checkBoxes["Don’t show again"].click()
         window.sheets.buttons["record-first-start"].click()
         let title = window.textFields["recording-title"]
+        XCTAssertTrue(title.waitForExistence(timeout:10))
+        title.click(); app.typeKey("a",modifierFlags:.command); title.typeText("Saved meeting for switch")
+        window.buttons["recording-page-stop"].click()
+        let saved = NSPredicate { _,_ in window.buttons["preview-play"].exists && window.buttons["preview-play"].isEnabled }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:saved,object:nil)],timeout:10),.completed)
+        app.typeKey("r",modifierFlags:.command)
         XCTAssertTrue(title.waitForExistence(timeout:10))
         title.click(); app.typeKey("a",modifierFlags:.command); title.typeText("Title retained across selection")
         let liveRow = window.outlines.staticTexts["Title retained across selection"]
         XCTAssertTrue(liveRow.waitForExistence(timeout:10))
-        window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch.click()
+        window.outlines.staticTexts["Saved meeting for switch"].click()
         XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout:5))
         liveRow.click()
         XCTAssertTrue(title.waitForExistence(timeout:5))
