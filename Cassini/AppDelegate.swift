@@ -318,6 +318,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private static func handle(_ event: NSEvent) -> NSEvent? {
+        // The floating speaker dialog owns keys just as an attached sheet does.
+        if MeetingRenameCoordinator.shared.presentation == .speakers,
+           (event.window ?? NSApp.keyWindow)?.accessibilityIdentifier() == "cassini-library-window" {
+            return event
+        }
         // AppKit focus/sheet changes are not Observation dependencies. Decide
         // Escape ownership from this key event, not a cached SwiftUI shortcut.
         if event.keyCode == 53,

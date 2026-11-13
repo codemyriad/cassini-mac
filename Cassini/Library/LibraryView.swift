@@ -156,8 +156,19 @@ struct LibraryView: View {
             if store.loaded { ScreenshotFixture.prepareLibrary(window) }
             #endif
         })
-         .sheet(isPresented:Binding(get:{ rename.presentation == .sheet || rename.presentation == .speakers },set:{ if !$0 { rename.cancel() } })) {
-            if rename.presentation == .speakers { SpeakerEditorView() } else { MeetingRenameView() }
+        .disabled(rename.presentation == .speakers)
+        .accessibilityHidden(rename.presentation == .speakers)
+        .overlay {
+            if rename.presentation == .speakers {
+                ZStack {
+                    CassiniTheme.scrim.ignoresSafeArea().contentShape(Rectangle())
+                    ScrollView { SpeakerEditorView().padding(24) }
+                        .fixedSize(horizontal:false,vertical:true)
+                }
+            }
+        }
+         .sheet(isPresented:Binding(get:{ rename.presentation == .sheet },set:{ if !$0 { rename.cancel() } })) {
+            MeetingRenameView()
         }
         .sheet(isPresented:$exporter.showing) { if let meeting = exporter.meeting { MeetingExportSheet(meeting:meeting) } }
         .sheet(isPresented:$recordingDetails.showing) { RecordingDetailsSheet() }
