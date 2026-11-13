@@ -20,6 +20,29 @@ import Observation
         let autoDismiss: Bool
     }
 
+    struct TransientItem: Identifiable, Equatable {
+        enum State: Equatable {
+            case importing
+            case failed(String)
+        }
+        let id: String
+        let title: String
+        let fileName: String
+        let startedAt: Date
+        var state: State
+    }
+
+    static func isSupportedDropURL(_ url: URL) -> Bool {
+        guard url.isFileURL, !url.hasDirectoryPath else { return false }
+        let ext = url.pathExtension.lowercased()
+        return LibraryImport.supportedAudioExtensions.contains(ext) || ext == "zip"
+    }
+
+    private static func itemTitle(for url: URL) -> String {
+        let stem = url.deletingPathExtension().lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
+        return stem.isEmpty ? url.lastPathComponent : stem
+    }
+
     private struct SingleRequest {
         let lease: FileAccessLease
         let key: String
@@ -64,6 +87,7 @@ import Observation
     }
 
     private(set) var progress: Progress?
+    private(set) var transientItems: [TransientItem] = []
     private(set) var notice: Notice? {
         didSet {
             noticeExpiryTask?.cancel()
@@ -111,6 +135,7 @@ import Observation
         let key = url.standardizedFileURL.path
         if writingDown { requestedTranscription.insert(key) }
         guard scheduled.insert(key).inserted else { return }
+        upsertTransientItem(for: url, key: key)
         pending.append(.single(SingleRequest(lease: FileAccessLease(url), key: key, retaining: retaining)))
         MeetingNavigation.shared.openLibrary?()
         startNext()
@@ -134,10 +159,29 @@ import Observation
             ))
             return
         }
+        for fileURL in fileURLs where Self.isSupportedDropURL(fileURL) {
+            upsertTransientItem(for: fileURL, key: fileURL.standardizedFileURL.path)
+        }
         let leases = fileURLs.map(FileAccessLease.init)
         pending.append(.batch(leases))
         MeetingNavigation.shared.openLibrary?()
         startNext()
+    }
+
+    private func upsertTransientItem(for url: URL, key: String) {
+        let item = TransientItem(
+            id: key,
+            title: Self.itemTitle(for: url),
+            fileName: url.lastPathComponent,
+            startedAt: LibraryStore.shared.context.now ?? Date(),
+            state: .importing
+        )
+        transientItems.removeAll { $0.id == key }
+        transientItems.insert(item, at: 0)
+    }
+
+    func dismissTransientItem(_ id: String) {
+        transientItems.removeAll { $0.id == id }
     }
 
     func cancelCurrentRun() {
@@ -150,6 +194,12 @@ import Observation
         if id == nil || notice?.id == id {
             notice = nil
         }
+        if id == nil {
+            transientItems.removeAll {
+                if case .failed = $0.state { return true }
+                return false
+            }
+        }
     }
 
     func beginShutdown() {
@@ -158,6 +208,7 @@ import Observation
         noticeExpiryTask = nil
         pending.removeAll()
         requestedTranscription.removeAll()
+        transientItems.removeAll()
         progress = nil
         task?.cancel()
     }
@@ -230,6 +281,7 @@ import Observation
                         onCancel: { work.cancel() }
                     )
                     try Task.checkCancellation()
+                    transientItems.removeAll { $0.id == request.key }
                     LibrarySearchModel.shared.close()
                     MeetingNavigation.shared.back()
                     let displayed = LibraryStore.shared.selectImported(meeting)
@@ -245,9 +297,18 @@ import Observation
                     if paused && !closing && !cancellingCurrent {
                         pending.insert(.single(request), at: 0)
                         requeued = true
+                    } else {
+                        transientItems.removeAll { $0.id == request.key }
                     }
                 } catch {
-                    if !closing { NSApp.presentError(error) }
+                    if !closing {
+                        if let idx = transientItems.firstIndex(where: { $0.id == request.key }) {
+                            transientItems[idx].state = .failed(error.localizedDescription)
+                        }
+                        NSApp.presentError(error)
+                    } else {
+                        transientItems.removeAll { $0.id == request.key }
+                    }
                 }
                 cancellingCurrent = false
                 task = nil
@@ -266,6 +327,7 @@ import Observation
             #endif
 
             task = Task {
+                let batchKeys = Set(leases.map { $0.url.standardizedFileURL.path })
                 do {
                     let urls = leases.map(\.url)
                     let additional = Array(roots.dropFirst())
@@ -314,6 +376,7 @@ import Observation
 
                     try Task.checkCancellation()
                     progress = nil
+                    transientItems.removeAll { batchKeys.contains($0.id) }
                     if let selected = summary.lastSelected {
                         LibrarySearchModel.shared.close()
                         MeetingNavigation.shared.back()
@@ -339,6 +402,7 @@ import Observation
                     if paused && !closing && !cancellingCurrent {
                         pending.insert(.batch(leases), at: 0)
                     } else if cancellingCurrent && !closing {
+                        transientItems.removeAll { batchKeys.contains($0.id) }
                         var partial = box.snapshot()
                         partial.cancelled = true
                         if partial.imported > 0 {
@@ -351,19 +415,34 @@ import Observation
                         if !message.isEmpty {
                             notice = Notice(message: message, isWarning: false, autoDismiss: false)
                         }
+                    } else {
+                        transientItems.removeAll { batchKeys.contains($0.id) }
                     }
                 } catch let failure as ZipArchiveFailure {
                     progress = nil
+                    let message = UXText.text(failure.localizationID)
                     if !closing {
+                        for idx in transientItems.indices where batchKeys.contains(transientItems[idx].id) {
+                            transientItems[idx].state = .failed(message)
+                        }
                         notice = Notice(
-                            message: UXText.text(failure.localizationID),
+                            message: message,
                             isWarning: true,
                             autoDismiss: false
                         )
+                    } else {
+                        transientItems.removeAll { batchKeys.contains($0.id) }
                     }
                 } catch {
                     progress = nil
-                    if !closing { NSApp.presentError(error) }
+                    if !closing {
+                        for idx in transientItems.indices where batchKeys.contains(transientItems[idx].id) {
+                            transientItems[idx].state = .failed(error.localizedDescription)
+                        }
+                        NSApp.presentError(error)
+                    } else {
+                        transientItems.removeAll { batchKeys.contains($0.id) }
+                    }
                 }
                 cancellingCurrent = false
                 task = nil

@@ -24,16 +24,21 @@ struct LibraryView: View {
     @State private var updates = ApplicationUpdates.shared
     @State private var speechModels = SpeechModelController.shared
     @State private var transcriptionQueue = TranscriptionQueue.shared
+    @State private var importer = LibraryImportCoordinator.shared
+    @State private var dropState: LibraryDropState = .idle
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
+    private var showsFirstRun: Bool {
+        store.loaded && store.meetings.isEmpty && importer.transientItems.isEmpty && !store.offline
+    }
     var body: some View {
         GeometryReader { geometry in
             Group {
                 if navigation.detail != nil { split }
                 else if navigation.loading { ProgressView() }
                 else if search.visible { LibrarySearchView(format:store.format) }
-                else if store.loaded && store.meetings.isEmpty && !store.offline { firstRun }
+                else if showsFirstRun { firstRun }
                 else { split }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onAppear { toolbarWidth = geometry.size.width }
@@ -88,16 +93,9 @@ struct LibraryView: View {
                     }) { }
                 }
             } else if let detail = navigation.detail {
-                ToolbarItem(placement:.navigation) {
-                    if RecordingOverview.active {
-                        LibraryToolbarAction(title:UXText.text("common.stop"),label:UXText.text("common.stop"),identifier:"meeting-stop",style:.stop) { RecordingOverview.stop() }
-                    } else if RecordingOverview.saving {
-                        LibraryToolbarAction(title:UXText.text("states.badge.saving"),label:UXText.text("states.badge.saving"),identifier:"meeting-saving",style:.saving,enabled:false) { }
-                    } else {
-                        LibraryToolbarAction(title:UXText.text("common.record"),label:UXText.text("common.record"),identifier:"toolbar-record",style:.record,enabled:RecordingOverview.canStart) {
-                            sessionPlayback.stop(); RecordCoordinator.shared.request(parent:store.context.root)
-                        }
-                    }
+                ToolbarItem(placement: .navigation) {
+                    toolbarControl.padding(.trailing, 10)
+                        .frame(width: 328, alignment: .trailing)
                 }
                 ToolbarItem(placement:.principal) {
                     if detail.compactHeader {
@@ -147,21 +145,17 @@ struct LibraryView: View {
                 }
             } else {
             ToolbarItem(placement: .navigation) {
+                let emptyToolbar = showsFirstRun && !search.visible
                 HStack(spacing: 0) {
-                    toolbarControl.frame(width: search.visible ? 388 : store.meetings.isEmpty ? nil : 328, alignment: .leading)
-                    if search.visible || !store.meetings.isEmpty { toolbarTitle }
+                    toolbarControl
+                        .padding(.trailing, emptyToolbar ? 0 : 10)
+                        .frame(width: search.visible ? 388 : emptyToolbar ? nil : 328, alignment: emptyToolbar ? .leading : .trailing)
+                    if search.visible || !emptyToolbar { toolbarTitle }
                 }
             }
-            if store.meetings.isEmpty && !search.visible {
+            if showsFirstRun && !search.visible {
                 ToolbarItem(placement: .principal) { toolbarTitle }
             }
-            }
-        }
-        .toolbar {
-            if !search.visible && !store.meetings.isEmpty {
-                ToolbarItem(placement:.primaryAction) {
-                    LibrarySearchField(text:$search.query,onClick:{ search.open() },onBegin:{ search.open() },onChange:{ search.open() },onCancel:{ search.close() }).frame(width:180)
-                }
             }
         }
         .background(WindowAccessor { window in
@@ -243,16 +237,15 @@ struct LibraryView: View {
             #endif
         }
         .onOpenURL { LegacyOpening.openDocument($0) }
-        .dropDestination(for:URL.self) { urls,_ in
-            let files = urls.filter { $0.isFileURL && !$0.hasDirectoryPath }
-            guard !files.isEmpty else { return false }
-            let supported = files.filter {
-                let ext = $0.pathExtension.lowercased()
-                return LibraryImport.supportedAudioExtensions.contains(ext) || ext == "zip"
-            }
-            guard !supported.isEmpty || files.count > 1 else { return false }
-            LegacyOpening.openDocuments(files)
-            return true
+        .overlay {
+            LibraryWindowDropDestination(
+                state: $dropState,
+                sidebarDropWidth: showsFirstRun ? nil : 400,
+                showsVisualStates: (navigation.detail == nil || navigation.detail?.meeting.state.lifecycle == .saved) &&
+                    !navigation.loading && !search.visible,
+                onDropFiles: { LegacyOpening.openDocuments($0) }
+            )
+            .accessibilityHidden(true)
         }
         .preferredColorScheme(LibraryLaunchContext.screenshotDark ? .dark : (store.context.screenshot ? .light : nil))
     }
@@ -281,71 +274,108 @@ struct LibraryView: View {
             .accessibilityAddTraits(.isHeader).accessibilityIdentifier("library-toolbar-title")
     }
     private var split: some View {
-        HStack(spacing: 0) {
-            List(selection: Binding(get: { store.selectedKeys }, set: {
-                store.selectedKeys = $0
-                openSelection(userInitiated: true)
-            })) {
-                ForEach(store.groups, id: \.id) { group in
-                    Section {
-                        ForEach(group.meetings, id: \.libraryKey) { meeting in
-                            row(meeting).tag(meeting.libraryKey)
-                                .background {
-                                    LibraryRowOpenAnchor {
-                                        guard !LibraryMoveCoordinator.shared.busy else { return }
-                                        readTranscript(meeting)
-                                    }.accessibilityHidden(true)
-                                    if store.primarySelectedKey == meeting.libraryKey { LibraryMenuAnchor() }
+        let todayTitle = UXText.text("format.today")
+        let firstGroupIsToday = store.groups.first?.title == todayTitle
+        return HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                LibrarySearchField(
+                    text: $search.query,
+                    large: false,
+                    onClick: { search.open() },
+                    onBegin: { search.open() },
+                    onChange: { search.open() },
+                    onCancel: { search.close() }
+                )
+                .frame(height: 28)
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
+                .padding(.bottom, 8)
+
+                ZStack {
+                    List(selection: Binding(get: { store.selectedKeys }, set: {
+                        store.selectedKeys = $0
+                        openSelection(userInitiated: true)
+                    })) {
+                        if !importer.transientItems.isEmpty && !firstGroupIsToday {
+                            Section {
+                                ForEach(importer.transientItems) { item in
+                                    transientImportRow(item)
                                 }
-                                .simultaneousGesture(TapGesture().onEnded {
-                                    if NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
-                                        store.selectedKey = meeting.libraryKey
-                                        openSelection(userInitiated: true)
-                                        LibraryKeyboardMenu.focusList()
-                                    }
-                                })
-                                .contextMenu {
-                                    Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = meeting.libraryKey; rename.show(meeting) }
-                                        .disabled(store.selectedKeys.count > 1 || !rename.canRename(meeting)).accessibilityIdentifier("library-rename")
-                                    Button(UXText.text("common.exportEllipsis")) { store.selectedKey = meeting.libraryKey; exporter.show(meeting) }
-                                        .disabled(store.selectedKeys.count > 1 || !MeetingExportCoordinator.canExport(meeting))
-                                        .onAppear {
-                                            if !store.selectedKeys.contains(meeting.libraryKey) {
-                                                store.selectedKey = meeting.libraryKey
-                                            }
-                                        }
-                                    if !store.selectedKeys.isEmpty {
-                                        Button(UXText.text("export.zip.selected")) { bulkExporter.exportSelected() }
-                                            .disabled(!bulkExporter.canExportSelected)
-                                            .accessibilityIdentifier("library-export-selected-zip")
-                                    }
-                                    Button(UXText.text("export.zip.all")) { bulkExporter.exportAll() }
-                                        .disabled(!bulkExporter.canExportAll)
-                                        .accessibilityIdentifier("library-export-all-zip")
-                                    if store.selectedKeys.count <= 1 && trash.canTrash(meeting) { Divider(); trashButton(meeting) }
-                                }
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(RoundedRectangle(cornerRadius: 7)
-                                    .fill(store.selectedKeys.contains(meeting.libraryKey) ? CassiniTheme.accentStrong : Color.clear)
-                                    .padding(.horizontal, 8))
-                                .listRowInsets(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
-                                .accessibilityIdentifier("meeting-" + meeting.libraryKey)
+                            } header: {
+                                Text(todayTitle).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2).textCase(nil)
+                                    .accessibilityIdentifier("library-day-header-importing")
+                            }
                         }
-                    } header: {
-                        Text(group.title).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2).textCase(nil)
-                            .accessibilityIdentifier("library-day-header-" + (group.meetings.first?.libraryKey ?? "empty"))
+                        ForEach(Array(store.groups.enumerated()), id: \.element.id) { groupIndex, group in
+                            Section {
+                                if groupIndex == 0 && firstGroupIsToday {
+                                    ForEach(importer.transientItems) { item in
+                                        transientImportRow(item)
+                                    }
+                                }
+                                ForEach(group.meetings, id: \.libraryKey) { meeting in
+                                    row(meeting).tag(meeting.libraryKey)
+                                        .background {
+                                            LibraryRowOpenAnchor {
+                                                guard !LibraryMoveCoordinator.shared.busy else { return }
+                                                readTranscript(meeting)
+                                            }.accessibilityHidden(true)
+                                            if store.primarySelectedKey == meeting.libraryKey { LibraryMenuAnchor() }
+                                        }
+                                        .simultaneousGesture(TapGesture().onEnded {
+                                            if NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
+                                                store.selectedKey = meeting.libraryKey
+                                                openSelection(userInitiated: true)
+                                                LibraryKeyboardMenu.focusList()
+                                            }
+                                        })
+                                        .contextMenu {
+                                            Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = meeting.libraryKey; rename.show(meeting) }
+                                                .disabled(store.selectedKeys.count > 1 || !rename.canRename(meeting)).accessibilityIdentifier("library-rename")
+                                            Button(UXText.text("common.exportEllipsis")) { store.selectedKey = meeting.libraryKey; exporter.show(meeting) }
+                                                .disabled(store.selectedKeys.count > 1 || !MeetingExportCoordinator.canExport(meeting))
+                                                .onAppear {
+                                                    if !store.selectedKeys.contains(meeting.libraryKey) {
+                                                        store.selectedKey = meeting.libraryKey
+                                                    }
+                                                }
+                                            if !store.selectedKeys.isEmpty {
+                                                Button(UXText.text("export.zip.selected")) { bulkExporter.exportSelected() }
+                                                    .disabled(!bulkExporter.canExportSelected)
+                                                    .accessibilityIdentifier("library-export-selected-zip")
+                                            }
+                                            Button(UXText.text("export.zip.all")) { bulkExporter.exportAll() }
+                                                .disabled(!bulkExporter.canExportAll)
+                                                .accessibilityIdentifier("library-export-all-zip")
+                                            if store.selectedKeys.count <= 1 && trash.canTrash(meeting) { Divider(); trashButton(meeting) }
+                                        }
+                                        .listRowSeparator(.hidden)
+                                        .listRowBackground(Color.clear)
+                                        .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+                                        .accessibilityIdentifier("meeting-" + meeting.libraryKey)
+                                }
+                            } header: {
+                                Text(group.title).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2).textCase(nil)
+                                    .accessibilityIdentifier("library-day-header-" + (group.meetings.first?.libraryKey ?? "empty"))
+                            }
+                        }
+                        if !store.meetings.isEmpty, store.meetings.allSatisfy({ $0.state.origin == .received }) {
+                            Text(UXText.text("received.libraryHint")).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                                .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                        }
                     }
+                    .listStyle(.sidebar)
+                    .scrollContentBackground(.hidden)
+                    .opacity(dropState.dimsListContent ? 0.30 : 1.0)
+                    .accessibilityLabel(UXText.text("library.listPane.a11y"))
+
+                    LibraryDropListOverlay(state: dropState)
                 }
-                if !store.meetings.isEmpty, store.meetings.allSatisfy({ $0.state.origin == .received }) {
-                    Text(UXText.text("received.libraryHint")).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
-                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
-                }
+
+                LibraryDropHintFooter(entered: dropState.showsWindowOutline)
             }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
             .background(NativeSidebarMaterial())
             .frame(minWidth: 400, maxWidth: 400)
-            .accessibilityLabel(UXText.text("library.listPane.a11y"))
             Divider()
             if let detail = navigation.detail {
                 Group {
@@ -373,61 +403,148 @@ struct LibraryView: View {
             }
         }
     }
+    private func transientImportRow(_ item: LibraryImportCoordinator.TransientItem) -> some View {
+        let isFailed: Bool
+        let failureDetail: String?
+        switch item.state {
+        case .importing:
+            isFailed = false
+            failureDetail = nil
+        case .failed(let detail):
+            isFailed = true
+            failureDetail = detail
+        }
+        let presentation = isFailed ? LibraryBadgeCatalog.needsAttentionPresentation : LibraryBadgeCatalog.importingPresentation
+        return MeetingCard(isSelected: false) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    Text(item.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(CassiniTheme.ink)
+                        .lineLimit(1)
+                    Spacer(minLength: 2)
+                }
+                HStack(spacing: 6) {
+                    Text(store.format.rowTime(item.startedAt))
+                        .foregroundStyle(CassiniTheme.ink2)
+                        .monospacedDigit()
+                        .fixedSize()
+                    if let presentation {
+                        catalogStatusBadge(presentation, onAccent: false)
+                    }
+                    Text(item.fileName)
+                        .foregroundStyle(CassiniTheme.ink2)
+                        .lineLimit(1)
+                }
+                .font(.system(size: 11.5))
+            }
+        }
+        .help(failureDetail ?? "")
+        .contextMenu {
+            if isFailed {
+                Button(UXText.text("common.done")) { importer.dismissTransientItem(item.id) }
+            }
+        }
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+        .accessibilityIdentifier("importing-" + item.fileName)
+    }
     private var toolbarControl: some View {
-        Group {
+        HStack(spacing: 4) {
+            LibraryImportHeaderButton(
+                enabled: !LibraryMoveCoordinator.shared.busy && LibraryLocationModel.shared.available
+            ) {
+                LegacyOpening.chooseDocuments()
+            }
             if RecordingOverview.active, let started = RecordingOverview.startedAt {
                 LiveRecordingPill(started: started, microphone: RecordingOverview.levels["microphone", default: 0], output: RecordingOverview.levels["output", default: 0])
             } else if RecordingOverview.saving {
-                HStack { ProgressView().controlSize(.small); Text(UXText.text("states.badge.saving")) }.frame(height: 34)
-                    .accessibilityElement(children:.contain).accessibilityIdentifier("toolbar-saving")
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(UXText.text("states.badge.saving")).fontWeight(.semibold).foregroundStyle(CassiniTheme.ink2)
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 34)
+                .background(CassiniTheme.neutralPillFill, in: Capsule())
+                .accessibilityElement(children:.contain)
+                .accessibilityIdentifier("toolbar-saving")
             } else if let live = store.meetings.first(where: { $0.state.lifecycle == .recording }) {
                 // Read-only header placeholder until UX5 owns transport/levels.
                 HStack(spacing: 8) {
-                    Circle().fill(CassiniTheme.recordInk).frame(width: 10, height: 10)
+                    Circle().fill(CassiniTheme.recordInk).frame(width: 8, height: 8)
                     Text(LibraryFormat.liveBadge(live.state.liveMs ?? 0)).fontWeight(.semibold).monospacedDigit().foregroundStyle(CassiniTheme.recordInk)
                     VStack(spacing: 3) {
-                        Capsule().fill(CassiniTheme.recordInk.opacity(0.6)).frame(width: 30, height: 4)
-                        Capsule().fill(CassiniTheme.recordInk.opacity(0.3)).frame(width: 30, height: 4)
+                        Capsule().fill(CassiniTheme.recordInk.opacity(0.6)).frame(width: 24, height: 4)
+                        Capsule().fill(CassiniTheme.recordInk.opacity(0.3)).frame(width: 24, height: 4)
                     }.accessibilityHidden(true)
-                    Text(UXText.text("common.stop")).font(.system(size: 11, weight: .semibold)).foregroundStyle(CassiniTheme.onRecord)
-                        .padding(.horizontal, 10).frame(height: 26).background(CassiniTheme.record, in: RoundedRectangle(cornerRadius: 5))
-                }.fixedSize().padding(.horizontal, 10).frame(height: 34).background(CassiniTheme.recordTint, in: RoundedRectangle(cornerRadius: 6))
+                    Text(UXText.text("common.stop")).font(.system(size: 12, weight: .semibold)).foregroundStyle(CassiniTheme.onRecord)
+                        .padding(.horizontal, 12).frame(height: 26).background(CassiniTheme.record, in: Capsule())
+                }.fixedSize().padding(.leading, 13).padding(.trailing, 4).frame(height: 34).background(CassiniTheme.recordTint, in: Capsule())
             } else { recordButton(big: false) }
         }
     }
     private func row(_ meeting: LibraryMeeting) -> some View {
         let selected = store.selectedKeys.contains(meeting.libraryKey)
-        let dim = selected ? CassiniTheme.onAccentDim : CassiniTheme.ink2
         let presentation = LibraryBadgeCatalog.presentation(for: meeting)
-        return VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 8) {
-                Text(meeting.title ?? UXText.text("library.untitled")).fontWeight(.semibold).lineLimit(1)
-                Spacer(minLength: 2)
-                if let start = meeting.meetingTime { Text(store.format.rowTime(start)).font(.system(size: 11.5)).foregroundStyle(dim).monospacedDigit() }
+        let showDuration = meeting.durationMs != nil && presentation?.kind != "recording" && presentation?.kind != "saving"
+        let trailingMeta = rowTrailingMeta(meeting, badgeKind: presentation?.kind)
+        return MeetingCard(isSelected: selected) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    Text(meeting.title ?? UXText.text("library.untitled"))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(CassiniTheme.ink)
+                        .lineLimit(1)
+                    Spacer(minLength: 2)
+                    if showDuration, let durationMs = meeting.durationMs {
+                        Text(LibraryFormat.meetingDuration(durationMs))
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(CassiniTheme.ink2)
+                            .monospacedDigit()
+                            .fixedSize()
+                    }
+                }
+                HStack(spacing: 6) {
+                    if let start = meeting.meetingTime {
+                        Text(store.format.rowTime(start))
+                            .foregroundStyle(CassiniTheme.ink2)
+                            .monospacedDigit()
+                            .fixedSize()
+                    }
+                    if let presentation {
+                        catalogStatusBadge(presentation, onAccent: false)
+                        if let trailingMeta {
+                            Text(trailingMeta)
+                                .foregroundStyle(CassiniTheme.ink2)
+                                .lineLimit(1)
+                        }
+                    } else if let trailingMeta {
+                        if meeting.meetingTime != nil {
+                            Text("·")
+                                .foregroundStyle(CassiniTheme.ink2)
+                                .accessibilityHidden(true)
+                        }
+                        Text(trailingMeta)
+                            .foregroundStyle(CassiniTheme.ink2)
+                            .lineLimit(1)
+                    }
+                }
+                .font(.system(size: 11.5))
             }
-            HStack(spacing: 6) {
-                if let presentation { catalogStatusBadge(presentation, onAccent: selected) }
-                if let meta = rowMeta(meeting, badgeKind: presentation?.kind) { Text(meta).foregroundStyle(dim).lineLimit(1) }
-            }.font(.system(size: 11.5))
-            if let line = rowSecondLine(meeting, badgeKind: presentation?.kind) { line.font(.system(size: 11.5)).foregroundStyle(dim).lineLimit(1) }
-        }
-        .foregroundStyle(selected ? CassiniTheme.onAccent : CassiniTheme.ink)
-        .padding(.vertical, 1).frame(minHeight: 50, alignment: .top)
-    }
-    // R11: visible badge precedence also governs both row text lines.
-    private func rowMeta(_ meeting: LibraryMeeting, badgeKind: String?) -> String? {
-        switch badgeKind {
-        case "recording": return meeting.isBrowserCapture ? UXText.text("common.listeningInsideBrowser") : nil
-        case "saving", "transcribing": return nil
-        default: return LibraryFormat.rowMeta(durationMs: meeting.durationMs, names: meeting.speakerNames)
         }
     }
-    private func rowSecondLine(_ meeting: LibraryMeeting, badgeKind: String?) -> Text? {
+    // L-51, L-53: duration sits top-right; line two shows time, optional status badge (no dot after a badge),
+    // and speaker names (with a standalone middle dot when no badge is present).
+    private func rowTrailingMeta(_ meeting: LibraryMeeting, badgeKind: String?) -> String? {
         switch badgeKind {
-        case "recording": return meeting.isBrowserCapture ? Text(UXText.text("library.row.recording.line")) : nil
-        case "saving": return nil
-        case "transcribing": return meeting.durationMs.map { Text(UXText.text("library.row.transcribing.line", ["duration": LibraryFormat.meetingDuration($0)])) }
-        default: return meeting.quote.map { Text("“") + Text(MeetingPresentation.pullQuote($0)) + Text("”") }
+        case "recording":
+            return meeting.isBrowserCapture ? UXText.text("common.listeningInsideBrowser") : nil
+        case "saving", "transcribing":
+            return nil
+        default:
+            let names = LibraryFormat.rowMeta(durationMs: nil, names: meeting.speakerNames)
+            return names.isEmpty ? nil : names
         }
     }
     private func catalogStatusBadge(_ presentation: CatalogBadgePresentation, onAccent: Bool = false) -> some View {
@@ -464,22 +581,24 @@ struct LibraryView: View {
                 }
             }.font(.system(size: 11.5)).foregroundStyle(CassiniTheme.ink2).padding(16)
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(CassiniTheme.paneGround)
+            .overlay { LibraryDropListOverlay(state: dropState) }
     }
     private func recordButton(big: Bool) -> some View {
         let saving = big && RecordingOverview.saving
+        let enabled = RecordingOverview.canStart
         let title = UXText.text(saving ? "states.badge.saving" : "common.record")
         return Button { sessionPlayback.stop(); RecordCoordinator.shared.request(parent: store.context.root) } label: {
-            HStack(spacing: big ? 10 : 8) {
+            HStack(spacing: big ? 10 : 7) {
                 if saving {
                     ProgressView().controlSize(.small)
                 } else {
-                    Circle().fill(CassiniTheme.onRecord).frame(width: big ? 12 : 10, height: big ? 12 : 10)
+                    Circle().fill(enabled ? CassiniTheme.onRecord : CassiniTheme.ink3).frame(width: big ? 12 : 9, height: big ? 12 : 9)
                 }
                 Text(title).fontWeight(.semibold)
-            }.padding(.horizontal, big ? 22 : 14).frame(height: big ? 44 : 34)
-                .foregroundStyle(saving ? CassiniTheme.ink2 : CassiniTheme.onRecord)
-                .background(saving ? CassiniTheme.chipFill : CassiniTheme.record, in: RoundedRectangle(cornerRadius: big ? 22 : 6))
-        }.buttonStyle(.plain).disabled(!RecordingOverview.canStart).accessibilityLabel(title).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
+            }.padding(.horizontal, big ? 22 : 14).frame(minWidth: big ? nil : 90).frame(height: big ? 44 : 34)
+                .foregroundStyle(saving ? CassiniTheme.ink2 : enabled ? CassiniTheme.onRecord : CassiniTheme.ink3)
+                .background(saving || !enabled ? CassiniTheme.chipFill : CassiniTheme.record, in: Capsule())
+        }.buttonStyle(.plain).disabled(!enabled).accessibilityLabel(title).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
     }
     private func openSelection(userInitiated: Bool = false) {
         guard !search.visible, store.loaded, !LibraryMoveCoordinator.shared.busy, !trash.busy else { return }
@@ -638,6 +757,7 @@ final class LibraryToolbarActionView: NSView {
         let font = NSFont.systemFont(ofSize:13,weight:.semibold)
         button.font = font; button.image = nil
         button.isBordered = value.style == .bordered; button.bezelStyle = .rounded
+        button.layer?.cornerRadius = [.record,.stop,.saving,.capsule].contains(value.style) ? 17 : 6
         button.imagePosition = .imageLeft
         let tint: NSColor = [.stop,.record].contains(value.style) ? CassiniTheme.nsOnRecord : value.style == .saving ? CassiniTheme.nsInk2 : CassiniTheme.nsInk
         button.attributedTitle = NSAttributedString(string:value.title,attributes:[.font:font,.foregroundColor:tint])
