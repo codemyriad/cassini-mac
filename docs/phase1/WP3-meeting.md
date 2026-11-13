@@ -32,4 +32,8 @@ TranscriptFindTests exercise Unicode offsets, accented/decomposed words, phrases
 
 Native UI tests exercise direct selection changes, read-only/writable speaker controls, local Find/cycling/clear/space input, global Search guards and actual scroll geometry. The app prepares the scrolled case from a sealed Library fixture inside its own sandbox, with additional bounded transcript turns; no forced compact-header state. Find also asserts the match count has enough visible width, rather than accepting an accessibility label on a squeezed-away view. Header and compact-title containers expose their children independently. Screenshot export requires meeting-open, meeting-find and meeting-scrolled in both light and dark, alongside existing meeting boards. The explicit dark-mode CI test list includes both new test cases; the light lane runs the whole LibraryBoards suite.
 
+The meeting accessibility case requests an idle activity snapshot when checking
+the Record action. Normal board cases retain the fixture's live recording state;
+the accessibility case keeps its strict Record, Import, export and playback labels.
+
 The existing ui-shots job supplies actual app before/after pr-shots and source/run provenance. The coordinator explicitly authorized big-mac to publish the final exact-head light/dark artifacts with scripts/pr-shots.py; no pruning. Readiness requires complete exact-head CI plus validated, published light/dark pr-shots. One WP3 PR on main, Seat: big-mac; no AI attribution in commits. WP4, WP5, WP6 and WP7 follow in the dispatched order; Phase 2 is excluded.
