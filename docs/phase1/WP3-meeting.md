@@ -35,5 +35,7 @@ Native UI tests exercise direct selection changes, read-only/writable speaker co
 The meeting accessibility case requests an idle activity snapshot when checking
 the Record action. Normal board cases retain the fixture's live recording state;
 the accessibility case keeps its strict Record, Import, export and playback labels.
+The header Record action uses the existing native button owner so its label
+cannot inherit the adjacent SwiftUI Import label. Each action must appear once.
 
 The existing ui-shots job supplies actual app before/after pr-shots and source/run provenance. The coordinator explicitly authorized big-mac to publish the final exact-head light/dark artifacts with scripts/pr-shots.py; no pruning. Readiness requires complete exact-head CI plus validated, published light/dark pr-shots. One WP3 PR on main, Seat: big-mac; no AI attribution in commits. WP4, WP5, WP6 and WP7 follow in the dispatched order; Phase 2 is excluded.

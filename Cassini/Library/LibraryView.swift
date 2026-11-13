@@ -482,7 +482,7 @@ struct LibraryView: View {
                         .padding(.horizontal, 12).frame(height: 26).background(CassiniTheme.record, in: Capsule())
                 }.fixedSize().padding(.leading, 13).padding(.trailing, 4).frame(height: 34).background(CassiniTheme.recordTint, in: Capsule())
             } else { recordButton(big: false) }
-        }
+        }.accessibilityElement(children: .contain)
     }
     private func row(_ meeting: LibraryMeeting) -> some View {
         let selected = store.selectedKeys.contains(meeting.libraryKey)
@@ -583,11 +583,16 @@ struct LibraryView: View {
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(CassiniTheme.paneGround)
             .overlay { LibraryDropListOverlay(state: dropState) }
     }
-    private func recordButton(big: Bool) -> some View {
+    @ViewBuilder private func recordButton(big: Bool) -> some View {
         let saving = big && RecordingOverview.saving
         let enabled = RecordingOverview.canStart
         let title = UXText.text(saving ? "states.badge.saving" : "common.record")
-        return Button { sessionPlayback.stop(); RecordCoordinator.shared.request(parent: store.context.root) } label: {
+        if !big {
+            LibraryToolbarAction(title:title,label:title,identifier:"toolbar-record",style:.record,enabled:enabled) {
+                sessionPlayback.stop(); RecordCoordinator.shared.request(parent: store.context.root)
+            }.frame(minWidth:90)
+        } else {
+        Button { sessionPlayback.stop(); RecordCoordinator.shared.request(parent: store.context.root) } label: {
             HStack(spacing: big ? 10 : 7) {
                 if saving {
                     ProgressView().controlSize(.small)
@@ -598,7 +603,8 @@ struct LibraryView: View {
             }.padding(.horizontal, big ? 22 : 14).frame(minWidth: big ? nil : 90).frame(height: big ? 44 : 34)
                 .foregroundStyle(saving ? CassiniTheme.ink2 : enabled ? CassiniTheme.onRecord : CassiniTheme.ink3)
                 .background(saving || !enabled ? CassiniTheme.chipFill : CassiniTheme.record, in: Capsule())
-        }.buttonStyle(.plain).disabled(!enabled).accessibilityLabel(title).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
+        }.buttonStyle(.plain).disabled(!enabled).accessibilityLabel(title).accessibilityIdentifier("first-run-record")
+        }
     }
     private func openSelection(userInitiated: Bool = false) {
         guard !search.visible, store.loaded, !LibraryMoveCoordinator.shared.busy, !trash.busy else { return }
@@ -728,7 +734,8 @@ final class LibraryToolbarActionView: NSView {
     override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); applyLayerFill() }
     private func applyLayerFill() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            let fill: NSColor = [.stop,.record].contains(currentStyle) ? CassiniTheme.nsRecord : [.saving,.capsule].contains(currentStyle) ? CassiniTheme.nsChipFill : .clear
+            let disabledRecord = currentStyle == .record && !button.isEnabled
+            let fill: NSColor = disabledRecord ? CassiniTheme.nsChipFill : [.stop,.record].contains(currentStyle) ? CassiniTheme.nsRecord : [.saving,.capsule].contains(currentStyle) ? CassiniTheme.nsChipFill : .clear
             button.layer?.backgroundColor = fill.cgColor
         }
     }
@@ -756,7 +763,8 @@ final class LibraryToolbarActionView: NSView {
         button.isBordered = value.style == .bordered; button.bezelStyle = .rounded
         button.layer?.cornerRadius = [.record,.stop,.saving,.capsule].contains(value.style) ? 17 : 6
         button.imagePosition = .imageLeft
-        let tint: NSColor = [.stop,.record].contains(value.style) ? CassiniTheme.nsOnRecord : value.style == .saving ? CassiniTheme.nsInk2 : CassiniTheme.nsInk
+        let disabledRecord = value.style == .record && !value.enabled
+        let tint: NSColor = disabledRecord ? CassiniTheme.nsInk3 : [.stop,.record].contains(value.style) ? CassiniTheme.nsOnRecord : value.style == .saving ? CassiniTheme.nsInk2 : CassiniTheme.nsInk
         button.attributedTitle = NSAttributedString(string:value.title,attributes:[.font:font,.foregroundColor:tint])
         applyLayerFill()
         let text = ceil((value.title as NSString).size(withAttributes:[.font:font]).width)
@@ -769,8 +777,9 @@ final class LibraryToolbarActionView: NSView {
             button.imagePosition = .imageOnly; button.contentTintColor = CassiniTheme.nsInk
             size.width = 28
         case .record:
+            let dot = value.enabled ? CassiniTheme.nsOnRecord : CassiniTheme.nsInk3
             button.image = NSImage(size:NSSize(width:18,height:10),flipped:false) { _ in
-                CassiniTheme.nsOnRecord.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:0,width:10,height:10)).fill(); return true
+                dot.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:0,width:10,height:10)).fill(); return true
             }
             button.imageHugsTitle = true; size.width += 18
         case .saving:
