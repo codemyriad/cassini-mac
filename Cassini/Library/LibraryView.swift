@@ -30,10 +30,7 @@ struct LibraryView: View {
     var body: some View {
         GeometryReader { geometry in
             Group {
-                if let detail = navigation.detail {
-                    if detail.meeting.state.lifecycle != .saved { RecordingPageView(detail:detail,format:store.format) }
-                    else { split }
-                }
+                if navigation.detail != nil { split }
                 else if navigation.loading { ProgressView() }
                 else if search.visible { LibrarySearchView(format:store.format) }
                 else if store.loaded && store.meetings.isEmpty && !store.offline { firstRun }
@@ -69,10 +66,6 @@ struct LibraryView: View {
         .toolbar {
             if let detail = navigation.detail, detail.meeting.state.lifecycle != .saved {
                 ToolbarItem(placement:.navigation) {
-                    Button { navigation.back() } label: { Image(systemName:"chevron.left").frame(width:28,height:30) }
-                        .help(UXText.text("common.backToLibrary")).accessibilityLabel(UXText.text("common.backToLibrary")).accessibilityIdentifier("recording-back")
-                }
-                ToolbarItem(placement:.navigation) {
                     if RecordingOverview.active, let started = RecordingOverview.startedAt {
                         LiveRecordingPill(started:started,microphone:RecordingOverview.levels["microphone",default:0],output:RecordingOverview.levels["output",default:0])
                     } else if store.context.screenshot {
@@ -84,9 +77,12 @@ struct LibraryView: View {
                         }.accessibilityElement(children:.contain).accessibilityIdentifier("recording-toolbar-saving")
                     }
                 }
-                ToolbarItem(placement:.principal) {
-                    Text(detail.meeting.title ?? UXText.text("library.untitled")).font(.system(size:13,weight:.bold)).lineLimit(1)
-                        .accessibilityIdentifier("recording-header-title")
+                ToolbarItem(placement: .primaryAction) {
+                    LibraryToolbarAction(title: "", label: UXText.text("meeting.moreActions"), identifier: "recording-more-actions", style: .more, menu: {
+                        LibraryToolbarAction.menu([
+                            .init(title: UXText.text("details.menu"), identifier: "recording-details") { recordingDetails.show(detail.meeting) }
+                        ])
+                    }) { }
                 }
             } else if let detail = navigation.detail {
                 ToolbarItem(placement:.navigation) {
@@ -219,7 +215,9 @@ struct LibraryView: View {
             }
             #if DEBUG
             if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "recording", navigation.detail == nil,
-               let meeting = store.meetings.first(where: { $0.state.lifecycle == .recording }) { navigation.open(meeting, frozen:true) }
+               let meeting = store.meetings.first(where: { $0.state.lifecycle == .recording }) {
+                store.selectedKey = meeting.libraryKey; navigation.open(meeting, frozen:true)
+            }
             #endif
             #if DEBUG
             if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "search", !searchFixturePrepared {
@@ -346,8 +344,11 @@ struct LibraryView: View {
             .frame(minWidth: 400, maxWidth: 400)
             .accessibilityLabel(UXText.text("library.listPane.a11y"))
             Divider()
-            if let detail = navigation.detail, detail.meeting.state.lifecycle == .saved {
-                MeetingView(model: detail, format: store.format).id(ObjectIdentifier(detail))
+            if let detail = navigation.detail {
+                Group {
+                    if detail.meeting.state.lifecycle == .saved { MeetingView(model: detail, format: store.format) }
+                    else { RecordingPageView(detail: detail, format: store.format) }
+                }.id(ObjectIdentifier(detail))
             } else if navigation.loading { ProgressView().frame(maxWidth: .infinity) }
             else if store.selectedKeys.count > 1 {
                 VStack {

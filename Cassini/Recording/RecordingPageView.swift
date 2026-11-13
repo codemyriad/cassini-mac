@@ -5,6 +5,7 @@ import CassiniLibrary
 
 struct RecordingPageView: View {
     @State private var changingCapture = false
+    @State private var renaming = false
     @State private var sourceProblem = false
     @State private var explainingFallback = false
     let detail: MeetingDetailModel
@@ -19,61 +20,15 @@ struct RecordingPageView: View {
     var body: some View {
         ScrollView {
             VStack(alignment:.leading,spacing:22) {
-                TimelineView(.periodic(from:.now,by:1)) { _ in
-                    HStack(spacing:22) {
-                        Circle().fill(CassiniTheme.recordInk).frame(width:22,height:22)
-                            .overlay { Circle().stroke(CassiniTheme.recordInk.opacity(0.12),lineWidth:8) }.accessibilityHidden(true)
-                        VStack(alignment:.leading,spacing:2) {
-                            Text(LibraryFormat.liveBig(model.elapsedMs)).font(.system(size:44,weight:.semibold)).monospacedDigit().tracking(-0.9)
-                                .accessibilityIdentifier("recording-big-timer")
-                            if let started = (model.native ? recorder.startedAt : nil) ?? detail.meeting.start {
-                                Text(UXText.text("recording.since",["time":format.rowTime(started)]))
-                                    .font(.system(size:13)).foregroundStyle(CassiniTheme.ink2)
-                            }
-                        }
-                        Spacer(minLength:12)
-                        Button { model.stop() } label: {
-                            HStack(spacing:10) {
-                                RoundedRectangle(cornerRadius:2).fill(CassiniTheme.onRecord).frame(width:12,height:12)
-                                Text(UXText.text((model.saving || detail.meeting.state.lifecycle == .saving) ? "states.badge.saving" : "common.stop")).font(.system(size:16,weight:.bold))
-                            }.padding(.horizontal,26).frame(height:48).foregroundStyle(CassiniTheme.onRecord).background(CassiniTheme.record,in:Capsule())
-                        }.buttonStyle(.plain).disabled(model.saving || detail.meeting.state.lifecycle == .saving || (!model.canStop && !model.frozen))
-                            .allowsHitTesting(!model.frozen).accessibilityIdentifier("recording-page-stop")
-                    }
-                }
+                heading
+                timerRow
                 if let line = model.owned?.diskMinutes.map({ UXText.text("errors.diskLow.line",["n":String($0)]) }) ?? (model.native ? recorder.diskLine : nil) { Text(line).foregroundStyle(CassiniTheme.warningNotice).fixedSize(horizontal:false,vertical:true) }
                 if let owned = model.owned, owned.input.failedSides.contains(.me) { CapturePermissionNotice(side:.me,refusal:owned.input.refusedSides[.me]) }
                 if sourceProblem {
                     Text(UXText.text("recording.sourceProblem")).foregroundStyle(CassiniTheme.warningNotice).fixedSize(horizontal:false,vertical:true)
                         .accessibilityIdentifier("recording-source-problem")
                 }
-                VStack(alignment:.leading,spacing:6) {
-                    caption("recording.title.label")
-                    TextField("",text:Binding(get:{ model.title },set:{ value in
-                        model.title = value; model.changeTitle()
-                    })).textFieldStyle(.plain).font(.system(size:16)).padding(.horizontal,12).frame(height:40)
-                        .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:6))
-                        .overlay { RoundedRectangle(cornerRadius:6).stroke(CassiniTheme.cardStroke) }
-                        .focused($titleFocused).accessibilityLabel(UXText.text("recording.title.label")).accessibilityIdentifier("recording-title")
-                        .disabled(detail.meeting.metadataReadOnly).allowsHitTesting(!model.frozen)
-                    if detail.meeting.isBrowserCapture {
-                        Text(UXText.text("recording.title.caption")).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
-                    }
-                }
-                VStack(spacing:0) {
-                    source(microphone:true)
-                    Divider()
-                    source(microphone:false)
-                    Divider()
-                    Button(UXText.text("recording.changeWhatIsRecorded")) { changingCapture = true }.buttonStyle(.plain).font(.system(size:11.5,weight:.semibold))
-                        .foregroundStyle(CassiniTheme.accentInk).padding(.horizontal,16).frame(maxWidth:.infinity,minHeight:35,alignment:.leading).disabled(model.owned == nil && !model.frozen)
-                        .accessibilityIdentifier("recording-change-sources")
-                    Divider()
-                    Button(UXText.text("details.link")) { RecordingDetailsCoordinator.shared.show(detail.meeting) }.buttonStyle(.plain).font(.system(size:11.5,weight:.semibold))
-                        .foregroundStyle(CassiniTheme.accentInk).padding(.horizontal,16).frame(maxWidth:.infinity,minHeight:35,alignment:.leading)
-                        .accessibilityIdentifier("recording-details-link")
-                }.background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:10))
-                    .clipShape(RoundedRectangle(cornerRadius:10)).overlay { RoundedRectangle(cornerRadius:10).stroke(CassiniTheme.cardStroke) }
+                sourcesCard
                 if let owned = model.owned, owned.snapshot.others && !owned.snapshot.browserAlive,
                    owned.input.failedSides.contains(.others) || owned.snapshot.fallbackReason != nil {
                     HStack(alignment:.top,spacing:8) {
@@ -86,8 +41,8 @@ struct RecordingPageView: View {
                     }.font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("recording-source-notice")
                 }
 
-            }.frame(maxWidth:640).padding(.top,32).padding(.horizontal,32).padding(.bottom,40).frame(maxWidth:.infinity)
-        }.background(CassiniTheme.paneGround)
+            }.padding(.horizontal,44).padding(.bottom,40).frame(maxWidth:.infinity,alignment:.leading)
+        }.foregroundStyle(CassiniTheme.ink).background(CassiniTheme.surface)
             .accessibilityElement(children:.contain).accessibilityIdentifier("recording-page")
             .sheet(isPresented:$changingCapture) { WhatIsRecordedView(model:model) }
             .sheet(isPresented:$explainingFallback) {
@@ -112,16 +67,100 @@ struct RecordingPageView: View {
             .onChange(of:detail.meeting.audioTracks) { _,_ in model.update(detail.meeting) }
             .onDisappear { model.flush() }
     }
-    private func caption(_ id: String) -> some View { Text(UXText.text(id)).font(.system(size:11.5,weight:.bold)).foregroundStyle(CassiniTheme.ink2) }
+    private var heading: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(model.displayTitle).font(.system(size: 22, weight: .bold))
+                    .textSelection(.enabled).accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("recording-page-title")
+                Button { renaming = true } label: { Image(systemName: "pencil").frame(width: 26, height: 26) }
+                    .buttonStyle(.borderless).foregroundStyle(CassiniTheme.ink2)
+                    .disabled(detail.meeting.metadataReadOnly || model.saving || model.frozen)
+                    .accessibilityLabel(UXText.text("meeting.renameEllipsis"))
+                    .accessibilityIdentifier("recording-rename")
+                    .popover(isPresented: $renaming) { titleEditor }
+            }
+            Text(recordingDate).foregroundStyle(CassiniTheme.ink2)
+                .accessibilityIdentifier("recording-date")
+        }.frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 8).padding(.bottom, 18)
+            .overlay(alignment: .bottom) { Rectangle().fill(CassiniTheme.lineSoft).frame(height: 1) }
+            .accessibilityElement(children: .contain).accessibilityIdentifier("recording-heading")
+    }
+    private var timerRow: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            HStack(spacing: 16) {
+                HStack(spacing: 12) {
+                    Circle().fill(CassiniTheme.recordInk).frame(width: 14, height: 14)
+                        .overlay { Circle().stroke(CassiniTheme.recordInk.opacity(0.12), lineWidth: 5) }
+                        .accessibilityHidden(true)
+                    Text(LibraryFormat.liveBig(model.elapsedMs)).font(.system(size: 30, weight: .semibold))
+                        .monospacedDigit().tracking(-0.5).accessibilityIdentifier("recording-big-timer")
+                }
+                Button { model.flush(); model.stop() } label: {
+                    HStack(spacing: 7) {
+                        RoundedRectangle(cornerRadius: 2).fill(CassiniTheme.onRecord).frame(width: 9, height: 9)
+                        Text(UXText.text((model.saving || detail.meeting.state.lifecycle == .saving) ? "states.badge.saving" : "common.stop"))
+                            .font(.system(size: 13, weight: .semibold))
+                    }.padding(.horizontal, 14).frame(height: 30)
+                        .foregroundStyle(CassiniTheme.onRecord).background(CassiniTheme.record, in: Capsule())
+                }.buttonStyle(.plain)
+                    .disabled(model.saving || detail.meeting.state.lifecycle == .saving || (!model.canStop && !model.frozen))
+                    .allowsHitTesting(!model.frozen).accessibilityIdentifier("recording-page-stop")
+                Spacer(minLength: 0)
+            }.padding(.top, 2)
+        }
+    }
+    private var sourcesCard: some View {
+        VStack(spacing:0) {
+            source(microphone:true)
+            Divider()
+            source(microphone:false)
+            Divider()
+            Button { changingCapture = true } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "mic").foregroundStyle(CassiniTheme.ink2).accessibilityHidden(true)
+                    Text(UXText.text("recording.changeWhatIsRecorded"))
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").foregroundStyle(CassiniTheme.ink3).accessibilityHidden(true)
+                }.padding(.horizontal, 14).frame(minHeight: 38)
+            }.buttonStyle(.plain).font(.system(size: 13, weight: .medium))
+                .foregroundStyle(CassiniTheme.ink).disabled(model.owned == nil && !model.frozen)
+                .accessibilityIdentifier("recording-change-sources")
+        }.background(CassiniTheme.surface, in: RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay { RoundedRectangle(cornerRadius: 12).stroke(CassiniTheme.cardStroke) }
+            .accessibilityElement(children: .contain).accessibilityIdentifier("recording-sources")
+    }
+    private var recordingDate: String {
+        if model.native, let started = recorder.startedAt { return format.previewSubtitle(started, durationMs: nil) }
+        return format.previewSubtitle(detail.meeting.meetingTime, durationMs: nil)
+    }
+    private var titleEditor: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            TextField(UXText.text("recording.title.label"), text: Binding(get: { model.title }, set: {
+                model.title = $0; model.changeTitle()
+            })).textFieldStyle(.roundedBorder).focused($titleFocused)
+                .accessibilityIdentifier("recording-title")
+                .onSubmit { model.flush(); renaming = false }
+            if detail.meeting.isBrowserCapture {
+                Text(UXText.text("recording.title.caption")).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.ink2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack { Spacer(); Button(UXText.text("common.done")) { model.flush(); renaming = false }.keyboardShortcut(.defaultAction) }
+        }.padding(18).frame(width: 320)
+            .onAppear { titleFocused = true }
+            .onDisappear { model.flush() }
+            .onExitCommand { model.flush(); renaming = false }
+    }
     private func source(microphone: Bool) -> some View {
         let silent = microphone && model.microphoneSilent
         let enabled = microphone ? model.me : model.others
         let browser = model.owned?.snapshot.browserAlive ?? detail.meeting.isBrowserCapture
         let amber = CassiniTheme.warnInk
         return HStack(spacing:14) {
-            Image(systemName:microphone ? "mic" : "macwindow").font(.system(size:16)).frame(width:20).foregroundStyle(silent ? amber : CassiniTheme.primaryInk).accessibilityHidden(true)
             VStack(alignment:.leading,spacing:2) {
-                Text(UXText.text(microphone ? "common.yourMicrophone" : "common.theOthers")).fontWeight(.semibold)
+                Text(UXText.text(microphone ? "common.yourMicrophone" : "common.theOthers")).fontWeight(.semibold).foregroundStyle(silent ? amber : CassiniTheme.ink)
                 if !enabled { Text(UXText.text("whatIsRecorded.othersHeard.none.title")).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2) }
                 else if silent {
                     Text(UXText.text("errors.micSilentRow.line")).font(.system(size:11.5,weight:.semibold)).foregroundStyle(amber).fixedSize(horizontal:false,vertical:true)
