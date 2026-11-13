@@ -35,6 +35,8 @@ jobs:
     timeout-minutes: 55
     steps:
     - uses: actions/checkout@v5
+      with:
+        fetch-depth: 2
     - uses: ./.github/actions/ci-products
       with:
         debug: 'true'
@@ -56,8 +58,16 @@ jobs:
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
         TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'
+        CAPTURE_SPEAKER_BEFORE: ${{ github.ref_name == 'evidence/wp6-speaker-before' }}
       run: |
         set -o pipefail
+        if [ "$CAPTURE_SPEAKER_BEFORE" = true ]; then
+          xcodebuild test-without-building -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" \
+            -destination 'platform=macOS' -parallel-testing-enabled NO \
+            -only-testing:CassiniWindowScreenshots/LibraryBoards/testSpeakerNamesClearMergeUndoAndReopen \
+            -resultBundlePath build/UXBoards.xcresult 2>&1 | tee build/ux-boards.log
+          exit 0
+        fi
         xcodebuild test-without-building -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" \
           -destination 'platform=macOS' -parallel-testing-enabled NO -only-testing:CassiniWindowScreenshots/LibraryBoards \
           -resultBundlePath build/UXBoards.xcresult \
@@ -67,10 +77,18 @@ jobs:
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
         TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'
+        CAPTURE_SPEAKER_BEFORE: ${{ github.ref_name == 'evidence/wp6-speaker-before' }}
         TEST_RUNNER_CASSINI_SCREENSHOT_SCHEME: dark
       run: |
         set -o pipefail
         dark_start=$SECONDS
+        if [ "$CAPTURE_SPEAKER_BEFORE" = true ]; then
+          xcodebuild test-without-building -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" \
+            -destination 'platform=macOS' -parallel-testing-enabled NO \
+            -only-testing:CassiniWindowScreenshots/LibraryBoards/testSpeakerNamesClearMergeUndoAndReopen \
+            -resultBundlePath build/UXBoardsDark.xcresult 2>&1 | tee build/ux-boards-dark.log
+          exit 0
+        fi
         xcodebuild test-without-building -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" \
           -destination 'platform=macOS' -parallel-testing-enabled NO \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testFrenchLibraryAndFirstRunFitAtBoardSize \
@@ -128,11 +146,17 @@ jobs:
         PY
     - name: Export exact board PNGs
       if: always()
+      env:
+        CAPTURE_SPEAKER_BEFORE: ${{ github.ref_name == 'evidence/wp6-speaker-before' }}
       run: |
         xcrun xcresulttool export attachments --path build/UXBoards.xcresult --output-path build/ux-attachments
         if [ -d build/UXBoardsDark.xcresult ]; then
           xcrun xcresulttool export attachments --path build/UXBoardsDark.xcresult --output-path build/ux-attachments-dark
-          python3 scripts/export-ux-boards.py build/ux-attachments build/ux-boards --dark build/ux-attachments-dark
+          if [ "$CAPTURE_SPEAKER_BEFORE" = true ]; then
+            python3 scripts/export-speaker-before.py
+          else
+            python3 scripts/export-ux-boards.py build/ux-attachments build/ux-boards --dark build/ux-attachments-dark
+          fi
         else
           python3 scripts/export-ux-boards.py build/ux-attachments build/ux-boards
           exit 1

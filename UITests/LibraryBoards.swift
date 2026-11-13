@@ -209,6 +209,8 @@ final class LibraryBoards: XCTestCase {
         nameSpeakers.click()
         let nameField = app.textFields["speaker-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 10), app.debugDescription)
+        nameField.click(); nameField.typeText("Lea")
+        capture(window, name: "speaker-editor")
         app.typeKey(.escape, modifierFlags: [])
         let dismissed = NSPredicate { _,_ in !nameField.exists }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: dismissed, object: nil)], timeout: 10), .completed)
