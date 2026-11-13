@@ -1,8 +1,9 @@
 {
-  "commit": "52ea1f62854058e8160d9da18181a2236db4f941",
+  "commit": "5e0c34e0f1bb390298dabdf4eedc494e933fd329",
   "independentReview": "REPLIES-MAC.md 2a8864c + R3 correction 093d8bd; source fix 72862aa leaves all expected JSON unchanged; 0bf0a4b R11: only main live session source gnome\u2192chromium, all 13 expected outputs unchanged; 5a2991d shared test 8 (D67): 9 T8 cases and outcome-lines.json, GNOME #210 and coordinator review; the 13 earlier expected outputs unchanged; 52ea1f6 D58.4: t8-low-audio-silent expects details.sources.lowAudio.underSecond (outcome-lines, verify.py, README only)",
-  "path": "ux-draft/library-vectors",
-  "repository": "cassini-coordination",
+  "localChanges": "D81: replace the personal onboarding speaker with English sample Alex (alex), regenerate only onboarding metadata and update its asset/expected/tree pins; no audio or rule changes.",
+  "path": "vectors/library-vectors",
+  "repository": "cassini-ux",
   "sha256": {
     "README.md": "8d8f78149c2771002e9361b89fe8f004c2f5841ed52f709f23e5d48cc1ce51b9",
     "assets/001-minimal-v1.opus": "d0ad2b147822c9edc39203b1e7ee51ca38c9b41835b857a42cc639ed30743662",
@@ -19,11 +20,11 @@
     "cases.json": "93c82fd60f5c203fb5aaaeb538ab6891564b24159b0fc9d101761614a106db45",
     "expected/empty.json": "0c7dfde7b4bdd114c0758ca55b269edd6ee1cda636a0b4d1d2d077a35b7dd178",
     "expected/first-record.json": "0c7dfde7b4bdd114c0758ca55b269edd6ee1cda636a0b4d1d2d077a35b7dd178",
-    "expected/main.json": "bb5898e956598c4072dd57dd7563df9407a920b58213c13c6c4067bfa6d5d3a9",
+    "expected/main.json": "d456a2b90c2fab4d8e649a4e4a814500417943e02c76cfde7a34c939f03fbb83",
     "expected/r1-discovery.json": "17dea0af5157118dd95147195522d81083f33bff1dac3cd944f50180f190a7b3",
     "expected/r2-whole-document.json": "f220c0f7612b9af24b0db6e2d1777146446857bd4adb8268e233198b8544c5d4",
-    "expected/r3-transcript-precedence.json": "4ae9677b03f1eb05c917cdf776012048fb08ad07696f68ca55785ba8ced29f76",
-    "expected/r4-capture-history.json": "22178bb5ce468ab271fdc98483e062b2eabd6b05fa8940d3b71c718515942d57",
+    "expected/r3-transcript-precedence.json": "59fe2214aa8492ff1d72558b3b08f7cd8cc3fada713b9f727c740fbb8aebd2f4",
+    "expected/r4-capture-history.json": "5c093dbeb6e74099381580b18a4bdd7c7169a3c39720f30cdd1a325b55f89f66",
     "expected/r5-display-duration.json": "da997bc2a5f406d9af762b4acd1c144ffc75de1eee6d20b88e405639bd2f29af",
     "expected/r6-title-start-order.json": "dac83fa2a66f084c363f3fe525b73a9ad9a26c8b3fb60f886531f2bfbe96f973",
     "expected/r7-speaking-order.json": "d5064edd10330a2301dde2036770b70f85d2f08db8e28c0231f202171499cb17",
@@ -32,9 +33,9 @@
     "expected/received-only.json": "67d41e8dd1b305aa35a5818863ae118d66d048828ee7cea6bd97c38c286bee01",
     "expected/t8-control-others-spoke.json": "28f0a68a6355cbadd8c5252e15eb33ecf86c03bf9640d99336af0fb30f013ed4",
     "expected/t8-failed-referenced-words.json": "7f6e4296b7a117f116c021f65c9e6e611e620500b137536e614df3727756644b",
-    "expected/t8-low-audio-silent.json": "234fc68f9a0c7867be33d06573d7f8b78921ece10effc4d345c8b682addbddab",
+    "expected/t8-low-audio-silent.json": "8c18748f8d778a2209870e9484262eb7116ecdce780d48fb5201106092628419",
     "expected/t8-none-referenced-words.json": "111f5a44d2db94a8faaefd635b5c3f6520af0d9280839e90a327c62493ae6c56",
-    "expected/t8-others-never-captured.json": "234fc68f9a0c7867be33d06573d7f8b78921ece10effc4d345c8b682addbddab",
+    "expected/t8-others-never-captured.json": "8c18748f8d778a2209870e9484262eb7116ecdce780d48fb5201106092628419",
     "expected/t8-others-silent.json": "bc6e0c69dd2abbb8c95fdd2f5631cade47a97141fd335bfd87cad9596c42b007",
     "expected/t8-others-transcription-failed.json": "2ec338c00b841d99bfc9886313914d92360b5d135c75d9d630af48ff92ab436b",
     "expected/t8-retry-failed-stale-silent.json": "2ec338c00b841d99bfc9886313914d92360b5d135c75d9d630af48ff92ab436b",
@@ -42,6 +43,5 @@
     "make.py": "fa5f79d027398ad62dc2c6ecefb69c3fe07cc7fac9f38d2df6f92b1e1509dae0",
     "outcome-lines.json": "79e7b587b02e0a66800478d16c36a6a4a567ef18998f92545e453824e44f6869",
     "verify.py": "cfef6da6561eda417f505f32afd8decb90b9227cf6ee457b0457ada4300143b5"
-  },
-  "localChanges": "D81: replace the personal onboarding speaker with English sample Alex (alex), regenerate only onboarding metadata and update its asset/expected/tree pins; no audio or rule changes."
+  }
 }

@@ -14,9 +14,12 @@ public struct MeetingBadge: Codable, Equatable, Sendable {
     public var kind: String
     public var text: String
     public var tint: String
-    public var dot: Bool?
+    public var glyph: String
+    public init(kind: String, text: String, tint: String, glyph: String) {
+        self.kind = kind; self.text = text; self.tint = tint; self.glyph = glyph
+    }
 }
-/// HARMONY §3. This is derived state, not a second recording manifest.
+/// HARMONY §3 / STATUS-BADGES.md (L-25, L-26, L-45, L-46, L-54). Derived state, not a second recording manifest.
 public struct MeetingState: Codable, Equatable, Sendable {
     public var lifecycle: MeetingLifecycle
     public var origin: MeetingOrigin
@@ -33,15 +36,18 @@ public struct MeetingState: Codable, Equatable, Sendable {
         self.lifecycle = lifecycle; self.origin = origin; self.interruptedAtMs = interruptedAtMs
         self.transcript = transcript; self.etaMinutes = etaMinutes; self.error = error; self.liveMs = liveMs; self.audioAvailable = audioAvailable
     }
+    public static func importingEntryBadge(language: CassiniLanguage = .system, locale: Locale = .current) -> MeetingBadge {
+        .init(kind: "importing", text: LibraryLocalization.shared.text("states.badge.importing", language: language, locale: locale), tint: "neutral", glyph: "spinner")
+    }
     public var badge: MeetingBadge? {
-        if lifecycle == .recording { return .init(kind: "recording", text: LibraryLocalization.shared.text("states.badge.recording",["liveBadge":LibraryFormat.liveBadge(liveMs ?? 0)]), tint: "red", dot: true) }
-        if lifecycle == .saving { return .init(kind: "saving", text: LibraryLocalization.shared.text("states.badge.saving"), tint: "grey") }
+        if lifecycle == .recording { return .init(kind: "recording", text: LibraryLocalization.shared.text("states.badge.recording",["liveBadge":LibraryFormat.liveBadge(liveMs ?? 0)]), tint: "red", glyph: "dot") }
+        if lifecycle == .saving { return .init(kind: "saving", text: LibraryLocalization.shared.text("states.badge.saving"), tint: "neutral", glyph: "spinner") }
         if [.queued, .running].contains(transcript) {
-            return .init(kind: "transcribing", text: etaMinutes.map {LibraryFormat.eta($0)} ?? LibraryLocalization.shared.text("states.badge.transcribing.noEta"), tint: "accent")
+            return .init(kind: "transcribing", text: etaMinutes.map {LibraryFormat.eta($0)} ?? LibraryLocalization.shared.text("states.badge.transcribing.noEta"), tint: "neutral", glyph: "spinner")
         }
-        if error?.action != nil { return .init(kind: "needsAttention", text: LibraryLocalization.shared.text("states.badge.needsAttention"), tint: "amber") }
-        if let interruptedAtMs { return .init(kind: "interrupted", text: LibraryLocalization.shared.text("states.badge.interrupted",["position":LibraryFormat.position(interruptedAtMs)]), tint: "amber") }
-        if origin == .received { return .init(kind: "received", text: LibraryLocalization.shared.text("states.badge.received"), tint: "grey") }
+        if error?.action != nil { return .init(kind: "needsAttention", text: LibraryLocalization.shared.text("states.badge.needsAttention"), tint: "amber", glyph: "alert") }
+        if interruptedAtMs != nil { return .init(kind: "interrupted", text: LibraryLocalization.shared.text("states.badge.interrupted"), tint: "amber", glyph: "alert") }
+        if origin == .received { return .init(kind: "received", text: LibraryLocalization.shared.text("states.badge.received"), tint: "outline", glyph: "incoming") }
         return nil
     }
     public var canWriteDown: Bool { lifecycle == .saved && [.none, .failed].contains(transcript) && audioAvailable != false }

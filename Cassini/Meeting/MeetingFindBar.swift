@@ -31,7 +31,8 @@ struct MeetingFindBar: View {
             }
         }.font(.system(size: 12.5)).buttonStyle(.borderless)
             .padding(.horizontal, 9).frame(height: 28)
-            .background(CassiniTheme.ink.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+            .background(CassiniTheme.field, in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(CassiniTheme.fieldLine, lineWidth: 1))
             .onChange(of: model.focusRequest) { _, _ in focused = true }
             .onChange(of: focused) { _, value in model.focused = value }
             .onDisappear { model.focused = false }

@@ -24,6 +24,10 @@ struct MeetingPaneHeader: View {
             }
             Text(format.previewSubtitle(meeting.meetingTime, durationMs: meeting.durationMs, received: meeting.state.origin == .received))
                 .foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("meeting-subtitle")
+            if let badge = LibraryBadgeCatalog.presentation(for: meeting),
+               ["needsAttention", "interrupted", "received"].contains(badge.kind) {
+                CatalogStatusBadge(presentation: badge, isAnimating: false).accessibilityIdentifier("meeting-status-badge")
+            }
             ScrollView(.horizontal) {
                 HStack(spacing: 16) {
                     ForEach(meeting.speakers, id: \.id) { speaker in inlineSpeaker(speaker) }
@@ -36,11 +40,11 @@ struct MeetingPaneHeader: View {
     private func inlineSpeaker(_ speaker: MeetingSpeaker) -> some View {
         let turns = model.listen.turns(of: speaker.id)
         let row = SpeakerRowPresentation(speaker: speaker, turns: turns, percent: model.shares[speaker.id, default: 0], language: UXText.language, locale: UXText.locale)
-        let unnamed = speaker.provenance == .unnamed || (speaker.name == nil && speaker.label == nil)
+        let unnamed = CassiniTheme.speakerSlot(speaker) == 0
         let listening = model.listen.speaker.map { meeting.mergedInto[$0] ?? $0 } == speaker.id
         let canListen = model.canPlay && (listening || !turns.isEmpty)
         return HStack(spacing: 6) {
-            Circle().fill(unnamed ? CassiniTokens.speaker0 : CassiniTheme.speakerColour(speaker.colourIndex))
+            Circle().fill(CassiniTheme.speakerInk(speaker))
                 .frame(width: 7, height: 7).accessibilityHidden(true)
             if rename.canEditSpeakers(meeting) {
                 Button { rename.showSpeaker(meeting, id: speaker.id) } label: {

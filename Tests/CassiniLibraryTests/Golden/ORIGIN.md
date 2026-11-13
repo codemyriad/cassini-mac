@@ -1,8 +1,8 @@
-Coordinator-owned copies from cassini-coordination/ux-draft (D6/D7).
-- format-vectors.json v3: ee9c9b9585e76c42f09df54d7a8933e7167527fce2ea185e78b51b1059840e51 (69 cases).
-- states-vectors.json v2: 33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415 (17 cases).
+Coordinator-owned copies from cassini-ux (pinned at 5e0c34e0f1bb390298dabdf4eedc494e933fd329, Phase 1 WP1):
+- format-vectors.json v5: 561e2acb1f44473904d87280447ea98e45f8185ae399a47084bec50f82595960 (76 cases).
+- states-vectors.json v3: 2857b5af75191714b04b9974aebe7903b41e9dd96857c6b79c969bac0ae2ce67 (18 persisted cases + 1 transient importing entry vector).
 - meeting.schema.json: D6.1 / D11.2 schema (nullable in-progress ETA; required names for source provenance); identical copy in the core Schema resource.
-- LIBRARY-RULES.md: binding D6 / D6.1 / D9 / D12 R1–R12 (coordination commit 81799a3ab2642a67139f799f857e8ad0e81135b6); supersedes earlier LIBRARY choices.
+- LIBRARY-RULES.md: 415d866eb4a098400c76a3975969d9764bb70eed905726fbdcf7e90e42f85ce8 (cassini-ux 5e0c34e0f1bb390298dabdf4eedc494e933fd329).
 
 Vectors are byte-for-byte copies, SHA256-checked. Do not adjust expected results locally.
 S-3a (D7): main Library plus one case per R1–R9, pending the coordinator's fixture ping.

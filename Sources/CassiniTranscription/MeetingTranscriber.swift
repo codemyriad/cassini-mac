@@ -328,7 +328,13 @@ public enum MeetingTranscriber {
                     let spoken=ordered.compactMap {seen.insert($0.speaker).inserted ? $0.speaker : nil}
                     for (number,id) in spoken.enumerated() {
                         guard let index=speakers.firstIndex(where:{$0["id"] as? String == id}) else {continue}
+                        speakers[index]["colourIndex"]=number
                         speakers[index]["label"]=(speakers[index]["name"] as? String) ?? LibraryLocalization.shared.text("common.speaker.unnamed",["n":String(number+1)],language:uiLanguage)
+                    }
+                    var nextUnspokenSlot=spoken.count
+                    for index in speakers.indices where !seen.contains((speakers[index]["id"] as? String) ?? "") {
+                        speakers[index]["colourIndex"]=nextUnspokenSlot
+                        nextUnspokenSlot += 1
                     }
                     metadata["speakers"] = speakers
                     if status == "done" {

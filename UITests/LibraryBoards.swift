@@ -1188,7 +1188,7 @@ final class LibraryBoards: XCTestCase {
         let speech = NSPredicate { _,_ in self.recordedSeconds(window) >= 5 }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:speech,object:nil)],timeout:10),.completed)
         window.buttons["recording-stop"].click()
-        XCTAssertTrue(waitForPresent(window.staticTexts["Transcribing…"],timeout:10),app.debugDescription)
+        XCTAssertTrue(waitForPresent(window.descendants(matching:.any)["Transcribing…"],timeout:10),app.debugDescription)
         app.typeKey("q",modifierFlags:.command)
         let exited = NSPredicate { _,_ in app.state == .notRunning }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:exited,object:nil)],timeout:5),.completed)

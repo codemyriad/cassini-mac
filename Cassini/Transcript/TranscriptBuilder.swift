@@ -103,7 +103,7 @@ enum TranscriptBuilder {
                 .baselineOffset: 1.5, .paragraphStyle: header,
             ]))
             out.append(NSAttributedString(string: "  " + label(turn.speaker), attributes: [
-                .font: nameFont, .foregroundColor: CassiniTheme.nsInk, .paragraphStyle: header,
+                .font: nameFont, .foregroundColor: color(turn.speaker), .paragraphStyle: header,
             ])) }
             let others = turn.over.map(label)
             let over = others.isEmpty ? "" : " " + UXText.text("meeting.turn.over",["names":LibraryFormat(locale:UXText.locale,language:UXText.language).list(others)])

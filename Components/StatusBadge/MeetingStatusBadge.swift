@@ -22,18 +22,28 @@ enum StatusBadgeKind: String, CaseIterable {
         default: return CassiniTokens.ink2Entry
         }
     }
+    /// L-45: on all four apps, the transcribing badge's spinner glyph uses accent.
+    var glyphInk: CassiniTokens.Entry {
+        self == .transcribing ? CassiniTokens.accentEntry : ink
+    }
     var fill: CassiniTokens.Entry? {
         switch self {
         case .recording: return CassiniTokens.recordTintEntry
         case .attention, .interrupted: return CassiniTokens.warnTintEntry
         case .received: return nil
-        default: return CassiniTokens.neutralTintEntry
+        default: return CassiniTokens.inkEntry
+        }
+    }
+    /// L-46 / L-54: neutral pills composite ink at 10% over whatever is behind.
+    var fillOpacity: Double {
+        switch self {
+        case .importing, .saving, .transcribing: return 0.1
+        default: return 1
         }
     }
 }
 
-/// Standalone W2.1 primitive. Include this source with CassiniTokens when wiring
-/// the app. There is deliberately no LibraryView/model/catalog adapter here.
+/// Shared status badge (L-26, L-45, L-46, L-54): 22px tall, 12px weight-600, 8px horizontal pad, 4px gap.
 struct MeetingStatusBadge: View {
     let kind: StatusBadgeKind
     let label: String
@@ -42,8 +52,8 @@ struct MeetingStatusBadge: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     enum Metrics {
-        static let height = 18.0
-        static let font = 11.5
+        static let height = 22.0
+        static let font = 12.0
         static let horizontalPadding = 8.0
         static let gap = 4.0
         static let dotSize = 6.0
@@ -67,7 +77,7 @@ struct MeetingStatusBadge: View {
         .frame(height: Metrics.height)
         .fixedSize(horizontal: true, vertical: true)
         .background {
-            if let fill = kind.fill { Capsule().fill(color(fill)) }
+            if let fill = kind.fill { Capsule().fill(color(fill).opacity(kind.fillOpacity)) }
         }
         .overlay {
             if kind == .received { Capsule().strokeBorder(color(CassiniTokens.lineEntry), lineWidth: Metrics.outlineWidth) }
@@ -79,19 +89,19 @@ struct MeetingStatusBadge: View {
     @ViewBuilder private var glyph: some View {
         switch kind.glyph {
         case .dot:
-            Circle().fill(color(kind.ink)).frame(width: Metrics.dotSize, height: Metrics.dotSize)
+            Circle().fill(color(kind.glyphInk)).frame(width: Metrics.dotSize, height: Metrics.dotSize)
         case .spinner:
             if isAnimating && !reduceMotion {
                 TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
                     let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1)
-                    BadgeGlyph(glyph: .spinner, ink: color(kind.ink))
+                    BadgeGlyph(glyph: .spinner, ink: color(kind.glyphInk))
                         .rotationEffect(.degrees(phase * 360))
                 }.frame(width: Metrics.spinnerSize, height: Metrics.spinnerSize)
             } else {
-                BadgeGlyph(glyph: .spinner, ink: color(kind.ink)).frame(width: Metrics.spinnerSize, height: Metrics.spinnerSize)
+                BadgeGlyph(glyph: .spinner, ink: color(kind.glyphInk)).frame(width: Metrics.spinnerSize, height: Metrics.spinnerSize)
             }
         case .alert, .incoming:
-            BadgeGlyph(glyph: kind.glyph, ink: color(kind.ink)).frame(width: Metrics.symbolSize, height: Metrics.symbolSize)
+            BadgeGlyph(glyph: kind.glyph, ink: color(kind.glyphInk)).frame(width: Metrics.symbolSize, height: Metrics.symbolSize)
         }
     }
 }

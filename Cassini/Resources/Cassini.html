@@ -6,17 +6,17 @@
 <title>{{app.name}}</title>
 <style>
 :root { color-scheme: light dark; font: 16px -apple-system, BlinkMacSystemFont, sans-serif; }
-body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f5f4f0; color: #253638; }
-main { margin: 32px; max-width: 480px; padding: 48px; border-radius: 20px; background: #fff; box-shadow: 0 8px 40px #2536380c; }
-.mark { width: 44px; height: 44px; border: 3px solid #398481; border-radius: 50%; position: relative; }
-.mark::after { content: ''; position: absolute; inset: 9px -8px; border: 2px solid #398481; border-radius: 50%; transform: rotate(-30deg); }
-h1 { font-size: 26px; margin: 30px 0 16px; letter-spacing: -.5px; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: {{token.ground.light}}; color: {{token.ink.light}}; }
+main { margin: 32px; max-width: 480px; padding: 48px; border-radius: 20px; background: {{token.surface.light}}; box-shadow: 0 8px 40px {{token.shadow.light}}; }
+.lockup { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+.mark { display: inline-flex; width: 40px; height: 26px; flex: none; }
+.mark svg { width: 40px; height: 26px; display: block; }
+h1 { font-size: 18px; font-weight: 500; margin: 0; letter-spacing: -0.01em; }
 p { line-height: 1.6; margin: 0; }
 .address { margin-bottom: 12px; }
-@media (prefers-color-scheme: dark) { body { background: #1e2526; color: #e9efed; } main { background: #293334; } .mark, .mark::after { border-color: #80bdb7; } }
+@media (prefers-color-scheme: dark) { body { background: {{token.ground.dark}}; color: {{token.ink.dark}}; } main { background: {{token.surface.dark}}; box-shadow: 0 8px 40px {{token.shadow.dark}}; } }
 </style></head><body><main>
-<div class="mark" aria-hidden="true"></div>
-<h1>{{app.name}}</h1>
+<div class="lockup"><span class="mark" aria-hidden="true">{{mark.saturnNav}}</span><h1>cassini.talk</h1></div>
 <p class="address"><strong>{{companion.local.extensionsCopied}}</strong></p>
 <p>{{companion.local.extensionsPasteHint}}</p>
 </main></body></html>

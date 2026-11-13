@@ -73,8 +73,8 @@ private struct BadgeBoard: View {
     }
     @MainActor private static func run() throws {
         let output = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
-        let expectedRoles: [(String, String?)] = [("record-ink", "record-tint"), ("ink-2", "neutral-tint"),
-            ("ink-2", "neutral-tint"), ("ink-2", "neutral-tint"), ("warn-ink", "warn-tint"),
+        let expectedRoles: [(String, String?)] = [("record-ink", "record-tint"), ("ink-2", "ink"),
+            ("ink-2", "ink"), ("ink-2", "ink"), ("warn-ink", "warn-tint"),
             ("warn-ink", "warn-tint"), ("ink-2", nil)]
         let expectedGlyphs: [StatusBadgeKind.Glyph] = [.dot, .spinner, .spinner, .spinner, .alert, .alert, .incoming]
         var results: [[String: Any]] = []
@@ -90,15 +90,19 @@ private struct BadgeBoard: View {
                         let badge = MeetingStatusBadge(kind: kind, label: labels[index], isAnimating: false)
                         let ordinary = try image(badge.foregroundStyle(Color(nsColor: CassiniTokens.inkEntry.resolvedNSColor(dark: dark))), dark: dark)
                         let selected = try image(badge.foregroundStyle(Color(nsColor: CassiniTokens.onAccentEntry.resolvedNSColor(dark: dark))), dark: dark)
-                        try require(ordinary.height == 36, "Badge must be 18pt at 2x")
+                        try require(ordinary.height == 44, "Badge must be 22pt at 2x")
                         let rgba = pixels(ordinary)
                         try require(rgba == pixels(selected), "Inherited selection foreground changed \(kind)")
                         let interior = ((ordinary.height / 2) * ordinary.width + ordinary.width - 8) * 4
                         if let fill = kind.fill {
                             let rgb = dark ? fill.darkRGB : fill.lightRGB
                             let expected = [Int((rgb >> 16) & 255), Int((rgb >> 8) & 255), Int(rgb & 255)]
-                            try require(rgba[interior + 3] == 255, "Tint is not opaque")
-                            try require((0..<3).allSatisfy { abs(Int(rgba[interior + $0]) - expected[$0]) <= 1 }, "Tint differs from CassiniTokens for \(kind)")
+                            if kind.fillOpacity < 1 {
+                                try require(abs(Int(rgba[interior + 3]) - 26) <= 2, "Neutral tint must be 10% alpha")
+                            } else {
+                                try require(rgba[interior + 3] == 255, "Tint is not opaque")
+                                try require((0..<3).allSatisfy { abs(Int(rgba[interior + $0]) - expected[$0]) <= 1 }, "Tint differs from CassiniTokens for \(kind)")
+                            }
                         } else {
                             try require(rgba[interior + 3] == 0, "Received must remain transparent inside its ring")
                             let ring = ((ordinary.height / 2) * ordinary.width + 1) * 4
@@ -111,7 +115,7 @@ private struct BadgeBoard: View {
                                         "Received outline differs from token line")
                         }
                         let glyphWidth = kind.glyph == .dot ? 6 : kind.glyph == .spinner ? 10 : 11
-                        let inkRGB = dark ? kind.ink.darkRGB : kind.ink.lightRGB
+                        let inkRGB = dark ? kind.glyphInk.darkRGB : kind.glyphInk.lightRGB
                         let ink = [Int((inkRGB >> 16) & 255), Int((inkRGB >> 8) & 255), Int(inkRGB & 255)]
                         func isInk(_ x: Int, _ y: Int) -> Bool {
                             let offset = (y * ordinary.width + x) * 4

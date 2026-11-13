@@ -146,6 +146,25 @@ def verify(root: Path = ROOT) -> int:
     if digest != pin.get('sha256', '').lower():
         raise ValueError(f'tokens.json SHA-256 mismatch: got {digest}, UPSTREAM.json has {pin.get("sha256")}')
 
+    marks_pin_path = brand_dir / 'marks-UPSTREAM.json'
+    if not marks_pin_path.is_file():
+        raise ValueError(f'Missing brand marks pin file: {marks_pin_path}')
+    marks_pin = json.loads(marks_pin_path.read_text(encoding='utf-8'))
+    if marks_pin.get('cassiniUxCommit') != commit:
+        raise ValueError(f'marks-UPSTREAM.json cassiniUxCommit must equal {commit}')
+    expected_marks = {'saturn-nav.svg', 'saturn-mid.svg', 'saturn-full.svg', 'mark-flat.svg'}
+    files_map = marks_pin.get('files', {})
+    if set(files_map) != expected_marks:
+        raise ValueError(f'marks-UPSTREAM.json files must be {sorted(expected_marks)}, got {sorted(files_map)}')
+    for mark_name, mark_info in sorted(files_map.items()):
+        mark_path = brand_dir / mark_name
+        if not mark_path.is_file():
+            raise ValueError(f'Missing vendored brand mark: {mark_path}')
+        mark_bytes = mark_path.read_bytes()
+        mark_sha = hashlib.sha256(mark_bytes).hexdigest()
+        if mark_sha != mark_info.get('sha256', '').lower():
+            raise ValueError(f'{mark_name} SHA-256 mismatch: got {mark_sha}, marks-UPSTREAM.json has {mark_info.get("sha256")}')
+
     if os.environ.get('CASSINI_VERIFY_UPSTREAM_GH') == '1':
         _verify_upstream_gh(commit, raw_tokens)
 

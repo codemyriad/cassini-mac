@@ -35,7 +35,7 @@ struct LibrarySearchView: View {
                         ForEach(model.hits) { hit in if let meeting = model.meeting(hit) { row(hit,meeting:meeting) } }
                     }
                 }.padding(.horizontal,-5)
-            }.padding(.horizontal,14).frame(width:460).background(CassiniTheme.sidebarGround)
+            }.padding(.horizontal,14).frame(width:460).background(NativeSidebarMaterial())
                 .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("search.results.a11y"))
             Divider()
             if let hit = model.selected, let meeting = model.meeting(hit) { context(hit,meeting:meeting) }
@@ -76,14 +76,18 @@ struct LibrarySearchView: View {
                         let others = meeting.overlappingSpeakerIDs(turn.over,excluding:turn.speaker)
                         HStack(alignment:.top,spacing:16) {
                             VStack(alignment:.leading,spacing:4) {
-                                if hit.showsSpeakerHeader(at:index) { HStack(spacing:5) {
-                                    Text(name(turn.speaker,meeting:meeting)).fontWeight(.semibold)
-                                    if meeting.speaker(for:turn.speaker)?.provenance == .recognised {
-                                        Text(UXText.text("common.autoTag")).font(.system(size:10)).padding(.horizontal,4)
-                                            .overlay(RoundedRectangle(cornerRadius:4).stroke(CassiniTheme.tagStroke))
-                                            .help(UXText.text("common.autoTag.tooltip"))
-                                    }
-                                }.fixedSize() }
+                                if hit.showsSpeakerHeader(at:index) {
+                                    let turnSpeaker = meeting.speaker(for:turn.speaker)
+                                    HStack(spacing:5) {
+                                        Text(name(turn.speaker,meeting:meeting)).fontWeight(.semibold)
+                                            .foregroundStyle(index == hit.turn ? CassiniTheme.speakerInk(turnSpeaker) : CassiniTheme.ink2)
+                                        if turnSpeaker?.provenance == .recognised {
+                                            Text(UXText.text("common.autoTag")).font(.system(size:10)).padding(.horizontal,4)
+                                                .overlay(RoundedRectangle(cornerRadius:4).stroke(CassiniTheme.tagStroke))
+                                                .help(UXText.text("common.autoTag.tooltip"))
+                                        }
+                                    }.fixedSize()
+                                }
                                 if index == hit.turn { Text(LibraryFormat.position(hit.positionMs)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).monospacedDigit() }
                                 if !others.isEmpty { Text(UXText.text("meeting.turn.over",["names":LibraryFormat(locale:UXText.locale,language:UXText.language).list(others.map { name($0,meeting:meeting) })])).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2) }
                             }.frame(width:110,alignment:.leading)
@@ -133,14 +137,14 @@ struct LibrarySearchView: View {
 private struct SearchChip: ViewModifier {
     let active: Bool
     func body(content: Content) -> some View {
-        content.font(.system(size:11.5,weight:active ? .semibold : .regular)).padding(.horizontal,11).frame(height:28)
+        content.font(.system(size:12,weight:.medium)).padding(.horizontal,12).frame(height:28)
             .foregroundStyle(active ? CassiniTheme.onAccent : CassiniTheme.ink)
-            .background(active ? CassiniTheme.accentStrong : CassiniTheme.surface,in:Capsule())
-            .overlay(Capsule().stroke(active ? Color.clear : CassiniTheme.cardStroke))
+            .background(active ? CassiniTheme.accentStrong : CassiniTheme.chipFill,in:Capsule())
     }
 }
 
 /// Native field, including its accessibility, clear control and text editing.
+/// Draws `field` fill and `field-line` border (HARMONY 10.8, 10.14) with full-opacity `ink-3` placeholder.
 struct LibrarySearchField: NSViewRepresentable {
     @Binding var text: String
     var large = false
@@ -152,9 +156,17 @@ struct LibrarySearchField: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> FocusableSearchField {
         let field = FocusableSearchField(); field.delegate = context.coordinator; field.controlSize = large ? .large : .regular
+        field.isBezeled = true; field.bezelStyle = .roundedBezel; field.drawsBackground = false
+        field.isEditable = true; field.isSelectable = true
+        field.focusRingType = .default
         field.font = NSFont.systemFont(ofSize:13)
+        field.textColor = CassiniTheme.nsInk
         field.onClick = onClick
-        field.placeholderString = UXText.text("search.field.placeholder"); field.setAccessibilityLabel(UXText.text("search.field.a11y"))
+        field.placeholderAttributedString = NSAttributedString(
+            string: UXText.text("search.field.placeholder"),
+            attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: CassiniTheme.nsInk3]
+        )
+        field.setAccessibilityLabel(UXText.text("search.field.a11y"))
         field.setAccessibilityIdentifier("library-search-field")
         if let cell = field.cell as? NSSearchFieldCell { cell.cancelButtonCell?.target = context.coordinator; cell.cancelButtonCell?.action = #selector(Coordinator.cancel) }
         return field
@@ -162,16 +174,52 @@ struct LibrarySearchField: NSViewRepresentable {
     func updateNSView(_ view: FocusableSearchField, context: Context) {
         context.coordinator.parent = self
         view.onClick = onClick
-        if view.stringValue != text { view.stringValue = text }
+        if view.stringValue != text { view.stringValue = text; view.needsDisplay = true }
         if focusRequest != context.coordinator.focused {
             context.coordinator.focused = focusRequest
             if focusRequest > 0 { view.requestFocus() }
         }
     }
+    final class BrandedSearchFieldCell: NSSearchFieldCell {
+        override func searchButtonRect(forBounds rect: NSRect) -> NSRect {
+            let base = super.searchButtonRect(forBounds: rect)
+            return NSRect(x: 6, y: base.minY, width: base.width, height: base.height)
+        }
+        override func cancelButtonRect(forBounds rect: NSRect) -> NSRect {
+            guard !stringValue.isEmpty else { return .zero }
+            let base = super.cancelButtonRect(forBounds: rect)
+            return NSRect(x: rect.maxX - base.width - 6, y: base.minY, width: base.width, height: base.height)
+        }
+        override func searchTextRect(forBounds rect: NSRect) -> NSRect {
+            let minX = searchButtonRect(forBounds: rect).maxX + 4
+            let cancel = cancelButtonRect(forBounds: rect)
+            let maxX = cancel.width > 0 ? cancel.minX - 4 : rect.maxX - 8
+            let h: CGFloat = 16
+            return NSRect(x: minX, y: floor((rect.height - h) / 2), width: max(0, maxX - minX), height: h)
+        }
+        override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
+            let radius: CGFloat = controlSize == .large ? 7 : 6
+            let path = NSBezierPath(roundedRect: cellFrame.insetBy(dx: 0.5, dy: 0.5), xRadius: radius, yRadius: radius)
+            CassiniTheme.nsField.setFill()
+            path.fill()
+            CassiniTheme.nsFieldLine.setStroke()
+            path.lineWidth = 1
+            path.stroke()
+            drawInterior(withFrame: cellFrame, in: controlView)
+        }
+    }
     // SwiftUI may update the field before attaching it to a window. Retain the
     // request until attachment rather than losing Cmd-F's keyboard focus.
     final class FocusableSearchField: NSSearchField {
+        override class var cellClass: AnyClass? {
+            get { BrandedSearchFieldCell.self }
+            set {}
+        }
         var onClick: (() -> Void)?
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            needsDisplay = true
+        }
         override func mouseDown(with event: NSEvent) {
             // Open the sidebar before AppKit installs a field editor for the toolbar.
             // Replacing an active field editor can drop keys from a single typing burst.

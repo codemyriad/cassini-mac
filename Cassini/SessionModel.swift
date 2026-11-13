@@ -18,6 +18,8 @@ final class SessionModel {
     let manifest: Manifest?
     /// The manifest's speakers, plus one entry per speaker id the transcript names but the manifest lacks.
     private(set) var speakers: [Speaker] = []
+    private var speakerColourIndices: [String: Int] = [:]
+    private var unnamedSpeakerIDs: Set<String> = []
 
     var selectedTranscriptId: String? {
         didSet { if selectedTranscriptId != oldValue { rebuildTimeline() } }
@@ -124,12 +126,12 @@ final class SessionModel {
 
     var hasQuery: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
 
-    /// Speaker colors: app-local palette while L-14 is open.
-    static let palette: [NSColor] = CassiniTheme.legacySpeakerPalette
-
     func color(for speakerId: String) -> NSColor {
-        guard let i = speakers.firstIndex(where: { $0.id == speakerId }) else { return CassiniTheme.nsInk2 }
-        return SessionModel.palette[i % SessionModel.palette.count]
+        guard let i = speakers.firstIndex(where: { $0.id == speakerId }) else {
+            return CassiniTheme.nsSpeakerInk(colourIndex: 0, unnamed: true)
+        }
+        let unnamed = unnamedSpeakerIDs.contains(speakerId)
+        return CassiniTheme.nsSpeakerInk(colourIndex: speakerColourIndices[speakerId] ?? i, unnamed: unnamed)
     }
 
     func label(for speakerId: String) -> String {
@@ -143,6 +145,11 @@ final class SessionModel {
         let request = UUID(); timelineRequest = request
         preparingTranscript = false
         speakers = manifest?.speakers ?? []
+        speakerColourIndices = [:]
+        unnamedSpeakerIDs = Set(speakers.compactMap { spk in
+            let trimmed = spk.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (trimmed.isEmpty || trimmed.range(of: "^Speaker [0-9]+$", options: .regularExpression) != nil) ? spk.id : nil
+        })
         timeline = nil
         transcriptProblem = nil
         lookupHint = [:]
@@ -167,9 +174,16 @@ final class SessionModel {
         }
         switch entry.load {
         case .available(let t):
+            let chronological = t.items.enumerated().sorted {
+                $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs
+            }.map(\.element)
+            for w in chronological where speakerColourIndices[w.speaker] == nil {
+                speakerColourIndices[w.speaker] = speakerColourIndices.count
+            }
             var known = Set(speakers.map(\.id))
             for w in t.items where !known.contains(w.speaker) {
                 known.insert(w.speaker)
+                unnamedSpeakerIDs.insert(w.speaker)
                 // D53.3: an unnamed speaker written in the UI language.
                 speakers.append(Speaker(id: w.speaker, label: UXText.text("common.speaker.unnamed",["n":String(speakers.count + 1)])))
             }

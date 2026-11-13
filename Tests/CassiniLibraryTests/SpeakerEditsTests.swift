@@ -172,4 +172,57 @@ struct SpeakerEditsTests {
         #expect(SpeakerEdits.sample(longer,speaker:"a")==1000..<11_000)
         #expect(SpeakerEdits.sample(longer,speaker:"missing")==nil)
     }
+    @Test func readOnlyDirectoryScansEditableThenFailsSpeakerSaveAndSevenSpeakerAsideRendersInline() throws {
+        let (root,m)=try fixture()
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions:0o700],ofItemAtPath:m.folder.path)
+            try? FileManager.default.removeItem(at:root)
+        }
+        try FileManager.default.setAttributes([.posixPermissions:0o500],ofItemAtPath:m.folder.path)
+        let scanned=try #require(LibraryScanner(root:root).meeting(at:m.folder))
+        #expect(!scanned.metadataReadOnly)
+        #expect(scanned.metadataRevision != nil)
+        #expect(throws:(any Error).self) {try SpeakerEdits.apply(.name(speaker:"a",value:"Ada"),to:scanned,roots:[root])}
+
+        let turns=MeetingPresentation.turns([
+            .init(speaker:"marta",startMs:4000,endMs:4900,text:"Let’s start with the budget,"),
+            .init(speaker:"giulia",startMs:4900,endMs:5200,text:"Yes, agreed."),
+            .init(speaker:"marta",startMs:5200,endMs:6100,text:"since travel is the one line we need to settle today."),
+        ])
+        let marta=try #require(turns.first {$0.speaker=="marta" && $0.host==nil})
+        #expect(marta.asides.count==1)
+        #expect(turns[marta.asides[0].turn].speaker=="giulia")
+    }
+    @Test func colourIndexRemainsFixedAcrossNamingClearingAndMerges() throws {
+        let (root,m)=try fixture();defer {try? FileManager.default.removeItem(at:root)}
+        let scanner=LibraryScanner(root:root)
+        #expect(m.speakers.map(\.colourIndex)==[0,1,2])
+        #expect(m.speaker(for:"c")?.provenance == .unnamed)
+
+        // Naming speaker c reveals slot 2 without shifting a or b.
+        try SpeakerEdits.apply(.name(speaker:"c",value:"Clara"),to:m,roots:[root],scanner:scanner)
+        let named=try #require(scanner.meeting(at:m.folder))
+        #expect(named.speakers.map {($0.id,$0.colourIndex)}.map {"\($0.0):\($0.1)"} == ["a:0","b:1","c:2"])
+        #expect(named.speaker(for:"c")?.provenance == .user)
+
+        // Merging earlier speaker a (slot 0) into c (slot 2) moves a's earliest turn onto c in
+        // chronological display order, yet c keeps slot 2 and b keeps slot 1 (HARMONY 10.11 / L-41).
+        try SpeakerEdits.apply(.merge(from:"a",into:"c"),to:named,roots:[root],scanner:scanner)
+        let merged=try #require(scanner.meeting(at:m.folder))
+        #expect(merged.speakers.map(\.id) == ["c","b"])
+        #expect(merged.speaker(for:"c")?.colourIndex == 2)
+        #expect(merged.speaker(for:"b")?.colourIndex == 1)
+        #expect(merged.speaker(for:"a")?.colourIndex == 2)
+
+        // Clearing c's name restores unnamed provenance while keeping colourIndex == 2 in metadata.
+        try SpeakerEdits.apply(.name(speaker:"c",value:""),to:merged,roots:[root],scanner:scanner)
+        let cleared=try #require(scanner.meeting(at:m.folder))
+        #expect(cleared.speaker(for:"c")?.provenance == .unnamed)
+        #expect(cleared.speaker(for:"c")?.colourIndex == 2)
+
+        // Undo merge restores a (slot 0), b (slot 1), c (slot 2).
+        try SpeakerEdits.apply(.undoMerge,to:cleared,roots:[root],scanner:scanner)
+        let undone=try #require(scanner.meeting(at:m.folder))
+        #expect(undone.speakers.map {($0.id,$0.colourIndex)}.map {"\($0.0):\($0.1)"} == ["a:0","b:1","c:2"])
+    }
 }

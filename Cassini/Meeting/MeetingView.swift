@@ -17,7 +17,12 @@ struct MeetingView: View {
     private func name(_ speaker: String) -> String { model.speakerName(speaker) }
     private func asides(_ turn: MeetingPresentation.Turn) -> [MeetingTranscriptText.Aside] {
         turn.asides.compactMap { aside in
-            model.turns.indices.contains(aside.turn) ? .init(id:aside.turn,listeningWords:model.transcriptListening.words(in:aside.turn,listeningTo:model.listen.turn?.index),after:aside.after,name:name(model.turns[aside.turn].speaker),items:model.turns[aside.turn].items) : nil
+            guard model.turns.indices.contains(aside.turn) else { return nil }
+            let asideTurn = model.turns[aside.turn]
+            let speaker = meeting.speaker(for:asideTurn.speaker)
+            return .init(id:aside.turn,listeningWords:model.transcriptListening.words(in:aside.turn,listeningTo:model.listen.turn?.index),
+                         after:aside.after,name:name(asideTurn.speaker),items:asideTurn.items,
+                         speakerInk:CassiniTheme.nsSpeakerInk(speaker),speakerWash:CassiniTheme.nsSpeakerWash(speaker))
         }
     }
     /// D55.1 meeting.turn.over: the other speakers whose words overlap this turn.
@@ -40,8 +45,8 @@ struct MeetingView: View {
             (turn.items + asides(turn).flatMap(\.items)).contains { $0.startMs <= model.positionMs && model.positionMs < $0.endMs }
         }?.id
     }
-    private func colour(_ index: Int) -> Color {
-        CassiniTheme.speakerColour(index)
+    private func colour(_ speaker: MeetingSpeaker?) -> Color {
+        CassiniTheme.speakerInk(speaker)
     }
     private func turnLabel(_ turn: MeetingPresentation.Turn) -> String {
         var parts: [String] = [name(turn.speaker), LibraryFormat.position(turn.startMs)]
@@ -80,7 +85,7 @@ struct MeetingView: View {
                 if !turn.continuation { HStack(spacing: 5) {
                     Button { model.listenFromReadingTurn(turn.id) } label: {
                         Text(name(turn.speaker)).fontWeight(.semibold)
-                            .foregroundStyle(colour(meeting.speaker(for:turn.speaker)?.colourIndex ?? 0))
+                            .foregroundStyle(colour(meeting.speaker(for:turn.speaker)))
                     }.buttonStyle(.borderless).disabled(!model.canPlay)
                         .help(UXText.text("listen.speakerName.tooltip",["name":name(turn.speaker)]))
                         .accessibilityLabel(UXText.text("listen.speakerName.tooltip",["name":name(turn.speaker)]))
@@ -152,7 +157,7 @@ struct MeetingView: View {
                         Section {
                             transcriptContent
                         } header: {
-                            MeetingFindBar(model: model.find).padding(.vertical, 8).background(CassiniTheme.paneGround)
+                            MeetingFindBar(model: model.find).padding(.vertical, 8).background(CassiniTheme.surface)
                         }
                     }.padding(.horizontal, 44).padding(.top, 12).padding(.bottom, controlsHeight + 36)
                 }.accessibilityIdentifier("meeting-transcript")
@@ -195,7 +200,7 @@ struct MeetingView: View {
             }
             VStack(spacing: 8) {
                 if let presentation = model.listeningPresentation {
-                    ListeningBar(model:model,presentation:presentation,colour:colour(model.listen.speaker.flatMap { meeting.speaker(for:$0) }?.colourIndex ?? 0))
+                    ListeningBar(model:model,presentation:presentation,colour:colour(model.listen.speaker.flatMap { meeting.speaker(for:$0) }))
                 }
                 playerBar
             }.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { controlsHeight = $0 }
@@ -203,7 +208,7 @@ struct MeetingView: View {
         }
         .animation(reduceMotion ? nil : .easeInOut(duration:0.16),value:model.listen.active)
         .font(.system(size: 13)).foregroundStyle(CassiniTheme.ink)
-        .background(CassiniTheme.paneGround)
+        .background(CassiniTheme.surface)
         .accessibilityElement(children: .contain).accessibilityIdentifier("meeting-page")
         .focusedSceneValue(\.listeningMeeting,model)
         .task(id: FindRequest(query: model.find.query, revision: model.turnsRevision,
@@ -496,10 +501,10 @@ extension SpeakerSidebarRow {
             }
             return Double(maxX) / sx
         }
-        let readOnlyView = SpeakerSidebarRow(speaker:speaker,row:presentation,colour:CassiniTheme.accent,listening:false,canEdit:false,canPlay:true,onName:{},onToggleListen:{})
-        let editableView = SpeakerSidebarRow(speaker:speaker,row:presentation,colour:CassiniTheme.accent,listening:false,canEdit:true,canPlay:true,onName:{},onToggleListen:{})
+        let readOnlyView = SpeakerSidebarRow(speaker:speaker,row:presentation,colour:CassiniTheme.speakerInk(speaker),listening:false,canEdit:false,canPlay:true,onName:{},onToggleListen:{})
+        let editableView = SpeakerSidebarRow(speaker:speaker,row:presentation,colour:CassiniTheme.speakerInk(speaker),listening:false,canEdit:true,canPlay:true,onName:{},onToggleListen:{})
         let dimmedMutant = HStack(alignment:.top,spacing:10) {
-            Circle().fill(CassiniTheme.accent).frame(width:10,height:10).padding(.top,5)
+            Circle().fill(CassiniTheme.speakerInk(speaker)).frame(width:10,height:10).padding(.top,5)
             Button {} label: {
                 HStack(spacing:6) {
                     Text(speaker.displayName).fontWeight(.semibold).lineLimit(1)
