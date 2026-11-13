@@ -6,6 +6,7 @@ struct MeetingView: View {
     @Bindable var model: MeetingDetailModel
     let format: LibraryFormat
     @AppStorage("CassiniCompanionSuggestionDismissed", store: RecordingPreferences.defaults) private var suggestionDismissed = false
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var handScrolling = false
     @State private var headingHeight: CGFloat = 110
@@ -119,7 +120,9 @@ struct MeetingView: View {
     private func turnText(_ turn: MeetingPresentation.Turn) -> MeetingTranscriptText {
         MeetingTranscriptText(items:turn.items,asides:asides(turn),positionMs:model.positionMs,seek:model.seek,
                                   listeningWords:model.transcriptListening.words(in:turn.id,listeningTo:model.listen.turn?.index),
-                                  canPlay:model.canPlay,findRanges:model.find.ranges[turn.id,default:[]],listen:model.listenFromReadingTurn,playFromHere:{
+                                  canPlay:model.canPlay,findRanges:model.find.ranges[turn.id,default:[]],
+                                  selectedFindRange:model.find.selected?.paragraph == turn.id ? model.find.selected?.range : nil,
+                                  dark:colorScheme == .dark,listen:model.listenFromReadingTurn,playFromHere:{
                                       if model.canUseTranscriptShortcuts { model.playFrom(Int(turn.startMs)) }
                                   })
     }

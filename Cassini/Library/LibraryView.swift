@@ -73,16 +73,8 @@ struct LibraryView: View {
         .toolbar {
             if let detail = navigation.detail, detail.meeting.state.lifecycle != .saved {
                 ToolbarItem(placement:.navigation) {
-                    if RecordingOverview.active, let started = RecordingOverview.startedAt {
-                        LiveRecordingPill(started:started,microphone:RecordingOverview.levels["microphone",default:0],output:RecordingOverview.levels["output",default:0])
-                    } else if store.context.screenshot {
-                        LiveRecordingPill(started:store.context.now ?? Date(),microphone:0,output:0.58,frozenMs:detail.meeting.state.liveMs)
-                    } else {
-                        HStack(spacing:6) {
-                            ProgressView().controlSize(.small)
-                            Text(UXText.text("states.badge.saving")).fontWeight(.semibold).foregroundStyle(CassiniTheme.ink2)
-                        }.accessibilityElement(children:.contain).accessibilityIdentifier("recording-toolbar-saving")
-                    }
+                    toolbarControl.padding(.trailing, 10)
+                        .frame(width: 328, alignment: .trailing)
                 }
                 ToolbarItem(placement: .principal) {
                     Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
@@ -506,7 +498,7 @@ struct LibraryView: View {
             }
             if RecordingOverview.active, let started = RecordingOverview.startedAt {
                 LiveRecordingPill(started: started, microphone: RecordingOverview.levels["microphone", default: 0], output: RecordingOverview.levels["output", default: 0])
-            } else if RecordingOverview.saving {
+            } else if RecordingOverview.saving || navigation.detail?.meeting.state.lifecycle == .saving {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text(UXText.text("states.badge.saving")).fontWeight(.semibold).foregroundStyle(CassiniTheme.ink2)
@@ -517,7 +509,9 @@ struct LibraryView: View {
                 .accessibilityElement(children:.contain)
                 .accessibilityIdentifier("toolbar-saving")
             } else if let live = store.meetings.first(where: { $0.state.lifecycle == .recording }) {
-                // Read-only header placeholder until UX5 owns transport/levels.
+                if store.context.screenshot {
+                    LiveRecordingPill(started:store.context.now ?? Date(),microphone:0,output:0.58,frozenMs:live.state.liveMs)
+                } else {
                 HStack(spacing: 8) {
                     Circle().fill(CassiniTheme.recordInk).frame(width: 8, height: 8)
                     Text(LibraryFormat.liveBadge(live.state.liveMs ?? 0)).fontWeight(.semibold).monospacedDigit().foregroundStyle(CassiniTheme.recordInk)
@@ -528,6 +522,7 @@ struct LibraryView: View {
                     Text(UXText.text("common.stop")).font(.system(size: 12, weight: .semibold)).foregroundStyle(CassiniTheme.onRecord)
                         .padding(.horizontal, 12).frame(height: 26).background(CassiniTheme.record, in: Capsule())
                 }.fixedSize().padding(.leading, 13).padding(.trailing, 4).frame(height: 34).background(CassiniTheme.recordTint, in: Capsule())
+                }
             } else { recordButton(big: false) }
         }.accessibilityElement(children: .contain)
     }

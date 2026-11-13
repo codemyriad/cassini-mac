@@ -881,7 +881,7 @@ private final class CaptureFiles: @unchecked Sendable {
         }
         if (captures[id]?.levels[.me] ?? 0) >= 0.01 { captures[id]?.lastMicSound = value.microphoneUptime }
     }
-    func title(_ id: UUID, _ text: String) { captures[id]?.displayTitle = text }
+    func title(_ id: UUID, _ text: String?) { captures[id]?.displayTitle = text }
     private func applyDiskBudget(_ ids: [UUID], _ budget: DiskBudget) {
         for id in ids where captures[id] != nil {
             captures[id]?.diskMinutes = budget.minutesLeft.flatMap { $0 < 30 ? $0 : nil }
