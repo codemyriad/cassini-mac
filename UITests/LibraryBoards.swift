@@ -633,7 +633,7 @@ final class LibraryBoards: XCTestCase {
         let budget = window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000001").firstMatch
         budget.click(); app.typeKey(.return,modifierFlags:[])
         XCTAssertTrue(window.buttons["meeting-export"].waitForExistence(timeout:10),app.debugDescription)
-        XCTAssertEqual(window.staticTexts["meeting-title"].value as? String,"Budget review")
+        XCTAssertEqual(visibleText(window.staticTexts["meeting-title"]),"Budget review")
     }
     @MainActor func testMeetingFindIsLocalAndKeepsTransportAndSidebar() throws {
         let app = try launch("library", fixture: "main"); defer { app.terminate() }
@@ -656,6 +656,9 @@ final class LibraryBoards: XCTestCase {
         window.buttons["meeting-find-next"].click()
         let second = NSPredicate { _,_ in self.visibleText(count).contains("2 of 2") }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:second,object:nil)],timeout:5),.completed)
+        let countWidth = (visibleText(count) as NSString).size(withAttributes:[.font:NSFont.systemFont(ofSize:11.5)]).width
+        XCTAssertGreaterThanOrEqual(count.frame.width + 1, countWidth,"The match count must be drawn, not squeezed to zero beside the native field")
+        XCTAssertTrue(count.isHittable && window.frame.contains(count.frame))
         capture(window,name:"meeting-find")
         window.buttons["meeting-find-next"].click()
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:first,object:nil)],timeout:5),.completed)
@@ -672,7 +675,10 @@ final class LibraryBoards: XCTestCase {
     }
 
     @MainActor func testMeetingScrolledHeaderKeepsFindAndFloatingPlayerReachable() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("cassini-wp3-" + UUID().uuidString)
+        let home = getpwuid(getuid()).flatMap { $0.pointee.pw_dir }.map { URL(fileURLWithPath:String(cString:$0)) }
+            ?? FileManager.default.homeDirectoryForCurrentUser
+        let root = home.appendingPathComponent("Library/Containers/io.codemyriad.cassini/Data/tmp/cassini-wp3-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at:root.deletingLastPathComponent(),withIntermediateDirectories:true)
         try FileManager.default.copyItem(at: fixtureDirectory().appendingPathComponent("Library/main"), to: root)
         defer { try? FileManager.default.removeItem(at: root) }
         let transcript = root.appendingPathComponent("root/Recording-a0000000-0000-4000-8000-000000000001/transcript.json")
@@ -892,9 +898,11 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.buttons["meeting-export"].waitForExistence(timeout:5))
         XCTAssertTrue(text("00:14:32",in:window),window.debugDescription)
         app.typeKey("f",modifierFlags:.command)
-        XCTAssertTrue(window.searchFields["library-search-field"].waitForExistence(timeout:5))
-        XCTAssertEqual(window.searchFields["library-search-field"].value as? String,"")
-        // Cmd-F must focus the newly attached native field without a mouse click.
+        let localFind = window.textFields["meeting-find"]
+        XCTAssertTrue(localFind.waitForExistence(timeout:5))
+        app.typeText("budget")
+        XCTAssertEqual(localFind.value as? String,"budget","Cmd-F after opening a hit searches the meeting")
+        window.searchFields["library-search-field"].click()
         app.typeText("budget")
         XCTAssertEqual(window.searchFields["library-search-field"].value as? String,"budget")
         app.typeKey(.escape,modifierFlags:[])
@@ -1239,8 +1247,8 @@ final class LibraryBoards: XCTestCase {
     @MainActor func testTranscriptCanBeClosedAndReopened() throws {
         let app = try launch("library", fixture: "main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
-        let budget = window.outlines.staticTexts["meeting-Recording-a0000000-0000-4000-8000-000000000001"]
-        let client = window.outlines.staticTexts["meeting-Recording-a0000000-0000-4000-8000-000000000002"]
+        let budget = window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000001").firstMatch
+        let client = window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch
         XCTAssertTrue(budget.waitForExistence(timeout:20))
         for _ in 0..<3 {
             client.click()
@@ -1304,10 +1312,10 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.textFields["meeting-find"].waitForExistence(timeout:20))
         XCTAssertTrue(window.buttons["Not now"].waitForExistence(timeout:10))
         window.buttons["Not now"].click()
-        window.outlines.staticTexts["meeting-Recording-a0000000-0000-4000-8000-000000000002"].click()
+        window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch.click()
         let client = NSPredicate { _,_ in self.visibleText(window.staticTexts["meeting-title"]) == "Client call, Rossi & Partners" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:client,object:nil)],timeout:10),.completed)
-        window.outlines.staticTexts["meeting-Recording-a0000000-0000-4000-8000-000000000001"].click()
+        window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000001").firstMatch.click()
         let budget = NSPredicate { _,_ in self.visibleText(window.staticTexts["meeting-title"]) == "Budget review" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:budget,object:nil)],timeout:10),.completed)
         XCTAssertFalse(window.buttons["Not now"].exists)

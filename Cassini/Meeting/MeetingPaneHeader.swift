@@ -34,7 +34,8 @@ struct MeetingPaneHeader: View {
                 }.padding(.vertical, 2)
             }.scrollIndicators(.hidden).frame(height: 24)
         }.frame(maxWidth: .infinity, alignment: .leading)
-            .foregroundStyle(CassiniTheme.ink).accessibilityIdentifier("meeting-heading")
+            .foregroundStyle(CassiniTheme.ink)
+            .accessibilityElement(children: .contain).accessibilityIdentifier("meeting-heading")
     }
 
     private func inlineSpeaker(_ speaker: MeetingSpeaker) -> some View {

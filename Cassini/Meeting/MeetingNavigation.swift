@@ -10,7 +10,7 @@ import Observation
     private(set) var loading = false
     @ObservationIgnored private var readTask: Task<Void, Never>?
     @ObservationIgnored var openLibrary: (() -> Void)? = { ApplicationWindows.library() }
-    func open(_ meeting: LibraryMeeting, autoplay: Bool = false, frozen: Bool = false) {
+    func open(_ meeting: LibraryMeeting, autoplay: Bool = false, frozen: Bool = false, activate: Bool = true) {
         guard !LibraryMoveCoordinator.shared.busy || meeting.state.lifecycle != .saved else { return }
         if LibrarySearchModel.shared.visible { LibrarySearchModel.shared.close() }
         readTask?.cancel(); loading = false
@@ -22,7 +22,7 @@ import Observation
             detail = MeetingDetailModel(meeting: meeting, frozen: frozen)
             if autoplay { detail?.toggle() }
         }
-        openLibrary?()
+        if activate { openLibrary?() }
     }
     func openFile(_ url: URL, autoplay: Bool) {
         if detail?.fileURL == url.standardizedFileURL {

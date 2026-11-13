@@ -50,7 +50,7 @@ struct LibraryView: View {
                 ParakeetDefaultNotice()
             }.padding(.horizontal,18)
 
-            if !store.context.screenshot && companionSetup.showLibraryState && navigation.detail == nil && !search.visible {
+            if !store.context.screenshot && companionSetup.showLibraryState && navigation.detail?.meeting.state.lifecycle != .recording && !search.visible {
                 BrowserConnectionStateView(identifier:"library-browser-status",presenter:.library)
                     .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).padding(.horizontal,18).padding(.vertical,8)
             }
@@ -104,7 +104,7 @@ struct LibraryView: View {
                             Text(store.format.previewSubtitle(detail.meeting.meetingTime, durationMs: detail.meeting.durationMs,
                                                               received: detail.meeting.state.origin == .received))
                                 .foregroundStyle(CassiniTheme.ink2).lineLimit(1)
-                        }.accessibilityIdentifier("meeting-compact-header")
+                        }.accessibilityElement(children: .contain).accessibilityIdentifier("meeting-compact-header")
                     }
                 }
                 if let spec = meetingTranscriptionToolbarSpec(detail) {
@@ -471,7 +471,7 @@ struct LibraryView: View {
         }.buttonStyle(.plain).disabled(!RecordingOverview.canStart).accessibilityLabel(title).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
     }
     private func openSelection(userInitiated: Bool = false) {
-        guard !search.visible, store.loaded, !LibraryMoveCoordinator.shared.busy else { return }
+        guard !search.visible, store.loaded, !LibraryMoveCoordinator.shared.busy, !trash.busy else { return }
         if navigation.detail?.fileURL != nil && !userInitiated { return }
         if let meeting = store.selected {
             #if DEBUG
@@ -480,9 +480,9 @@ struct LibraryView: View {
             #endif
             if navigation.detail?.meeting.libraryKey != meeting.libraryKey {
                 sessionPlayback.stop()
-                navigation.open(meeting, frozen: store.context.screenshot)
+                navigation.open(meeting, frozen: store.context.screenshot, activate: userInitiated)
             }
-        } else if store.selectedKeys.count > 1 { navigation.back() }
+        } else if store.selectedKeys.count > 1 || store.selectedKeys.isEmpty { navigation.back() }
     }
 
     private func readTranscript(_ meeting: LibraryMeeting) {

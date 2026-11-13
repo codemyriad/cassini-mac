@@ -26,11 +26,13 @@ private actor RecordingEdits {
         // View initializers look this up during rendering; lookup must not
         // publish observed changes back into the same render pass.
         if let model = editors[meeting.folder.path] { return model }
-        // Keep the current editor across Back/Open, even before the watcher has
-        // observed its last write. Retain older editors only while writes settle.
-        editors = editors.filter { $0.value.titleTask != nil }
         let model = RecordingPageModel(meeting,uptime:uptime)
         editors[meeting.folder.path] = model; return model
+    }
+    /// Prune on presentation, not during repeated SwiftUI initializer lookups.
+    /// A background render of another page must not evict an editor in use.
+    func didPresent() {
+        Self.editors = Self.editors.filter { $0.value === self || $0.value.titleTask != nil }
     }
     static func discard(for folder: URL) async {
         guard let model = editors.removeValue(forKey:folder.path) else { return }

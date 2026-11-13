@@ -97,7 +97,7 @@ struct RecordingPageView: View {
                     HStack { Spacer(); Button(UXText.text("common.close")) { explainingFallback = false }.keyboardShortcut(.defaultAction) }
                 }.font(.system(size:13)).padding(26).frame(width:480).onExitCommand { explainingFallback = false }
             }
-            .onAppear { model.update(detail.meeting) }
+            .onAppear { model.didPresent(); model.update(detail.meeting) }
             // D52: the live source line comes from session.json only (GNOME live_problem).
             .task(id:"\(detail.meeting.libraryKey)#\(LibraryStore.shared.revision)") {
                 let folder = detail.meeting.folder
