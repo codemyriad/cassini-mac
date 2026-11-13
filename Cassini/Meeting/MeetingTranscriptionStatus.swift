@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import CassiniLibrary
-import IOKit.ps
 import SwiftUI
 
 /// L-45: desktop exposes progress in the heading; partial words stay on disk
@@ -19,30 +18,18 @@ struct MeetingTranscriptionStatus: View {
         guard minutes > 0 else { return UXText.text("states.badge.transcribing.underMinute") }
         return UXText.text("transcribing.heading") + " · " + UXText.text("transcribing.eta.minutes", ["n": minutes.formatted(.number.locale(UXText.locale))])
     }
-    private var timeLeft: String {
-        guard let minutes = meeting.state.etaMinutes else { return "—" }
+    private var timeLeft: String? {
+        guard let minutes = meeting.state.etaMinutes else { return nil }
         guard minutes > 0 else { return UXText.text("states.badge.transcribing.underMinute") }
         return UXText.text("transcribing.stat.timeLeftValue", ["n": minutes.formatted(.number.locale(UXText.locale))])
     }
-    private var speechModel: String {
+    private var speechModel: String? {
         let queue = TranscriptionQueue.shared
         let identifier = queue.active == meeting.folder ? queue.activeModel : meeting.transcriptModel
         switch identifier {
         case "whistle": return UXText.text("models.whistle.name")
         case let name? where name.hasPrefix("parakeet"): return UXText.text("models.parakeetUltra.name")
-        default: return "—"
-        }
-    }
-    private var hasBattery: Bool {
-        #if DEBUG
-        if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
-           LibraryLaunchContext.argument("-CassiniLaptopFixture") == "YES" { return true }
-        #endif
-        guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
-              let sources = IOPSCopyPowerSourcesList(info)?.takeRetainedValue() as? [CFTypeRef] else { return false }
-        return sources.contains { source in
-            guard let description = IOPSGetPowerSourceDescription(info, source)?.takeUnretainedValue() as? [String:Any] else { return false }
-            return description[kIOPSTypeKey] as? String == kIOPSInternalBatteryType
+        default: return nil
         }
     }
     var body: some View {
@@ -91,14 +78,12 @@ struct MeetingTranscriptionStatus: View {
                     Text(UXText.text(step)).foregroundStyle(CassiniTheme.ink2)
                 }
             }
-            Divider()
-            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
-                metric(UXText.text("details.writing.model"), value: speechModel, id: "model")
-                metric(UXText.mac("transcription.speed"), value: "—", id: "speed")
-                metric(UXText.text("transcribing.stat.timeLeft"), value: timeLeft, id: "time-left")
-                metric(UXText.text("transcribing.stat.audioDone"), value: "—", id: "audio-done")
-                metric(UXText.text("transcribing.stat.wordsSoFar"), value: "—", id: "words")
-                if hasBattery { metric(UXText.text("transcribing.stat.batteryAtFinish"), value: "—", id: "battery") }
+            if speechModel != nil || timeLeft != nil {
+                Divider()
+                Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
+                    if let speechModel { metric(UXText.text("details.writing.model"), value: speechModel, id: "model") }
+                    if let timeLeft { metric(UXText.text("transcribing.stat.timeLeft"), value: timeLeft, id: "time-left") }
+                }
             }
             Button(UXText.text("transcribing.stopAndKeepProgress")) { stop() }
                 .disabled(!canStop).accessibilityIdentifier("transcription-stop-keep-progress")

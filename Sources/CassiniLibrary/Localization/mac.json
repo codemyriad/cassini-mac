@@ -421,27 +421,6 @@
           "text": "Retomar transcrição"
         }
       }
-    },
-    {
-      "id": "mac.transcription.speed",
-      "en": "Speed",
-      "l10n": {
-        "it": {
-          "text": "Velocità"
-        },
-        "fr": {
-          "text": "Vitesse"
-        },
-        "es": {
-          "text": "Velocidad"
-        },
-        "pt-BR": {
-          "text": "Velocidade"
-        },
-        "pt-PT": {
-          "text": "Velocidade"
-        }
-      }
     }
   ]
 }

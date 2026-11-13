@@ -1244,7 +1244,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
     }
     @MainActor func testTranscribingBoardKeepsPartialWordsHiddenAndAudioAvailable() throws {
-        let app = try launch("library", fixture: "main", extra: ["-CassiniLaptopFixture", "YES"])
+        let app = try launch("library", fixture: "main")
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         let client = window.outlines.staticTexts.matching(identifier: "meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch
@@ -1272,11 +1272,11 @@ final class LibraryBoards: XCTestCase {
         details.click()
         let popover = window.descendants(matching: .any)["transcription-popover"]
         XCTAssertTrue(popover.waitForExistence(timeout: 5), app.debugDescription)
-        for id in ["model", "speed", "time-left", "battery"] {
-            XCTAssertTrue(window.staticTexts["transcription-stat-" + id].exists, id)
+        XCTAssertTrue(window.staticTexts["transcription-stat-time-left"].exists)
+        XCTAssertEqual(visibleText(window.staticTexts["transcription-stat-time-left"]), "About 4 min")
+        for id in ["model", "speed", "audio-done", "words", "battery"] {
+            XCTAssertFalse(window.staticTexts["transcription-stat-" + id].exists, "Do not present unreported engine stats: " + id)
         }
-        XCTAssertEqual(visibleText(window.staticTexts["transcription-stat-speed"]), "—", "Do not invent engine speed")
-        XCTAssertEqual(visibleText(window.staticTexts["transcription-stat-battery"]), "—", "Do not invent battery predictions")
         XCTAssertFalse(window.buttons["transcription-stop-keep-progress"].isEnabled)
         XCTAssertTrue(text("Keeps going in the background while Cassini is open.", in: window))
         capture(window, name: "transcribing-details")
@@ -1308,7 +1308,9 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: available, object: nil)], timeout: 20), .completed, app.debugDescription)
         window.buttons["meeting-transcription-details"].click()
         let keep = window.buttons["transcription-stop-keep-progress"]
-        XCTAssertTrue(keep.waitForExistence(timeout: 5)); XCTAssertTrue(keep.isEnabled); keep.click()
+        XCTAssertTrue(keep.waitForExistence(timeout: 5)); XCTAssertTrue(keep.isEnabled)
+        XCTAssertTrue(window.staticTexts["transcription-stat-model"].waitForExistence(timeout: 20), "An active queue reports its chosen model")
+        keep.click()
         let resume = window.buttons["meeting-write-down"]
         let paused = NSPredicate { _, _ in resume.exists && resume.isEnabled && !stop.exists }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: paused, object: nil)], timeout: 15), .completed, app.debugDescription)
