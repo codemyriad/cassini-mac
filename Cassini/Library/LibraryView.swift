@@ -305,6 +305,9 @@ struct LibraryView: View {
                                         .simultaneousGesture(TapGesture().onEnded {
                                             if NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
                                                 store.selectedKey = meeting.libraryKey
+                                                if meeting.state.lifecycle != .saved {
+                                                    navigation.open(meeting, frozen:store.context.screenshot)
+                                                }
                                             }
                                         })
                                         .contextMenu {

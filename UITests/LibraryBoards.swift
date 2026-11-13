@@ -930,6 +930,13 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(window.textViews["recording-notes"].exists)
         XCTAssertFalse(text("Pinned to the moment you type it.",in:window))
         capture(window,name:"recording")
+        // Back leaves the same row selected. A single click must reopen it,
+        // even though the selection value itself does not change.
+        window.buttons["recording-back"].click()
+        let liveRow = window.descendants(matching:.any).matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000003").firstMatch
+        XCTAssertTrue(liveRow.waitForExistence(timeout:5))
+        liveRow.click()
+        XCTAssertTrue(window.textFields["recording-title"].waitForExistence(timeout:5))
     }
     @MainActor func testRecordingTitleAndHiddenControls() throws {
         let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
