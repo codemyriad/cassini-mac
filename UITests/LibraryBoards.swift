@@ -20,14 +20,14 @@ final class LibraryBoards: XCTestCase {
             XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
             XCTAssertTrue(window.staticTexts["meeting-title"].isHittable)
             XCTAssertEqual(window.descendants(matching:.any).matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-turn-")).count,0)
-            capture(window,name:"transcribing")
+            if !usePopover { capture(window,name:"transcribing") }
             window.buttons["transcribing-details"].click()
             let stop = app.buttons["transcribing-stop-keep-progress"]
             XCTAssertTrue(stop.waitForExistence(timeout:5),app.debugDescription)
             for label in ["Audio done","Time left","Words so far","Battery at finish","Reading","Preparing","Words","Speakers & matching","Saving"] {
                 XCTAssertTrue(app.staticTexts[label].exists,label)
             }
-            capture(window,name:"transcribing-details")
+            if !usePopover { capture(window,name:"transcribing-details") }
             if usePopover { stop.click() }
             else {
                 app.typeKey(.escape,modifierFlags:[])
