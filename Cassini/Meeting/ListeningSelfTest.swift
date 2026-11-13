@@ -13,6 +13,9 @@ import CassiniLibrary
         guard var meeting = try? LibraryScanner(root:LibraryStore.shared.context.root).scan().meetings.first(where:{ $0.state.lifecycle == .saved && !$0.speakers.isEmpty }) else {
             FileHandle.standardError.write(Data("No saved speaker fixture\n".utf8)); exit(2)
         }
+        // This proof installs a completed synthetic transcript below. Discovery
+        // order must not inherit the running state of another Library fixture.
+        meeting.state.transcript = .done
         guard let template = meeting.speakers.first else { exit(2) }
         var a = template, b = template
         a.id = "a"; b.id = "b"; a.name = "Unidentified voice"; b.name = "Unidentified voice"
@@ -80,6 +83,13 @@ import CassiniLibrary
         NotificationCenter.default.post(name:NSMenu.didBeginTrackingNotification,object:menu)
         report["menuKeepsKeys"] = AppDelegate.handleListeningSelfTest(key(125)) != nil && detail.listen.index == 0
         NotificationCenter.default.post(name:NSMenu.didEndTrackingNotification,object:menu)
+        detail.listen.preview("a")
+        report["completedTranscriptCommandsAvailable"] = detail.showsTranscript && detail.canUseListeningCommands && detail.canUseListeningShortcuts(in:window)
+        for status in [TranscriptStatus.queued, .running] {
+            detail.meeting.state.transcript = status
+            detail.listen.preview("a")
+            report[status.rawValue + "TranscriptCommandsBlocked"] = !detail.showsTranscript && !detail.canUseListeningCommands && !detail.canUseListeningShortcuts(in:window) && detail.canPlay
+        }
         detail.close(); MeetingNavigation.shared.detail = nil
         MeetingDetailModel.announcementForSelfTest = nil; timeout.cancel()
         FileHandle.standardOutput.write((try! JSONSerialization.data(withJSONObject:report,options:[.sortedKeys])) + Data([10])); exit(0)
