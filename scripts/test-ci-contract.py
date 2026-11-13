@@ -116,12 +116,83 @@ class NativeSpectrogramScheduling(unittest.TestCase):
         for source in ['Spikes/Spectrogram/main.swift','Spikes/Spectrogram/Probe.swift','Cassini/Recording/RecordingSpectrogram.swift']:
             self.assertIn('SpectrogramFixtureHost.current',(ROOT/source).read_text(),source)
         self.assertIn("Spikes/Spectrogram/Host.swift",(ROOT/'scripts/build-spectrogram-probe.py').read_text())
+        for source in ['Cassini/Theme/CassiniTheme.swift','Cassini/Theme/CassiniTokens.swift']:
+            self.assertIn(source,(ROOT/'scripts/build-spectrogram-probe.py').read_text(),source)
         # Keep every production proof exactly once, including the motion XCTest
         # driver supplied by Debug products and the same-build optimized objects.
         for script in ['CheckBudget.swift','test-spectrogram-harness.py',
                        'CheckSampleClock.swift','build-spectrogram-probe.py','test-spectrogram-app.py']:
             self.assertEqual(body.count(script),2 if script in ['build-spectrogram-probe.py','test-spectrogram-app.py'] else 1)
             self.assertIn(script,native)
+
+    @staticmethod
+    def _strip_swift_for_probe(src):
+        src = re.sub(r'/\*.*?\*/', '', src, flags=re.S)
+        src = re.sub(r'//.*', '', src)
+        src = re.sub(r'"(?:\\.|[^"\\])*"', '""', src)
+        def eval_cond(expr):
+            expr = expr.strip()
+            if '!SPECTROGRAM_PROBE' in expr:
+                return False
+            if 'SPECTROGRAM_PROBE' in expr or expr == 'DEBUG':
+                return True
+            return True
+        kept, stack = [], []  # stack of (active_so_far, branch_taken)
+        for line in src.splitlines():
+            stripped = line.strip()
+            if stripped.startswith('#if '):
+                parent = all(active for active, _ in stack)
+                cond = parent and eval_cond(stripped[4:])
+                stack.append((cond, cond))
+            elif stripped.startswith('#elseif ') and stack:
+                parent = all(active for active, _ in stack[:-1])
+                _, taken = stack[-1]
+                cond = parent and not taken and eval_cond(stripped[8:])
+                stack[-1] = (cond, taken or cond)
+            elif stripped == '#else' and stack:
+                parent = all(active for active, _ in stack[:-1])
+                _, taken = stack[-1]
+                stack[-1] = (parent and not taken, True)
+            elif stripped == '#endif' and stack:
+                stack.pop()
+            elif all(active for active, _ in stack):
+                kept.append(line)
+        return '\n'.join(kept)
+
+    @classmethod
+    def _missing_probe_app_types(cls, probe_app_sources, extra_source_overrides=None):
+        overrides = extra_source_overrides or {}
+        type_defs = {}
+        for path in sorted((ROOT/'Cassini').rglob('*.swift')):
+            rel = path.relative_to(ROOT).as_posix()
+            clean = cls._strip_swift_for_probe(overrides.get(rel, path.read_text()))
+            for match in re.finditer(
+                r'(?m)^(?:\s*@\w+(?:\([^)]*\))?\s*)*(?:public\s+|internal\s+|private\s+|fileprivate\s+|final\s+)*'
+                r'(?:enum|struct|class|actor|protocol)\s+([A-Za-z_]\w*)\b',
+                clean,
+            ):
+                line = clean[clean.rfind('\n', 0, match.start()) + 1:match.end()]
+                if not line.startswith((' ', '\t')) and 'private ' not in line and 'fileprivate ' not in line:
+                    type_defs.setdefault(match.group(1), set()).add(rel)
+        included = set(probe_app_sources)
+        missing = {}
+        for rel in sorted(included):
+            clean = cls._strip_swift_for_probe(overrides.get(rel, (ROOT/rel).read_text()))
+            for token in sorted(set(re.findall(r'\b[A-Z]\w*\b', clean))):
+                if token in type_defs and not type_defs[token].issubset(included):
+                    missing.setdefault(rel, {})[token] = sorted(type_defs[token] - included)
+        return missing
+
+    def test_spectrogram_probe_includes_all_referenced_app_target_types(self):
+        probe_script = (ROOT/'scripts/build-spectrogram-probe.py').read_text()
+        probe_app_sources = re.findall(r"ROOT/'(Cassini/[^']+\.swift)'", probe_script)
+        self.assertIn('Cassini/Recording/RecordingSpectrogram.swift', probe_app_sources)
+        self.assertEqual(self._missing_probe_app_types(probe_app_sources), {})
+        without_theme = [s for s in probe_app_sources if s != 'Cassini/Theme/CassiniTheme.swift']
+        self.assertIn('CassiniTheme', self._missing_probe_app_types(without_theme).get('Cassini/Recording/RecordingSpectrogram.swift', {}))
+        without_tokens = [s for s in probe_app_sources if s != 'Cassini/Theme/CassiniTokens.swift']
+        wired_theme = {'Cassini/Theme/CassiniTheme.swift': 'enum CassiniTheme { static let c = CassiniTokens.record }'}
+        self.assertIn('CassiniTokens', self._missing_probe_app_types(without_tokens, wired_theme).get('Cassini/Theme/CassiniTheme.swift', {}))
 
 
 def ci_job(name):
