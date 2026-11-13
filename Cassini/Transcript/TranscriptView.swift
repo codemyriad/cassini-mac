@@ -327,7 +327,7 @@ struct TranscriptView: NSViewRepresentable {
             let names = layout.visibleTurns.filter { ids.contains($0.id) }.map { session.label(for: $0.speaker) }
             guard !names.isEmpty else { return }
             NSAccessibility.post(element: textView, notification: .announcementRequested, userInfo: [
-                .announcement: names.joined(separator: ", "),
+                .announcement: names.formatted(.list(type: .and).locale(UXText.locale)),
                 .priority: NSAccessibilityPriorityLevel.medium.rawValue,
             ])
         }

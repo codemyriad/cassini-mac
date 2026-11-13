@@ -685,11 +685,11 @@ struct LibraryView: View {
     private func meetingTranscriptionToolbarSpec(_ detail: MeetingDetailModel) -> TranscriptionToolbarSpec? {
         let busy = LibraryMoveCoordinator.shared.busy || transcriptionQueue.isStopping(detail.meeting.folder)
         if detail.meeting.canWriteDown && detail.meeting.state.transcript == .none {
-            let title = detail.meeting.transcriptPaused ? UXText.mac("transcription.resume") : UXText.text("common.writeDown")
+            let title = UXText.text("common.writeDown")
             return .init(title:title,identifier:"meeting-write-down",enabled:!busy) { TranscriptionQueue.shared.writeDown(detail) }
         }
         if [.queued,.running].contains(detail.meeting.state.transcript) && !detail.meeting.metadataReadOnly {
-            let title = UXText.mac("transcription.stop")
+            let title = UXText.text("transcribing.stopAndKeepProgress")
             return .init(title:title,identifier:"meeting-stop-transcription",enabled:!busy) { TranscriptionQueue.shared.stop(detail.meeting) }
         }
         return nil
@@ -698,10 +698,10 @@ struct LibraryView: View {
     private func previewTranscriptionButton(_ meeting: LibraryMeeting) -> some View {
         let busy = LibraryMoveCoordinator.shared.busy || transcriptionQueue.isStopping(meeting.folder)
         if meeting.canWriteDown && meeting.state.transcript == .none && !meeting.metadataReadOnly {
-            Button(meeting.transcriptPaused ? UXText.mac("transcription.resume") : UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
+            Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
                 .buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("preview-write-down")
         } else if [.queued,.running].contains(meeting.state.transcript) && !meeting.metadataReadOnly {
-            Button(UXText.mac("transcription.stop")) { TranscriptionQueue.shared.stop(meeting) }
+            Button(UXText.text("transcribing.stopAndKeepProgress")) { TranscriptionQueue.shared.stop(meeting) }
                 .buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("preview-stop-transcription")
         }
     }
