@@ -49,6 +49,24 @@ struct TranscriptFindTests {
         let stale = TranscriptFind.Match(paragraph: 99, range: NSRange(location: 0, length: 3))
         #expect(TranscriptFind.adjacent(to: stale, direction: .next, in: hits) == hits.first)
     }
+    @Test func sharedProjectionFindsAnAsideOnceInItsActualHost() throws {
+        let words: [LibraryTranscriptItem] = [
+            .init(speaker: "claire", startMs: 0, endMs: 400, text: "We"),
+            .init(speaker: "claire", startMs: 400, endMs: 800, text: "agree."),
+            .init(speaker: "guest", startMs: 750, endMs: 1100, text: "Yes."),
+            .init(speaker: "claire", startMs: 1000, endMs: 1800, text: "Thanks.")]
+        let turns = MeetingPresentation.turns(words)
+        let child = try #require(turns.first { $0.speaker == "guest" })
+        let host = try #require(child.host)
+        let paragraphs = MeetingPresentation.visibleTurns(turns).map {
+            TranscriptFind.Paragraph(id: $0.id, text: MeetingPresentation.prose($0, in: turns, names: ["guest": "Dario"], locale: locale, language: .en).text)
+        }
+        let hits = try TranscriptFind.matches(in: paragraphs, query: "Yes.", locale: locale)
+        #expect(hits.count == 1)
+        #expect(hits.first?.paragraph == host)
+        let paragraph = try #require(paragraphs.first { $0.id == host })
+        #expect(hits.map { (paragraph.text as NSString).substring(with: $0.range) } == ["Yes."])
+    }
     @Test func cancellationStopsAQueryBeforePublishingMatches() async throws {
         let ready = AsyncStream<Void>.makeStream()
         let gate = AsyncStream<Void>.makeStream()

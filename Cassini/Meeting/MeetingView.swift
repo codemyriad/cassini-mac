@@ -8,9 +8,10 @@ struct MeetingView: View {
     @AppStorage("CassiniCompanionSuggestionDismissed", store: RecordingPreferences.defaults) private var suggestionDismissed = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var handScrolling = false
+    @State private var headingHeight: CGFloat = 110
+    @State private var controlsHeight: CGFloat = 40
     var showsCompanionSuggestion: Bool { !suggestionDismissed && !CaptureCollection.shared.connected }
     private var meeting: LibraryMeeting { model.meeting }
-    private var shares: [String: Int] { model.shares }
     /// M11: paragraphs only; an aside is shown inside its host.
     private var visibleTurns: [MeetingPresentation.Turn] { MeetingPresentation.visibleTurns(model.turns) }
     private func name(_ speaker: String) -> String { model.speakerName(speaker) }
@@ -111,62 +112,77 @@ struct MeetingView: View {
     private func turnText(_ turn: MeetingPresentation.Turn) -> MeetingTranscriptText {
         MeetingTranscriptText(items:turn.items,asides:asides(turn),positionMs:model.positionMs,seek:model.seek,
                                   listeningWords:model.transcriptListening.words(in:turn.id,listeningTo:model.listen.turn?.index),
-                                  canPlay:model.canPlay,listen:model.listenFromReadingTurn,playFromHere:{
+                                  canPlay:model.canPlay,findRanges:model.find.ranges[turn.id,default:[]],listen:model.listenFromReadingTurn,playFromHere:{
                                       if model.canUseTranscriptShortcuts { model.playFrom(Int(turn.startMs)) }
                                   })
     }
-    /// The speakers column, kept out of `body` for the Xcode 16.4 type checker.
-    private var speakersPane: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text(UXText.text("common.speakers")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.secondaryInk)
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
-                        ForEach(meeting.speakers, id: \.id) { speaker in speakerRow(speaker).id(speaker.id) }
-                    }
-                }.onChange(of: model.listen.speaker) { _, speaker in
-                    if let speaker = speaker.flatMap({ meeting.speaker(for:$0) }) {
-                        if reduceMotion { proxy.scrollTo(speaker.id,anchor:.center) }
-                        else { withAnimation { proxy.scrollTo(speaker.id,anchor:.center) } }
-                    }
-                }
+    private var transcriptContent: some View {
+        LazyVStack(alignment: .leading, spacing: 22) {
+            if let line = RecordingOverview.libraryDiskLine { Text(line).foregroundStyle(CassiniTheme.warningNotice) }
+            if [.queued, .running].contains(meeting.state.transcript), let badge = meeting.state.badge {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(badge.text).foregroundStyle(CassiniTheme.ink2)
+                }.accessibilityIdentifier("meeting-transcribing")
             }
-            Button(UXText.text("meeting.nameSpeakers")) {
-                MeetingRenameCoordinator.shared.showSpeaker(meeting,id:model.listen.speaker ?? model.namingSpeakerID)
-            }.buttonStyle(.borderless).disabled(!MeetingRenameCoordinator.shared.canEditSpeakers(meeting) || meeting.speakers.isEmpty)
-                .accessibilityIdentifier("name-the-speakers")
-            Spacer(minLength: 0)
-        }.padding(.horizontal, 19).padding(.top, 14)
-            .frame(width: 260).frame(maxHeight: .infinity)
-            .background(CassiniTheme.sidebarGround)
-            .accessibilityElement(children: .contain).accessibilityLabel(UXText.text("meeting.speakersPane.a11y"))
+            if let folder = meeting.received?.originalFolderName {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "folder").accessibilityHidden(true)
+                    Text(UXText.text("received.folderCard", ["folder": folder])).fixedSize(horizontal: false, vertical: true)
+                }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(CassiniTheme.chipFill, in: RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier("received-folder-card")
+            }
+            if meeting.hasNoSpeech {
+                // A Library move disables Write down again only (the line disables it); the
+                // permission hint's Open System Settings stays available, as in Recording details.
+                NoSpeechTranscriptLine(action:meeting.canWriteDown ? { TranscriptionQueue.shared.writeDown(model) } : nil,meeting:meeting)
+            }
+            if let line = issueLine { InlineMeetingLine(id: line, actionID: meeting.state.transcript == .failed ? "common.tryAgain" : nil, action: meeting.state.transcript == .failed ? { TranscriptionQueue.shared.writeDown(model) } : nil).disabled(LibraryMoveCoordinator.shared.busy) }
+            if showsCompanionSuggestion { companionCard }
+            ForEach(visibleTurns) { turn in turnRow(turn) }
+        }
     }
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                speakersPane
-                Divider()
-                ScrollViewReader { proxy in ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 22) {
-                        if meeting.hasNoSpeech {
-                            // A Library move disables Write down again only (the line disables it); the
-                            // permission hint's Open System Settings stays available, as in Recording details.
-                            NoSpeechTranscriptLine(action:meeting.canWriteDown ? { TranscriptionQueue.shared.writeDown(model) } : nil,meeting:meeting)
+        ZStack(alignment: .bottom) {
+            ScrollViewReader { proxy in ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 18, pinnedViews: [.sectionHeaders]) {
+                        MeetingPaneHeader(model: model, format: format)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headingHeight = $0 }
+                        Section {
+                            transcriptContent
+                        } header: {
+                            MeetingFindBar(model: model.find).padding(.vertical, 8).background(CassiniTheme.paneGround)
                         }
-                        if let line = issueLine { InlineMeetingLine(id: line, actionID: meeting.state.transcript == .failed ? "common.tryAgain" : nil, action: meeting.state.transcript == .failed ? { TranscriptionQueue.shared.writeDown(model) } : nil).disabled(LibraryMoveCoordinator.shared.busy) }
-                        if showsCompanionSuggestion { companionCard }
-                        ForEach(visibleTurns) { turn in turnRow(turn) }
-                    }.padding(.horizontal, 48).padding(.vertical, 22)
+                    }.padding(.horizontal, 44).padding(.top, 12).padding(.bottom, controlsHeight + 36)
                 }.accessibilityIdentifier("meeting-transcript")
                     .onScrollPhaseChange { _,phase in
                         handScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
                     }
-                    .onScrollGeometryChange(for:CGFloat.self) { $0.contentOffset.y } action: { _,_ in
+                    .onScrollGeometryChange(for:CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
+                        model.compactHeader = offset > headingHeight
                         if handScrolling { model.handScrolledTranscript() }
+                    }
+                    .onChange(of: model.find.selected) { _, match in
+                        if let match { model.handScrolledTranscript(); proxy.scrollTo(match.paragraph, anchor: .center) }
+                    }
+                    .onChange(of: model.turnsRevision) { _, _ in
+                        if let id = model.revealTurnID { proxy.scrollTo(id, anchor: .center) }
+                        else if let position = model.revealPositionMs,
+                                let turn = visibleTurns.first(where: { $0.endMs > position }) { proxy.scrollTo(turn.id, anchor: .center) }
+                    }
+                    .onChange(of: model.revealTurnID) { _, id in
+                        if let id { proxy.scrollTo(id, anchor: .center) }
+                    }
+                    .onChange(of: model.revealPositionMs) { _, position in
+                        if let position, let turn = visibleTurns.first(where: { $0.endMs > position }) { proxy.scrollTo(turn.id, anchor: .center) }
                     }
                     .task {
                         await Task.yield()
-                        if let turn = model.listeningHost ?? currentTurn { proxy.scrollTo(turn,anchor:.center) }
+                        if let turn = model.listeningHost { proxy.scrollTo(turn,anchor:.center) }
+                        else if let id = model.revealTurnID { proxy.scrollTo(id, anchor: .center) }
+                        else if let position = model.revealPositionMs,
+                                let turn = visibleTurns.first(where: { $0.endMs > position }) { proxy.scrollTo(turn.id, anchor: .center) }
                     }
                     .onChange(of:model.followRevision) { _,_ in
                         if let host = model.listeningHost {
@@ -186,40 +202,34 @@ struct MeetingView: View {
                             else { withAnimation { proxy.scrollTo(turn,anchor:.center) } }
                         }
                     }
+            }
+            VStack(spacing: 8) {
+                if let presentation = model.listeningPresentation {
+                    ListeningBar(model:model,presentation:presentation,colour:colour(model.listen.speaker.flatMap { meeting.speaker(for:$0) }?.colourIndex ?? 0))
                 }
-            }
-            // Keep the controls in the main layout/hit-test tree. On macOS 15,
-            // safeAreaInset paints this bar but its buttons fail AX hit testing.
-            if let presentation = model.listeningPresentation {
-                ListeningBar(model:model,presentation:presentation,colour:colour(model.listen.speaker.flatMap { meeting.speaker(for:$0) }?.colourIndex ?? 0))
-                    .transition(reduceMotion ? .identity : .move(edge:.bottom).combined(with:.opacity))
-            }
-            Divider()
-            playerBar
+                playerBar
+            }.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { controlsHeight = $0 }
+                .padding(.horizontal, 28).padding(.bottom, 16)
         }
         .animation(reduceMotion ? nil : .easeInOut(duration:0.16),value:model.listen.active)
         .font(.system(size: 13))
         .background(CassiniTheme.paneGround)
         .accessibilityElement(children: .contain).accessibilityIdentifier("meeting-page")
         .focusedSceneValue(\.listeningMeeting,model)
+        .task(id: FindRequest(query: model.find.query, revision: model.turnsRevision,
+                              language: UXText.language.rawValue, locale: UXText.locale.identifier,
+                              names: meeting.speakerDisplayNames)) {
+            await model.find.search(turns: model.turns, names: meeting.speakerDisplayNames, language: UXText.language, locale: UXText.locale)
+        }
     }
-    /// D70: independent Play target, also available for directly opened/read-only meetings.
-    private func speakerRow(_ speaker: MeetingSpeaker) -> some View {
-        let turns = model.listen.turns(of:speaker.id)
-        let row = SpeakerRowPresentation(speaker:speaker,turns:turns,percent:shares[speaker.id,default:0],
-                                         language:UXText.language,locale:UXText.locale)
-        let listening = model.listen.speaker.map { meeting.mergedInto[$0] ?? $0 } == speaker.id
-        return SpeakerSidebarRow(
-            speaker:speaker,
-            row:row,
-            colour:colour(speaker.colourIndex),
-            listening:listening,
-            canEdit:MeetingRenameCoordinator.shared.canEditSpeakers(meeting),
-            canPlay:model.canPlay && (listening || !turns.isEmpty),
-            onName:{ MeetingRenameCoordinator.shared.showSpeaker(meeting,id:speaker.id) },
-            onToggleListen:{ model.toggleSpeakerListening(speaker.id) }
-        )
+    private struct FindRequest: Hashable {
+        let query: String
+        let revision: Int
+        let language: String
+        let locale: String
+        let names: [String:String]
     }
+
     private var autoTag: some View {
         Text(UXText.text("common.autoTag")).font(.system(size: 10.5)).foregroundStyle(CassiniTheme.secondaryInk).padding(.horizontal, 4)
             .overlay(RoundedRectangle(cornerRadius: 4).stroke(CassiniTheme.secondaryTagStroke))
@@ -250,10 +260,10 @@ struct MeetingView: View {
             .accessibilityElement(children: .contain).accessibilityLabel(UXText.text("meeting.companionCard.a11y")).accessibilityIdentifier("meeting-companion-card")
     }
     private var playerBar: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 10) {
             Button { model.skip(-10) } label: { Image(systemName: "gobackward.10").frame(width: 24, height: 36) }.help(UXText.text("player.back10")).accessibilityLabel(UXText.text("player.back10"))
             Button { model.toggle() } label: {
-                Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").foregroundStyle(CassiniTheme.onAccent).frame(width: 44, height: 44)
+                Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").foregroundStyle(CassiniTheme.onAccent).frame(width: 28, height: 28)
                     .background(CassiniTheme.accentStrong, in: Circle())
             }.accessibilityLabel(UXText.text(model.isPlaying ? "player.pause" : "common.play")).accessibilityIdentifier("meeting-play")
             Button { model.skip(10) } label: { Image(systemName: "goforward.10").frame(width: 24, height: 36) }.help(UXText.text("player.forward10")).accessibilityLabel(UXText.text("player.forward10"))
@@ -267,7 +277,10 @@ struct MeetingView: View {
                 .fontWeight(.semibold).padding(.horizontal, 9).frame(height: 30).background(CassiniTheme.ratePillFill, in: RoundedRectangle(cornerRadius: 5))
                 .accessibilityIdentifier("meeting-speed")
                 .accessibilityLabel(UXText.text("player.speed.a11y",["rate":UXText.text("format.playbackRate",["rate":model.rate.formatted(.number.precision(.fractionLength(0...2)).locale(UXText.locale))])]))
-        }.buttonStyle(.plain).padding(.horizontal, 24).frame(height: 64).background(CassiniTheme.windowGround)
+        }.buttonStyle(.plain).padding(.horizontal, 10).frame(height: 40)
+            .background(CassiniTokens.raised, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(CassiniTokens.lineSoft, lineWidth: 1))
+            .shadow(color: CassiniTokens.shadow, radius: 10, y: 5)
             .disabled(!model.canPlay).accessibilityElement(children: .contain).accessibilityLabel(UXText.text("player.a11y"))
     }
 }

@@ -9,12 +9,14 @@ struct MeetingFindBar: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(CassiniTheme.ink2).accessibilityHidden(true)
             TextField(UXText.text("meeting.find.placeholder"), text: $model.query)
-                .textFieldStyle(.plain).focused($focused)
+                .textFieldStyle(.plain).focused($focused).frame(minWidth: 80).layoutPriority(1)
                 .accessibilityLabel(UXText.text("meeting.find.placeholder"))
                 .accessibilityIdentifier("meeting-find")
                 .onSubmit { model.step(.next) }
                 .onExitCommand { model.query = ""; focused = false }
-            if !model.query.isEmpty {
+            if model.searching {
+                ProgressView().controlSize(.mini).accessibilityIdentifier("meeting-find-searching")
+            } else if !model.query.isEmpty {
                 Text(model.status).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.ink2)
                     .lineLimit(1).accessibilityIdentifier("meeting-find-count")
                 Button { model.step(.previous) } label: { Image(systemName: "chevron.up") }
@@ -31,5 +33,7 @@ struct MeetingFindBar: View {
             .padding(.horizontal, 9).frame(height: 28)
             .background(CassiniTheme.ink.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
             .onChange(of: model.focusRequest) { _, _ in focused = true }
+            .onChange(of: focused) { _, value in model.focused = value }
+            .onDisappear { model.focused = false }
     }
 }

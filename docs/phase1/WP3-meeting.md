@@ -1,29 +1,31 @@
-# WP3 implementation handoff (big-mac)
+# WP3 Meeting view (big-mac)
 
-Prerequisite: merged WP1 from agy-mac, canonical UX 5e0c34e0f1bb390298dabdf4eedc494e933fd329. Rebase this preparation onto that main before integration; no copying an open WP1 branch. #263 merged as 71c7ec8. WP2 sidebar/search belongs to agy-mac.
+This package follows L-22, L-24, L-43 and L-44 in the Phase 1 decisions log. `LibraryOpen-Mac*.dc.html` is the pane reference; it supersedes the older separate-speakers `Meeting-Mac` board. No summaries exist, so no Summary/Transcript tabs are added.
 
-The Phase 1 decisions log wins. L-22/L-43/L-44 specify one-step detail open, inline renameable speakers, in-meeting Find, floating player and compact scrolled header. No summary exists: no Summary/Transcript tabs. Preserve existing transcript anatomy, gap/error actions, listening transport/shortcuts, export and trash semantics. No new Recently Deleted store; the existing move-to-system-Trash action stays the backend. No speaker saved-voice backend or Phase 2 work.
+The coordinator authorized integration from current main while WP1 is built. Fetch and stack on agy-mac's WP1 once pushed; keep the PR draft until WP1 merges, then rebase onto main. WP1 carries the canonical UX pin `5e0c34e0f1bb390298dabdf4eedc494e933fd329`, including the Find/empty-selection strings and final theme helpers. WP2's sidebar/search styling remains with agy-mac.
 
-## Integration boundary
+## Pane and ownership
 
-- LibraryView keeps the Library sidebar and its WP2-owned search/rows. Replace the old detail preview with an extracted Meeting pane; route selection and search-result navigation into the same pane. Keep the sidebar on opening a meeting rather than switching the whole root to MeetingView.
-- MeetingView owns the page heading (rename pencil, date/duration), inline speaker names (dot, recognised marker, soft underline when unnamed), Find and transcript/player. Move existing speaker controls into header-accessible controls rather than losing listening, provenance or talk-share information.
-- Header actions stay in one Export/trash capsule; recording details remains reachable from More. The toolbar has no Library title. The compact meeting title/date appear only after the page heading scrolls away.
-- Native TextKit selection, Copy/Select All and seeking survive find highlights. A query searches the displayed host paragraph including inline asides, uses UTF-16 ranges and exposes deterministic next/previous matches. Query work runs off MainActor, cancels on query/meeting change, and cannot apply stale results. Find navigation scrolls to the match without starting playback. Search-result open lands at the matched line without autoplay unless Play was chosen.
-- Player is a floating raised surface with token line/shadow. Keep real transport, seek/readout, rate and listening controls. Leave enough transcript bottom inset to read the final turn; verify hit-testing and VoiceOver.
+LibraryView keeps the Library list beside the real meeting. Single selection and keyboard selection open it directly; multi-selection retains bulk export. Explicit list interaction can switch away from an external document, but a background Library refresh cannot replace one. Global Search keeps its existing entry field until WP2 moves it to the sidebar. Closing global Search restores the selected meeting.
 
-## Boards inspected
+MeetingPaneHeader owns the heading, rename pencil, date/duration and inline speakers. Writable names open the existing speaker editor; read-only names remain plain text. Independent speaker Play, provenance, turn timing and talk shares remain accessible through the inline row and its context menu. No saved-voice backend or new persistence is introduced.
 
-`boards/ui/LibraryOpen-Mac*.dc.html` is the current pane reference (1120×720, 400 sidebar, 52 toolbar; content inset 44; heading 22 bold; inline 7px speaker dots; player inset 28, bottom 16). Meeting-Mac* is older separate speakers-page anatomy and loses to L-43/L-44. Player-Mac is a component reference; the current pane board's compact 40px floating player is the integration reference. Find/scrolled light/dark wrappers import the same LibraryOpen component. No summary is implemented even though the board's default tab includes a summary mock.
+The heading scrolls away; its measured height drives the compact toolbar title/date. Export and the existing system-Trash action share a capsule; recording details and Undo merge remain in More. No Recently Deleted store is invented. Existing received-folder information remains until WP7.
 
-Recording-Mac*: next WP4, compact 30px timer/Stop, one source card, native existing meters, mic silence warning, recording details in More. Transcribing-Mac*: WP5, empty desktop transcript until complete, status line/thin bar/Stop and chevron popover; no live draft invention. Speakers-Mac*: WP6, floating single-column dialog, quote/name, footer merge/cancel/save; flag absent saved voices instead of inventing it.
+The player floats in an explicit hit-testable layout with existing seek, skip, rate and listening controls. Its measured height supplies transcript bottom padding. In the narrower pane, listening excerpts reflow below their controls rather than disappearing.
 
-## Verification / screenshots
+## Find
 
-Before/after actual app boards in light and dark for open meeting, Find and scrolled state; use ui-shots CI plus tools/pr-shots diff artifact. App seats do not run pr-shots publish/prune (coordinator publishes). Preserve baseline/head SHAs and run provenance. Add event-driven UI checks for single selection open, Cmd-F query/next/previous/highlight, scroll compact header, search hit landing, accessible transport and inline speaker rename. Run relevant pure Find tests and native app checks under ~/bin/heavy-run (two shared slots). Ready only after exact-head CI and pr-shots green; Seat: big-mac; no AI attribution lines in commits.
+The pinned native Find field stays reachable during next/previous navigation. Cmd-F focuses it while a meeting is open. A detached cancellable task searches the shared MeetingPresentation.prose projection; inline asides appear once in their visible host. Foundation's case/diacritic-insensitive literal search returns UTF-16 ranges for the exact TextKit string. No range recomputation or normalization changes the displayed transcript.
 
-## Preparation verification
+TextKit applies shared token highlight colours without replacing native selection or seek/listen attributes. A query/revision guard rejects obsolete results. Empty queries skip paragraph construction. Find focus yields keyboard input, including spaces, rather than executing playback/transcript shortcuts. Finding and changing matches scrolls without seeking or starting playback.
 
-On base main `71c7ec82` (merged #263), the six `TranscriptFindTests` pass in the actual CassiniLibrary test target. A Debug arm64 app build with Xcode 16.4 / macOS SDK 15.5 compiles MeetingFindModel and MeetingFindBar successfully. No app was launched, no devices were opened, and both runs used heavy-run. Evidence: `~/coordination/evidence/phase1-wp3/{find-tests-final,native-preparation}`. Project generation was used only for the local build and reset afterward; regenerate from merged WP1 during integration.
+Global Search supplies the exact prepared row ID for hit revelation, with position as fallback when no row context is available. The existing audio seek/autoplay policy is retained independently.
 
-These Find components are preparation only: not wired to the meeting page, no UI outcome or screenshot proof is claimed yet. Push this checkpoint to remote `prep/phase1-wp3-find`. The local integration branch `feat/phase1-wp3-meeting` remains unpublished under its final name, so it can rebase onto merged WP1 without force-pushing any public branch. Then wire the page and open the single WP3 PR on main.
+## Verification and screenshots
+
+TranscriptFindTests exercise Unicode offsets, accented/decomposed words, phrases, repeated occurrences, missing/empty queries, next/previous wrapping, cancellation and the real shared inline-aside projection. The D70 listening and D84 interjection regressions protect existing transcript anatomy. All heavy commands run under ~/bin/heavy-run; Xcode 16.4 builds explicitly select macOS SDK 15.5.
+
+Native UI tests exercise direct selection changes, read-only/writable speaker controls, local Find/cycling/clear/space input, global Search guards and actual scroll geometry. The scrolled case uses a private copy of the existing valid Library fixture with additional bounded transcript turns; no forced compact-header state. Screenshot export requires meeting-open, meeting-find and meeting-scrolled in both light and dark, alongside existing meeting boards.
+
+The existing ui-shots job supplies actual app before/after pr-shots and source/run provenance. App seats do not run publish/prune. Ready only after WP1 merges and complete exact-head CI plus light/dark pr-shots pass. One WP3 PR on main, Seat: big-mac; no AI attribution in commits. WP4, WP5, WP6 and WP7 follow in the dispatched order; Phase 2 is excluded.

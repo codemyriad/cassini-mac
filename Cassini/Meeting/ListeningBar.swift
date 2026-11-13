@@ -7,6 +7,7 @@ struct ListeningBar: View {
     @Bindable var model: MeetingDetailModel
     let presentation: ListeningBarPresentation
     let colour: Color
+    @State private var narrow = false
     private func step(_ id: String, symbol: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action:action) { Image(systemName:symbol).frame(width:24,height:28) }
             .disabled(!enabled).help(UXText.text(id)).accessibilityLabel(UXText.text(id))
@@ -59,7 +60,15 @@ struct ListeningBar: View {
                         .accessibilityIdentifier("listen-stop")
                 }.padding(.horizontal,16).frame(height:36)
             }.frame(height:36)
-        }.font(.system(size:11.5)).buttonStyle(.borderless).background(.bar)
+            if narrow {
+                (Text(presentation.previousExcerpt).foregroundColor(CassiniTheme.secondaryColor)
+                 + Text(presentation.previousExcerpt.isEmpty ? "" : " | ").foregroundColor(CassiniTheme.secondaryColor)
+                 + Text(presentation.currentExcerpt))
+                    .lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16).padding(.bottom, 8).accessibilityIdentifier("listen-excerpt")
+            }
+        }.onGeometryChange(for: Bool.self) { $0.size.width < 720 } action: { narrow = $0 }
+            .font(.system(size:11.5)).buttonStyle(.borderless).background(.bar)
             .accessibilityElement(children:.contain).accessibilityLabel(presentation.accessibilityLabel)
             .accessibilityIdentifier("listening-bar")
             .onAppear { model.resetListeningAnnouncement(); model.announceListeningTurn() }

@@ -80,6 +80,11 @@ import Observation
             }
         }
     }
+    let find = MeetingFindModel()
+    var compactHeader = false
+    private(set) var turnsRevision = 0
+    var revealPositionMs: Int64?
+    var revealTurnID: Int?
     private(set) var turns: [MeetingPresentation.Turn] = []
     private(set) var listeningTurns: [SpeakerTurn] = []
     private(set) var timelineReadout = TimelineReadout()
@@ -122,6 +127,7 @@ import Observation
         // Screenshot and self-test fixtures render a fixed frame: prepared in place.
         if frozen {
             turns = MeetingPresentation.turns(meeting.transcriptItems,gaps:meeting.speakerGaps,endsBoundedByAudio:meeting.wordEndsBoundedByAudio)
+            turnsRevision &+= 1
             listeningTurns = meeting.speakerTurns; listen.setTurns(listeningTurns)
             timelineReadout = TimelineReadout(items:meeting.transcriptItems)
             transcriptListening = TranscriptListening(rows:turns,turns:listeningTurns)
@@ -146,6 +152,7 @@ import Observation
     }
     private func acceptTurns(_ turns: [MeetingPresentation.Turn]) {
         self.turns = turns
+        turnsRevision &+= 1
         if let preparation {
             listeningTurns = preparation.speakerTurns; listen.setTurns(listeningTurns)
             timelineReadout = preparation.timelineReadout
@@ -176,7 +183,7 @@ import Observation
     // Commands observe model state only; AppKit focus is checked when invoked.
     var canUseListeningCommands: Bool { listen.active && canUseTranscriptCommands }
     private var canUseTranscriptCommands: Bool {
-        canPlay && MeetingNavigation.shared.detail === self && !LibrarySearchModel.shared.visible &&
+        canPlay && !find.focused && MeetingNavigation.shared.detail === self && !LibrarySearchModel.shared.visible &&
         MeetingRenameCoordinator.shared.presentation == nil && !MeetingExportCoordinator.shared.showing &&
         !RecordingDetailsCoordinator.shared.showing && !RecordCoordinator.shared.showingFirst &&
         CompanionSetup.shared.presenter != .library && !RecordingConfirmation.active
