@@ -27,7 +27,7 @@ struct AppCommands: Commands {
         }
         CommandGroup(replacing:.help) { }
         CommandGroup(replacing: .newItem) {
-            Button(UXText.mac("menu.open")) { LegacyOpening.chooseDocuments() }.keyboardShortcut("o", modifiers: .command)
+            Button(UXText.text("import.action")) { LegacyOpening.chooseDocuments() }.keyboardShortcut("o", modifiers: .command)
             Button(RecordingOverview.recordCommandTitle) {
                 if RecordingConfirmation.active { RecordingConfirmation.stop() }
                 else { openWindow(id: "library"); RecordCoordinator.shared.request(parent: LibraryStore.shared.context.root) }

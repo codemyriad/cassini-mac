@@ -74,8 +74,34 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
         var open: (() -> Void)?
         private var monitor: Monitor?
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        func suppressSystemRowHighlight() {
+            var node = superview
+            while let view = node {
+                if let row = view as? NSTableRowView {
+                    if row.selectionHighlightStyle != .none {
+                        row.selectionHighlightStyle = .none
+                    }
+                    if row.isEmphasized {
+                        row.isEmphasized = false
+                    }
+                }
+                if let table = view as? NSTableView, table.selectionHighlightStyle != .none {
+                    table.selectionHighlightStyle = .none
+                }
+                node = view.superview
+            }
+        }
+        override func viewDidMoveToSuperview() {
+            super.viewDidMoveToSuperview(); suppressSystemRowHighlight()
+        }
+        override func layout() {
+            super.layout(); suppressSystemRowHighlight()
+        }
+        override func viewWillDraw() {
+            super.viewWillDraw(); suppressSystemRowHighlight()
+        }
         override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow(); stopMonitoring()
+            super.viewDidMoveToWindow(); suppressSystemRowHighlight(); stopMonitoring()
             guard window != nil else { return }
             monitor = Monitor(NSEvent.addLocalMonitorForEvents(matching:.leftMouseDown) { [weak self] event in
                 MainActor.assumeIsolated {
@@ -105,6 +131,7 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
     func makeNSView(context: Context) -> View { View() }
     func updateNSView(_ view: View, context: Context) {
         view.open = open
+        view.suppressSystemRowHighlight()
     }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: View, context: Context) -> CGSize? {
         CGSize(width:proposal.width ?? 0,height:proposal.height ?? 0)

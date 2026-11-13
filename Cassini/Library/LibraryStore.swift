@@ -104,6 +104,18 @@ final class LibraryStore {
         guard !selectedKeys.isEmpty else { return [] }
         return meetings.filter { selectedKeys.contains($0.libraryKey) }
     }
+    @discardableResult
+    func stepSelection(_ delta: Int) -> Bool {
+        let ordered = groups.flatMap { $0.meetings.map(\.libraryKey) }
+        guard !ordered.isEmpty else { return false }
+        guard let current = primarySelectedKey, let index = ordered.firstIndex(of: current) else {
+            selectedKey = delta >= 0 ? ordered.first : ordered.last
+            return true
+        }
+        let next = min(max(index + delta, 0), ordered.count - 1)
+        selectedKey = ordered[next]
+        return true
+    }
     private(set) var loaded = false
     private(set) var revision = 0
     private(set) var offline = false
