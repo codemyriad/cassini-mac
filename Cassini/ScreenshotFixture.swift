@@ -36,8 +36,13 @@ enum ScreenshotFixture {
         guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               LibraryLaunchContext.argument("-CassiniScreenshot") == "meeting" else { return nil }
         let source = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Fixtures/Library/main")
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniCompletedMeeting-" + UUID().uuidString)
+        // Hosted UI tests launch sequentially. Reuse this fixture-owned scratch
+        // location so repeated app launches do not retain another 275 MB copy.
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniCompletedMeeting")
         do {
+            if FileManager.default.fileExists(atPath: directory.path) {
+                try FileManager.default.removeItem(at: directory)
+            }
             try FileManager.default.copyItem(at: source, to: directory)
             let file = directory.appendingPathComponent("root/Recording-a0000000-0000-4000-8000-000000000002/meeting.json")
             var metadata = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as! [String:Any]
