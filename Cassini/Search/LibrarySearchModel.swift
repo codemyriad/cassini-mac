@@ -98,6 +98,8 @@ import CassiniSearch
         close(); LibraryStore.shared.selectedKey = meeting.libraryKey
         MeetingNavigation.shared.open(meeting,frozen:context.screenshot)
         MeetingNavigation.shared.detail?.seek(Int(hit.positionMs))
+        MeetingNavigation.shared.detail?.revealPositionMs = hit.positionMs
+        MeetingNavigation.shared.detail?.revealTurnID = hit.context.first { $0.index == hit.turn }?.turn.id
         if play, MeetingNavigation.shared.detail?.isPlaying != true { MeetingNavigation.shared.detail?.toggle() }
     }
 }

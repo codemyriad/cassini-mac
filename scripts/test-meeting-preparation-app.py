@@ -30,7 +30,7 @@ args.output.with_suffix('.stderr.txt').write_text(stderr)
 assert result.returncode == 0,(result.returncode,result.stdout,stderr)
 report = json.loads(result.stdout)
 assert all(report[name] is True for name in ('preparedOffMain','mainActorProgressed','outageCancelled','recoveryDelivered','readoutDeliveredWithTurns',
-    'nativeTrackMatchesThumbTravel','nativePointerClampsToTrack','nativePointerPreservesThumbGrabOffset','nativePointerSnapAndDragReadout','nativeDragReadoutClears',
+    'nativeTrackMatchesThumbTravel','nativeTrackUsesCassiniAccent','nativePointerClampsToTrack','nativePointerPreservesThumbGrabOffset','nativePointerSnapAndDragReadout','nativeDragReadoutClears',
     'nativeMouseDownSnapsNearTurn','nativeDisabledPointerIsIgnored',
     'nativeMouseDownPreservesOffCenterGrab','nativeStationaryThumbDoesNotSnap','nativeVerticalThumbMovementDoesNotSeek','nativeZeroWidthThumbDoesNotSeek','nativeThumbGrabPreservesExactValues','nativePointerKeepsTranscriptFocus','nativeMouseUpDoesNotRepeatSeek',
     'nativeMouseDragUsesWindowCoordinates','nativeMouseDownClampsBothEnds','nativeMouseDragStopsWhenDisabled','nativeMouseDragStopsWhenDetached',

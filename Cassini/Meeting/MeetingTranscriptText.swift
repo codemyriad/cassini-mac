@@ -23,6 +23,7 @@ struct MeetingTranscriptText: NSViewRepresentable {
     let seek: (Int) -> Void
     var listeningWords: Set<Int> = []
     var canPlay = true
+    var findRanges: [NSRange] = []
     var listen: (Int) -> Void = { _ in }
     var playFromHere: () -> Void = {}
 
@@ -42,7 +43,7 @@ struct MeetingTranscriptText: NSViewRepresentable {
     }
     func update(_ view: MeetingTurnTextView) {
         view.seek = seek; view.listen = listen; view.playFromHere = playFromHere; view.canPlay = canPlay
-        let input = MeetingTurnTextView.Input(items:items,asides:asides,words:listeningWords,canPlay:canPlay,language:UXText.language.rawValue)
+        let input = MeetingTurnTextView.Input(items:items,asides:asides,words:listeningWords,canPlay:canPlay,language:UXText.language.rawValue,findRanges:findRanges)
         if view.input != input {
             view.input = input
             view.boundaries = Array(Set((items+asides.flatMap(\.items)).flatMap { [$0.startMs,$0.endMs] }
@@ -143,6 +144,10 @@ struct MeetingTranscriptText: NSViewRepresentable {
                 text.append(NSAttributedString(string: " ")); text.append(chip(aside))
             }
         }
+        for range in findRanges where range.location >= 0 && range.length > 0 && NSMaxRange(range) <= text.length {
+            text.addAttributes([.backgroundColor: CassiniTheme.nsSearchHighlight,
+                                .foregroundColor: CassiniTheme.nsHighlightInk ?? CassiniTheme.nsInk], range: range)
+        }
         return text
     }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView view: MeetingTurnTextView, context: Context) -> CGSize? {
@@ -162,6 +167,7 @@ final class MeetingTurnTextView: NSTextView {
         let words: Set<Int>
         let canPlay: Bool
         let language: String
+        let findRanges: [NSRange]
     }
     var input: Input?
     var boundaries: [Int64] = []

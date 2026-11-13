@@ -57,6 +57,8 @@ struct MeetingPositionSlider: View {
         slider.doubleValue = 40000
         let right = cell.knobRect(flipped:slider.isFlipped).midX
         var report = ["nativeTrackMatchesThumbTravel": abs(slider.track.minX-left) < 0.001 && abs(slider.track.minX+slider.track.width-right) < 0.001]
+        let expectedAccent = CassiniTheme.nsAccent.usingColorSpace(.sRGB)
+        report["nativeTrackUsesCassiniAccent"] = expectedAccent != nil && slider.trackFillColor?.usingColorSpace(.sRGB) == expectedAccent
         report["nativePointerClampsToTrack"] = slider.pointerPosition(at:-100,knobOffset:0) == 0 && slider.pointerPosition(at:1000,knobOffset:0) == 40000
         let grabbedX = CGFloat(slider.track.x(at:10000,duration:40000)) + 5
         report["nativePointerPreservesThumbGrabOffset"] = abs(slider.pointerPosition(at:grabbedX,knobOffset:5)-10000) < 0.001
@@ -237,6 +239,14 @@ private struct NativeMeetingSlider: NSViewRepresentable {
         slider.isEnabled = isEnabled
     }
     final class TimeSlider: NSSlider {
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            trackFillColor = CassiniTheme.nsAccent
+        }
+        required init?(coder: NSCoder) {
+            super.init(coder: coder)
+            trackFillColor = CassiniTheme.nsAccent
+        }
         var geometryChanged: ((ListeningTimeline.Track) -> Void)?
         var trackingChanged: ((Double?) -> Void)?
         private(set) var mouseTracking = false

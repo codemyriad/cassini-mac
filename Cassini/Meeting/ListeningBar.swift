@@ -7,65 +7,89 @@ struct ListeningBar: View {
     @Bindable var model: MeetingDetailModel
     let presentation: ListeningBarPresentation
     let colour: Color
+    @State private var narrow = false
     private func step(_ id: String, symbol: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action:action) { Image(systemName:symbol).frame(width:24,height:28) }
             .disabled(!enabled).help(UXText.text(id)).accessibilityLabel(UXText.text(id))
             .accessibilityIdentifier(id)
     }
-    var body: some View {
-        VStack(spacing:0) {
-            Divider()
-            GeometryReader { geometry in
-                HStack(spacing:8) {
-                    Circle().fill(colour).frame(width:8,height:8).accessibilityHidden(true)
-                    Text(presentation.speakerName).fontWeight(.semibold).lineLimit(1)
-                        .frame(maxWidth:geometry.size.width*0.25,alignment:.leading)
-                        .fixedSize(horizontal:true,vertical:false)
-                        .help(presentation.speakerName)
-                    Text(presentation.label).foregroundStyle(CassiniTheme.secondaryInk).monospacedDigit().fixedSize()
-                        .accessibilityIdentifier("listen-turn")
-                    if geometry.size.width >= 720 {
-                        (Text(presentation.previousExcerpt).foregroundColor(CassiniTheme.secondaryColor)
-                         + Text(presentation.previousExcerpt.isEmpty ? "" : " | ").foregroundColor(CassiniTheme.secondaryColor)
-                         + Text(presentation.currentExcerpt))
-                            .lineLimit(1).truncationMode(.tail).help([presentation.previousExcerpt,presentation.currentExcerpt].filter { !$0.isEmpty }.joined(separator:" | "))
-                            .frame(maxWidth:.infinity,alignment:.leading).accessibilityIdentifier("listen-excerpt")
-                    } else { Spacer(minLength:0) }
-                    step("listen.previousTurn",symbol:"chevron.up",enabled:model.canStepListeningTurn(-1)) { model.stepListeningTurn(-1) }
-                    step("listen.nextTurn",symbol:"chevron.down",enabled:model.canStepListeningTurn(1)) { model.stepListeningTurn(1) }
-                    Divider().frame(height:18)
-                    step("listen.previousSpeaker",symbol:"chevron.left",enabled:model.canStepListeningSpeaker(-1)) { model.stepListeningSpeaker(-1) }
-                    step("listen.nextSpeaker",symbol:"chevron.right",enabled:model.canStepListeningSpeaker(1)) { model.stepListeningSpeaker(1) }
-                    if model.listen.finished {
-                        Button(UXText.text("listen.again")) { model.playListeningAgain() }
-                            .fixedSize().accessibilityIdentifier("listen-again")
-                    }
-                    Button(UXText.text("listen.name")) {
-                        MeetingRenameCoordinator.shared.showSpeaker(model.meeting,id:model.listen.speaker)
-                    }.disabled(!MeetingRenameCoordinator.shared.canEditSpeakers(model.meeting)).accessibilityIdentifier("listen-name")
-                    Menu(UXText.text("speakers.mergeInto")) {
-                        ForEach(model.meeting.speakers.filter {$0.id != model.listen.speaker},id:\.id) {other in
-                            Button(other.displayName) {
-                                let editor=MeetingRenameCoordinator.shared
-                                if let speaker=model.listen.speaker {
-                                    editor.mergeSpeaker(model.meeting,from:model.meeting.mergedInto[speaker] ?? speaker,into:other.id)
-                                }
-                            }
+    private var speakerName: some View {
+        HStack(spacing: 8) {
+            Circle().fill(colour).frame(width:8,height:8).accessibilityHidden(true)
+            Text(presentation.speakerName).fontWeight(.semibold).lineLimit(1).help(presentation.speakerName)
+        }
+    }
+    private var turnLabel: some View {
+        Text(presentation.label).foregroundStyle(CassiniTheme.secondaryInk).monospacedDigit().fixedSize()
+            .accessibilityIdentifier("listen-turn")
+    }
+    private var excerpt: some View {
+        (Text(presentation.previousExcerpt).foregroundColor(CassiniTheme.secondaryColor)
+         + Text(presentation.previousExcerpt.isEmpty ? "" : " | ").foregroundColor(CassiniTheme.secondaryColor)
+         + Text(presentation.currentExcerpt))
+            .lineLimit(1).truncationMode(.tail)
+            .help([presentation.previousExcerpt,presentation.currentExcerpt].filter { !$0.isEmpty }.joined(separator:" | "))
+            .frame(maxWidth:.infinity,alignment:.leading).accessibilityIdentifier("listen-excerpt")
+    }
+    private var stepping: some View {
+        HStack(spacing: 8) {
+            step("listen.previousTurn",symbol:"chevron.up",enabled:model.canStepListeningTurn(-1)) { model.stepListeningTurn(-1) }
+            step("listen.nextTurn",symbol:"chevron.down",enabled:model.canStepListeningTurn(1)) { model.stepListeningTurn(1) }
+            Divider().frame(height:18)
+            step("listen.previousSpeaker",symbol:"chevron.left",enabled:model.canStepListeningSpeaker(-1)) { model.stepListeningSpeaker(-1) }
+            step("listen.nextSpeaker",symbol:"chevron.right",enabled:model.canStepListeningSpeaker(1)) { model.stepListeningSpeaker(1) }
+        }.fixedSize()
+    }
+    private var editing: some View {
+        HStack(spacing: 8) {
+            if model.listen.finished {
+                Button(UXText.text("listen.again")) { model.playListeningAgain() }
+                    .accessibilityIdentifier("listen-again")
+            }
+            Button(UXText.text("listen.name")) {
+                MeetingRenameCoordinator.shared.showSpeaker(model.meeting,id:model.listen.speaker)
+            }.disabled(!MeetingRenameCoordinator.shared.canEditSpeakers(model.meeting)).accessibilityIdentifier("listen-name")
+            Menu(UXText.text("speakers.mergeInto")) {
+                ForEach(model.meeting.speakers.filter {$0.id != model.listen.speaker},id:\.id) { other in
+                    Button(other.displayName) {
+                        let editor=MeetingRenameCoordinator.shared
+                        if let speaker=model.listen.speaker {
+                            editor.mergeSpeaker(model.meeting,from:model.meeting.mergedInto[speaker] ?? speaker,into:other.id)
                         }
-                    }.disabled(!MeetingRenameCoordinator.shared.canEditSpeakers(model.meeting) || model.meeting.speakers.count<2)
-                        .accessibilityIdentifier("listen-merge")
-                    Button { model.stopListening() } label: { Image(systemName:"xmark").frame(width:24,height:28) }
-                        .help(UXText.text("listen.stop")).accessibilityLabel(UXText.text("listen.stop"))
-                        .accessibilityIdentifier("listen-stop")
-                }.padding(.horizontal,16).frame(height:36)
-            }.frame(height:36)
-        }.font(.system(size:11.5)).buttonStyle(.borderless).background(.bar)
+                    }
+                }
+            }.disabled(!MeetingRenameCoordinator.shared.canEditSpeakers(model.meeting) || model.meeting.speakers.count<2)
+                .accessibilityIdentifier("listen-merge")
+        }.fixedSize()
+    }
+    private var stop: some View {
+        Button { model.stopListening() } label: { Image(systemName:"xmark").frame(width:24,height:28) }
+            .help(UXText.text("listen.stop")).accessibilityLabel(UXText.text("listen.stop"))
+            .accessibilityIdentifier("listen-stop")
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Divider()
+            if narrow {
+                HStack(spacing: 8) { speakerName; turnLabel; Spacer(minLength: 0); stop }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) { stepping; editing }.fixedSize()
+                    VStack(alignment: .leading, spacing: 6) { stepping; editing }
+                }
+                excerpt.padding(.bottom, 8)
+            } else {
+                HStack(spacing: 8) { speakerName; turnLabel; excerpt; stepping; editing; stop }
+            }
+        }.padding(.horizontal, 12).frame(maxWidth: .infinity, alignment: .leading)
+            .onGeometryChange(for: Bool.self) { $0.size.width < 720 } action: { narrow = $0 }
+            .font(.system(size:11.5)).buttonStyle(.borderless).background(.bar)
             .accessibilityElement(children:.contain).accessibilityLabel(presentation.accessibilityLabel)
             .accessibilityIdentifier("listening-bar")
             .onAppear { model.resetListeningAnnouncement(); model.announceListeningTurn() }
             .onChange(of:model.listen.turn) { _,_ in model.announceListeningTurn() }
             .onDisappear { model.resetListeningAnnouncement() }
     }
+
 }
 
 struct ListeningMeetingFocusedKey: FocusedValueKey { typealias Value = MeetingDetailModel }
