@@ -23,6 +23,8 @@ controls cannot trap playback. Full-session audio remains available. Follow and
 Search-hit revelation wait while transcript rows are withheld; the reveal request
 is kept for the completed view. The native listening proof declares a completed
 fixture and separately checks queued/running rejection and queued-entry cleanup.
+The native replay/follow proof likewise marks its synthetic aside transcript
+completed instead of inheriting an unrelated Library worker state.
 
 Both Stop actions call TranscriptionQueue.stop. Its existing persisted pause
 transaction, worker shutdown barrier and partial-sidecar preservation remain in
