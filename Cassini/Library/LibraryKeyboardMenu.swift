@@ -7,13 +7,21 @@ import CassiniLibrary
 /// Menu and Shift-F10 support also places the menu at the selected list row.
 @MainActor enum LibraryKeyboardMenu {
     static weak var anchor: NSView?
-    static func hasListFocus(in window: NSWindow) -> Bool {
-        var view = window.firstResponder as? NSView
+    static func focusList() {
+        let document = anchor?.enclosingScrollView?.documentView
+        var view = anchor
         while let current = view {
-            if current is NSOutlineView { return true }
+            if current is NSTableView || current === document,
+               current.window?.makeFirstResponder(current) == true {
+                return
+            }
             view = current.superview
         }
-        return false
+    }
+    static func hasListFocus(in window: NSWindow) -> Bool {
+        guard let document = anchor?.enclosingScrollView?.documentView,
+              let responder = window.firstResponder as? NSView else { return false }
+        return responder === document || responder.isDescendant(of: document)
     }
     private final class ActionItem: NSMenuItem {
         private let handler: () -> Void

@@ -277,17 +277,17 @@ final class LibraryBoards: XCTestCase {
         // Avoid macOS's double-space-to-period substitution while still
         // proving the UI trims both ends. Core cases cover repeated whitespace.
         field.typeText(" Board notes "); app.typeKey(.return,modifierFlags:[])
-        let renamed = NSPredicate { _,_ in (title.value as? String ?? title.label) == "Board notes" && !field.exists }
+        let renamed = NSPredicate { _,_ in self.visibleText(title) == "Board notes" && !field.exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:renamed,object:nil)],timeout:10),.completed,app.debugDescription)
         window.buttons["meeting-rename"].click(); XCTAssertTrue(field.waitForExistence(timeout:10))
         field.typeText(" "); app.typeKey(.return,modifierFlags:[])
-        let blank = NSPredicate { _,_ in (title.value as? String ?? title.label) == "Budget review" && !field.exists }
+        let blank = NSPredicate { _,_ in self.visibleText(title) == "Budget review" && !field.exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:blank,object:nil)],timeout:10),.completed,app.debugDescription)
         XCTAssertTrue(window.staticTexts["meeting-subtitle"].exists,"Restoring the automatic name retains the date/duration subtitle")
         window.buttons["meeting-rename"].click(); XCTAssertTrue(field.waitForExistence(timeout:10))
         XCTAssertFalse(app.buttons["rename-confirm"].isEnabled)
         field.typeText("Cancelled name"); app.typeKey(.escape,modifierFlags:[])
-        let cancelled = NSPredicate { _,_ in !field.exists && (title.value as? String ?? title.label) == "Budget review" }
+        let cancelled = NSPredicate { _,_ in !field.exists && self.visibleText(title) == "Budget review" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:cancelled,object:nil)],timeout:10),.completed)
     }
     @MainActor func testRenameReceivedFromRowMenus() throws {
@@ -675,23 +675,7 @@ final class LibraryBoards: XCTestCase {
     }
 
     @MainActor func testMeetingScrolledHeaderKeepsFindAndFloatingPlayerReachable() throws {
-        let home = getpwuid(getuid()).flatMap { $0.pointee.pw_dir }.map { URL(fileURLWithPath:String(cString:$0)) }
-            ?? FileManager.default.homeDirectoryForCurrentUser
-        let root = home.appendingPathComponent("Library/Containers/io.codemyriad.cassini/Data/tmp/cassini-wp3-" + UUID().uuidString)
-        try FileManager.default.createDirectory(at:root.deletingLastPathComponent(),withIntermediateDirectories:true)
-        try FileManager.default.copyItem(at: fixtureDirectory().appendingPathComponent("Library/main"), to: root)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let transcript = root.appendingPathComponent("root/Recording-a0000000-0000-4000-8000-000000000001/transcript.json")
-        var document = try JSONSerialization.jsonObject(with: Data(contentsOf: transcript)) as! [String:Any]
-        var items = document["items"] as! [[String:Any]]
-        for index in 0..<30 {
-            items.append(["speaker":["marta","dario","guest"][index % 3],"startMs":1_000_000 + index * 30_000,
-                          "endMs":1_008_000 + index * 30_000,
-                          "text":"We will review this decision with the team and keep the updated figures in the meeting notes."])
-        }
-        document["items"] = items
-        try JSONSerialization.data(withJSONObject:document).write(to:transcript)
-        let app = try launch("library",fixture:"main",fixtureRoot:root); defer { app.terminate() }
+        let app = try launch("library",fixture:"main",extra:["-CassiniLongMeetingFixture","YES"]); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.textFields["meeting-find"].waitForExistence(timeout:20),app.debugDescription)
         if window.buttons["Not now"].exists { window.buttons["Not now"].click() }
@@ -1025,7 +1009,7 @@ final class LibraryBoards: XCTestCase {
         let labelUpdated = NSPredicate(format:"exists == true AND label BEGINSWITH %@ AND label != %@", "Open recording, ", openLabel)
         let update = XCTNSPredicateExpectation(predicate:labelUpdated,object:openRecording)
         XCTAssertEqual(XCTWaiter.wait(for:[update],timeout:5),.completed,"Elapsed accessible time advances while the recording runs")
-        window.buttons["meeting-rename"].click(); app.typeKey("a",modifierFlags:.command); title.typeText("Title from the live page")
+        title.click(); app.typeKey("a",modifierFlags:.command); title.typeText("Title from the live page")
         XCTAssertFalse(window.textViews["recording-notes"].exists)
         window.buttons.matching(identifier:"recording-back").firstMatch.click()
         window.buttons["recording-open-current"].click()
@@ -1380,9 +1364,9 @@ final class LibraryBoards: XCTestCase {
         configuration.activates = true
         _ = try await NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: configuration)
     }
-    @MainActor func launch(_ name: String, fixture: String, extra: [String] = [], language:String="en-GB",locale:String="en_GB",fixtureRoot:URL? = nil) throws -> XCUIApplication {
+    @MainActor func launch(_ name: String, fixture: String, extra: [String] = [], language:String="en-GB",locale:String="en_GB") throws -> XCUIApplication {
         let app = XCUIApplication()
-        let root = try fixtureRoot ?? fixtureDirectory().appendingPathComponent("Library/" + fixture)
+        let root = try fixtureDirectory().appendingPathComponent("Library/" + fixture)
         let dark = ProcessInfo.processInfo.environment["CASSINI_SCREENSHOT_SCHEME"] == "dark"
         app.launchEnvironment["CASSINI_HOSTED_SCREENSHOTS"] = "1"
         app.launchArguments = ["-CassiniScreenshot", name, "-CassiniFixture", root.path,
@@ -1434,7 +1418,7 @@ final class LibraryBoards: XCTestCase {
             XCTAssertTrue(window.textFields["meeting-find"].waitForExistence(timeout: 20), window.debugDescription)
             XCTAssertTrue(window.staticTexts.matching(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "52 min · Marta, Dario, Speaker 3", "52 min · Marta, Dario, Speaker 3")).firstMatch.exists)
             XCTAssertTrue(text("Today, 09:00 · 52 min", in: window), window.debugDescription)
-            XCTAssertTrue(text("00:00:04", in: window))
+            XCTAssertTrue(window.buttons["turn-play-0"].label.contains("00:00:04"))
             XCTAssertTrue(text("Listening inside your browser", in: window))
             XCTAssertTrue(text("Your microphone and the meeting in your browser", in: window))
             XCTAssertTrue(window.buttons["meeting-play"].isEnabled)

@@ -12,6 +12,9 @@ struct LibraryView: View {
     @State private var store = LibraryStore.shared
     @State private var sessionPlayback = SessionPlaybackController()
     @State private var navigation = MeetingNavigation.shared
+    #if DEBUG
+    @State private var searchFixturePrepared = false
+    #endif
     @State private var toolbarWidth: CGFloat = 1120
     @State private var recordCoordinator = RecordCoordinator.shared
     @State private var recorder = RecordingController.shared
@@ -217,7 +220,8 @@ struct LibraryView: View {
                let meeting = store.meetings.first(where: { $0.state.lifecycle == .recording }) { navigation.open(meeting, frozen:true) }
             #endif
             #if DEBUG
-            if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "search", !search.visible {
+            if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "search", !searchFixturePrepared {
+                searchFixturePrepared = true
                 search.query = "budget"; search.speaker = "Marta"; search.open()
             }
             if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "record-first", !recordCoordinator.showingFirst {
@@ -294,6 +298,7 @@ struct LibraryView: View {
                                     if NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
                                         store.selectedKey = meeting.libraryKey
                                         openSelection(userInitiated: true)
+                                        LibraryKeyboardMenu.focusList()
                                     }
                                 })
                                 .contextMenu {
@@ -476,11 +481,11 @@ struct LibraryView: View {
         if let meeting = store.selected {
             #if DEBUG
             if store.context.screenshot, navigation.detail == nil,
-               ["meeting", "export", "recording", "search"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? "") { return }
+               ["meeting", "export", "recording"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? "") { return }
             #endif
             if navigation.detail?.meeting.libraryKey != meeting.libraryKey {
                 sessionPlayback.stop()
-                navigation.open(meeting, frozen: store.context.screenshot, activate: userInitiated)
+                navigation.open(meeting, frozen: store.context.screenshot, activate: false)
             }
         } else if store.selectedKeys.count > 1 || store.selectedKeys.isEmpty { navigation.back() }
     }
