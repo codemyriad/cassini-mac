@@ -28,13 +28,7 @@ struct TranscribingStatusView: View {
     var body: some View {
         VStack(alignment:.leading, spacing:10) {
             HStack(spacing:10) {
-                if reduceMotion {
-                    Image(systemName:"hourglass").foregroundStyle(CassiniTheme.accent)
-                        .accessibilityHidden(true)
-                } else {
-                    ProgressView().controlSize(.small).tint(CassiniTheme.accent)
-                        .accessibilityHidden(true)
-                }
+                StatusSpinner(ink:CassiniTheme.accent,size:12).accessibilityHidden(true)
                 Text(presentation.status).monospacedDigit().foregroundStyle(CassiniTheme.ink2)
                     .accessibilityIdentifier("transcribing-status")
                 Spacer(minLength:8)
