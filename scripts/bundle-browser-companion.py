@@ -6,6 +6,17 @@ import argparse, hashlib, json, shutil, stat, subprocess, sys
 
 ROOT = Path(__file__).resolve().parent.parent
 
+def manifest_references(manifest):
+    """Every packaged path the browser loads by name from manifest.json."""
+    refs = set(manifest.get('icons', {}).values())
+    action = manifest.get('action', {})
+    refs |= set(action.get('default_icon', {}).values())
+    if 'default_popup' in action: refs.add(action['default_popup'])
+    if 'service_worker' in manifest.get('background', {}): refs.add(manifest['background']['service_worker'])
+    for script in manifest.get('content_scripts', []): refs |= set(script.get('js', [])) | set(script.get('css', []))
+    for resource in manifest.get('web_accessible_resources', []): refs |= set(resource.get('resources', []))
+    return refs
+
 def reviewed_files():
     subprocess.run([sys.executable, str(ROOT/'browser-protocol/verify.py'), '--pinned', str(ROOT/'BrowserExtension')], check=True)
     files = {}
@@ -17,6 +28,14 @@ def reviewed_files():
         source = ROOT/'BrowserExtension'/name
         assert not source.is_symlink() and hashlib.sha256(source.read_bytes()).hexdigest() == digest
         files[name] = source
+    present = {p.relative_to(ROOT/'BrowserExtension') for p in (ROOT/'BrowserExtension').rglob('*')
+               if p.is_file() and p.relative_to(ROOT/'BrowserExtension').parts[0] != 'tests'}
+    # A runtime file vendored without a SHA256SUMS line would otherwise be
+    # silently left out of the app, shipping a companion that differs from
+    # the reviewed BrowserExtension/ checkout.
+    assert present == set(files), 'Unreviewed companion runtime: '+', '.join(sorted(map(str, present ^ set(files))))
+    missing = sorted(manifest_references(json.loads(files[Path('manifest.json')].read_text())) - {n.as_posix() for n in files})
+    assert not missing, 'Manifest references unbundled files: '+', '.join(missing)
     files[Path('COPYING')] = ROOT/'COPYING'
     files[Path('PROTOCOL_COMMIT.txt')] = ROOT/'browser-protocol/PINNED_COMMIT'
     return files
