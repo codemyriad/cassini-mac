@@ -4,6 +4,10 @@ import Foundation
 import Testing
 @testable import CassiniRecording
 
+private func waitForGate(_ gate: DispatchSemaphore) -> Bool {
+    gate.wait(timeout:.now()+5) == .success
+}
+
 private final class SinkWriter: RecordingSinkWriter, @unchecked Sendable {
     var chunks: [(String, Data, Double)] = []
     var formats: [String: (Int, Int)] = [:]
@@ -48,6 +52,44 @@ private func buffer(channels: UInt32, interleaved: Bool = false, frames: UInt32 
 }
 
 @Suite struct RecordingSinkTests {
+    @Test @MainActor func uiStatusSkipsBusyConversionAndRetainsPendingPeak() async throws {
+        let writer = SinkWriter()
+        let entered = DispatchSemaphore(value:0), release = DispatchSemaphore(value:0)
+        let sink = RecordingSink(session:writer,originHostTime:1,onFailure:{ _ in },admit:{
+            entered.signal(); release.wait(); return true
+        })
+        // Admission runs under the same lock as sample conversion. Hold it with
+        // an event gate, so a blocking UI status implementation cannot pass.
+        let producer = Task.detached {
+            let input = try buffer(channels:1,frames:800)
+            for i in 0..<800 { input.floatChannelData![0][i] = i.isMultiple(of:2) ? 0.25 : -0.25 }
+            sink.receive(input,hostTime:1,id:"mic",label:"Mic",kind:"microphone")
+        }
+        #expect(await Task.detached { waitForGate(entered) }.value)
+        defer { release.signal() }
+        #expect(sink.statusIfAvailable() == nil)
+        release.signal()
+        try await producer.value
+        let status = try #require(sink.statusIfAvailable())
+        #expect(status.levels["mic"] == 0.25)
+        #expect(status.frames["mic"] == 800)
+        #expect(sink.statusIfAvailable()?.levels.isEmpty == true)
+        try await Task.detached { try sink.finish(problem:nil) }.value
+    }
+
+    @Test @MainActor func uiStatusDoesNotWaitForDiskWriter() async throws {
+        let writer = SinkWriter(); writer.stall = true
+        let sink = RecordingSink(session:writer,originHostTime:1,onFailure:{ _ in })
+        sink.receive(try buffer(channels:1,frames:800),hostTime:1,id:"mic",label:"Mic",kind:"microphone")
+        #expect(await Task.detached { waitForGate(writer.entered) }.value)
+        defer { writer.release.signal() }
+        let status = try #require(sink.statusIfAvailable())
+        #expect(status.frames["mic"] == 800)
+        #expect(status.levels["mic"] == 0)
+        writer.release.signal()
+        try await Task.detached { try sink.finish(problem:nil) }.value
+    }
+
     @Test func dcOffsetIsSilentWithoutChangingRecordedSamples() throws {
         let input = try buffer(channels:1,frames:800)
         for i in 0..<800 { input.floatChannelData![0][i] = -2060.0/32768 }

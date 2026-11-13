@@ -61,9 +61,9 @@ struct RecordingPageView: View {
                     }
                 }
                 VStack(spacing:0) {
-                    source(microphone:true)
+                    RecordingSourceRow(model:model,microphone:true)
                     Divider()
-                    source(microphone:false)
+                    RecordingSourceRow(model:model,microphone:false)
                     Divider()
                     Button(UXText.text("recording.changeWhatIsRecorded")) { changingCapture = true }.buttonStyle(.plain).font(.system(size:11.5,weight:.semibold))
                         .foregroundStyle(CassiniTheme.accentInk).padding(.horizontal,16).frame(maxWidth:.infinity,minHeight:35,alignment:.leading).disabled(model.owned == nil && !model.frozen)
@@ -113,10 +113,15 @@ struct RecordingPageView: View {
             .onDisappear { model.flush() }
     }
     private func caption(_ id: String) -> some View { Text(UXText.text(id)).font(.system(size:11.5,weight:.bold)).foregroundStyle(CassiniTheme.ink2) }
-    private func source(microphone: Bool) -> some View {
+}
+
+private struct RecordingSourceRow: View {
+    let model: RecordingPageModel
+    let microphone: Bool
+    var body: some View {
         let silent = microphone && model.microphoneSilent
         let enabled = microphone ? model.me : model.others
-        let browser = model.owned?.snapshot.browserAlive ?? detail.meeting.isBrowserCapture
+        let browser = model.owned?.snapshot.browserAlive ?? model.meeting.isBrowserCapture
         let amber = CassiniTheme.warnInk
         return HStack(spacing:14) {
             Image(systemName:microphone ? "mic" : "macwindow").font(.system(size:16)).frame(width:20).foregroundStyle(silent ? amber : CassiniTheme.primaryInk).accessibilityHidden(true)

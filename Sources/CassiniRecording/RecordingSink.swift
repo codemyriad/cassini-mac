@@ -349,8 +349,22 @@ public final class RecordingSink: @unchecked Sendable {
         }
     }
 
-    public func status() -> (levels: [String: Float], frames: [String: UInt64], droppedMs: Double, gapMs: Double, warnings: [String]) {
+    public typealias Status = (levels: [String: Float], frames: [String: UInt64], droppedMs: Double, gapMs: Double, warnings: [String])
+
+    /// UI polling must never wait for PCM conversion holding the admission lock.
+    /// A skipped poll leaves meter peaks intact for the next tick.
+    public func statusIfAvailable() -> Status? {
+        guard lock.try() else { return nil }
+        defer { lock.unlock() }
+        return consumeStatus()
+    }
+
+    public func status() -> Status {
         lock.lock(); defer { lock.unlock() }
+        return consumeStatus()
+    }
+
+    private func consumeStatus() -> Status {
         let lost = sources.values.reduce(0) { $0 + Double($1.droppedFrames) / $1.rate * 1000 }
         let gaps = sources.values.reduce(0) { $0 + Double($1.gapFrames) / $1.rate * 1000 }
         var available = levels

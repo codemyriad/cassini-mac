@@ -869,17 +869,19 @@ private final class CaptureFiles: @unchecked Sendable {
         }
     }
     private func refreshLevels(_ id: UUID, _ value: LiveCapture) {
-        let status = value.input.status()
+        let status = value.input.availableStatus()
         // Read the latest cached meter even when no later packet publishes a UI snapshot.
         let source = value.owner.snapshot
-        captures[id]?.levels = status.mapValues { $0.levels.values.max() ?? 0 }
+        var levels = status.mapValues { $0?.levels.values.max() ?? 0 }
+        for (side, sample) in status where sample == nil { levels[side] = value.levels[side] }
         if source.browserAlive && source.others {
-            captures[id]?.levels[.others] = ProcessInfo.processInfo.systemUptime - source.levelTimestamp <= 1 ? source.browserLevel : 0
+            levels[.others] = ProcessInfo.processInfo.systemUptime - source.levelTimestamp <= 1 ? source.browserLevel : 0
         }
         if !value.owner.nativeMe {
-            captures[id]?.levels[.me] = source.me && source.browserAlive && ProcessInfo.processInfo.systemUptime - source.meLevelTimestamp <= 1 ? source.browserMeLevel : 0
+            levels[.me] = source.me && source.browserAlive && ProcessInfo.processInfo.systemUptime - source.meLevelTimestamp <= 1 ? source.browserMeLevel : 0
         }
-        if (captures[id]?.levels[.me] ?? 0) >= 0.01 { captures[id]?.lastMicSound = value.microphoneUptime }
+        if levels != value.levels { captures[id]?.levels = levels }
+        if (levels[.me] ?? 0) >= 0.01 { captures[id]?.lastMicSound = value.microphoneUptime }
     }
     func title(_ id: UUID, _ text: String) { captures[id]?.displayTitle = text }
     private func applyDiskBudget(_ ids: [UUID], _ budget: DiskBudget) {

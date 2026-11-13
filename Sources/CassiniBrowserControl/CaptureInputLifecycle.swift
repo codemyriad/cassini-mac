@@ -464,6 +464,10 @@ private final class SourceChangeToken: @unchecked Sendable {
     public func status() -> [CaptureSide:Status] {
         inputs.mapValues { $0.sink.status() }
     }
+    /// Busy inputs retain their previous UI level; absent inputs are removed.
+    public func availableStatus() -> [CaptureSide:Status?] {
+        inputs.mapValues { $0.sink.statusIfAvailable() }
+    }
     private func reconcile(preparedMicrophone: (any CaptureInput)? = nil, refusingAt atMs: Double? = nil) async throws {
         if closed { if !admission() { throw CancellationError() }; return }
         guard capture.snapshot.phase == .recording else { return }
