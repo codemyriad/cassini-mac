@@ -203,7 +203,14 @@ struct LibraryView: View {
                 recordCoordinator.showingFirst = true
             }
             if store.context.screenshot, ["meeting","export"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""), navigation.detail == nil,
-               let meeting = store.meetings.first(where: { $0.title == (LibraryLaunchContext.argument("-CassiniScreenshot") == "export" ? "Budget review" : "Client call, Rossi & Partners") }) {
+               var meeting = store.meetings.first(where: { $0.title == (LibraryLaunchContext.argument("-CassiniScreenshot") == "export" ? "Budget review" : "Client call, Rossi & Partners") }) {
+                // The shared vector retains words under `running`. The reading
+                // board represents the completed meeting; L-45 has its own preview.
+                // Change only this frozen value, never the vendored fixture bytes.
+                if LibraryLaunchContext.argument("-CassiniTranscribingPreview") != "YES" {
+                    meeting.state.transcript = .done
+                    meeting.state.etaMinutes = nil
+                }
                 navigation.open(meeting,frozen:true)
                 if LibraryLaunchContext.argument("-CassiniScreenshot") == "export" {
                     Task { @MainActor in
@@ -688,10 +695,6 @@ struct LibraryView: View {
             let title = detail.meeting.transcriptPaused ? UXText.mac("transcription.resume") : UXText.text("common.writeDown")
             return .init(title:title,identifier:"meeting-write-down",enabled:!busy) { TranscriptionQueue.shared.writeDown(detail) }
         }
-        if [.queued,.running].contains(detail.meeting.state.transcript) && !detail.meeting.metadataReadOnly {
-            let title = UXText.mac("transcription.stop")
-            return .init(title:title,identifier:"meeting-stop-transcription",enabled:!busy) { TranscriptionQueue.shared.stop(detail.meeting) }
-        }
         return nil
     }
     @ViewBuilder
@@ -701,7 +704,7 @@ struct LibraryView: View {
             Button(meeting.transcriptPaused ? UXText.mac("transcription.resume") : UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
                 .buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("preview-write-down")
         } else if [.queued,.running].contains(meeting.state.transcript) && !meeting.metadataReadOnly {
-            Button(UXText.mac("transcription.stop")) { TranscriptionQueue.shared.stop(meeting) }
+            Button(UXText.text("common.stop")) { TranscriptionQueue.shared.stop(meeting) }
                 .buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("preview-stop-transcription")
         }
     }

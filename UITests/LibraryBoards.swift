@@ -3,6 +3,44 @@ import AppKit
 import XCTest
 
 final class LibraryBoards: XCTestCase {
+    /// D-963: both Stop routes preserve the meeting and expose Resume after the
+    /// asynchronous metadata commit. Retained partial words are not a live draft.
+    @MainActor func testTranscribingStatusDetailsAndStopKeepsProgress() throws {
+        for usePopover in [false,true] {
+            let app = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString])
+            defer { app.terminate() }
+            let window = app.windows["cassini-library-window"]
+            let client = window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch
+            XCTAssertTrue(client.waitForExistence(timeout:20),app.debugDescription)
+            client.doubleClick()
+            let status = window.staticTexts["transcribing-status"]
+            XCTAssertTrue(status.waitForExistence(timeout:10),app.debugDescription)
+            XCTAssertEqual(visibleText(status),"Transcribing · about 4 min left")
+            XCTAssertEqual(window.buttons["meeting-stop-transcription"].label,"Stop")
+            XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
+            XCTAssertTrue(window.staticTexts["meeting-title"].isHittable)
+            XCTAssertEqual(window.descendants(matching:.any).matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-turn-")).count,0)
+            capture(window,name:"transcribing")
+            window.buttons["transcribing-details"].click()
+            let stop = app.buttons["transcribing-stop-keep-progress"]
+            XCTAssertTrue(stop.waitForExistence(timeout:5),app.debugDescription)
+            for label in ["Audio done","Time left","Words so far","Battery at finish","Reading","Preparing","Words","Speakers & matching","Saving"] {
+                XCTAssertTrue(app.staticTexts[label].exists,label)
+            }
+            capture(window,name:"transcribing-details")
+            if usePopover { stop.click() }
+            else {
+                app.typeKey(.escape,modifierFlags:[])
+                window.buttons["meeting-stop-transcription"].click()
+            }
+            let resume = window.buttons["meeting-write-down"]
+            XCTAssertTrue(resume.waitForExistence(timeout:10),app.debugDescription)
+            XCTAssertEqual(resume.label,"Resume transcription")
+            XCTAssertFalse(status.exists)
+            XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
+            app.terminate()
+        }
+    }
     @MainActor func testFrenchLibraryAndFirstRunFitAtBoardSize() throws {
         let app=try launch("library",fixture:"main",language:"fr",locale:"fr_FR")
         defer {if app.state != .notRunning {app.terminate()}}

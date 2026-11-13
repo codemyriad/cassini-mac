@@ -20,11 +20,13 @@ parser.add_argument('board',choices=['meeting','recording','received','export','
 parser.add_argument('--output',type=Path,required=True)
 parser.add_argument('--listening',choices=['playing','finished'])
 parser.add_argument('--speaker')
+parser.add_argument('--transcribing',action='store_true',help='Render the L-45 status instead of completed reading')
 parser.add_argument('--scheme',choices=['light','dark'],default=os.environ.get('CASSINI_SCREENSHOT_SCHEME') or 'light')
 parser.add_argument('--accent',default=os.environ.get('CASSINI_SCREENSHOT_ACCENT') or '')
 args = parser.parse_args()
 assert not args.listening or args.board == 'meeting', 'Listening preview requires the meeting fixture'
 assert not args.speaker or args.listening, 'Speaker selection requires a listening preview'
+assert not args.transcribing or args.board == 'meeting', 'Transcribing preview requires the meeting fixture'
 assert os.environ.get('CASSINI_LOCAL_WORKFLOW_TESTS') == '1', 'Explicit local workflow opt-in required'
 app = args.app.resolve()
 fixture = app/'Contents/Resources/Fixtures/Library'/('received-only' if args.board == 'received' else 'main')
@@ -41,6 +43,7 @@ with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
     if args.scheme == 'dark': command += ['-CassiniScreenshotScheme','dark']
     if args.listening: command += ['-CassiniListeningPreview',args.listening]
     if args.speaker: command += ['-CassiniListeningSpeaker',args.speaker]
+    if args.transcribing: command += ['-CassiniTranscribingPreview','YES']
     if args.board.startswith('settings-'): command += ['-CassiniSettingsID',str(uuid.uuid4())]
     try:
         # The fixture writes its report and exits. -W waits for that completion,

@@ -10,6 +10,9 @@ struct MeetingView: View {
     @State private var handScrolling = false
     var showsCompanionSuggestion: Bool { !suggestionDismissed && !CaptureCollection.shared.connected }
     private var meeting: LibraryMeeting { model.meeting }
+    private var isTranscribing: Bool {
+        TranscribingPresentation.isActive(meeting.state)
+    }
     private var shares: [String: Int] { model.shares }
     /// M11: paragraphs only; an aside is shown inside its host.
     private var visibleTurns: [MeetingPresentation.Turn] { MeetingPresentation.visibleTurns(model.turns) }
@@ -148,9 +151,15 @@ struct MeetingView: View {
     }
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                speakersPane
+            if isTranscribing {
+                TranscribingStatusView(meeting:meeting)
                 Divider()
+            }
+            HStack(spacing: 0) {
+                if !isTranscribing {
+                    speakersPane
+                    Divider()
+                }
                 ScrollViewReader { proxy in ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
                         if meeting.hasNoSpeech {
@@ -159,8 +168,10 @@ struct MeetingView: View {
                             NoSpeechTranscriptLine(action:meeting.canWriteDown ? { TranscriptionQueue.shared.writeDown(model) } : nil,meeting:meeting)
                         }
                         if let line = issueLine { InlineMeetingLine(id: line, actionID: meeting.state.transcript == .failed ? "common.tryAgain" : nil, action: meeting.state.transcript == .failed ? { TranscriptionQueue.shared.writeDown(model) } : nil).disabled(LibraryMoveCoordinator.shared.busy) }
-                        if showsCompanionSuggestion { companionCard }
-                        ForEach(visibleTurns) { turn in turnRow(turn) }
+                        if !isTranscribing {
+                            if showsCompanionSuggestion { companionCard }
+                            ForEach(visibleTurns) { turn in turnRow(turn) }
+                        }
                     }.padding(.horizontal, 48).padding(.vertical, 22)
                 }.accessibilityIdentifier("meeting-transcript")
                     .onScrollPhaseChange { _,phase in
@@ -195,7 +206,7 @@ struct MeetingView: View {
             }
             // Keep the controls in the main layout/hit-test tree. On macOS 15,
             // safeAreaInset paints this bar but its buttons fail AX hit testing.
-            if let presentation = model.listeningPresentation {
+            if !isTranscribing, let presentation = model.listeningPresentation {
                 ListeningBar(model:model,presentation:presentation,colour:colour(model.listen.speaker.flatMap { meeting.speaker(for:$0) }))
                     .transition(reduceMotion ? .identity : .move(edge:.bottom).combined(with:.opacity))
             }
