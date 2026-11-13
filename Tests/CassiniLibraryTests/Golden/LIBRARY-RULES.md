@@ -50,7 +50,7 @@ The stored `transcript.status` is the starting point. Then apply the first match
 | done | readable | `done` |
 | done | missing / unreadable / mismatched | `damaged`. The error is the stored error if it has an action; otherwise `{transcript-damaged, null}`. |
 | damaged | any | `damaged`, with the same error rule as the previous row |
-| none | any | `none`. A body never promotes `none` to `done`. |
+| none | any | `none`. A body never promotes `none` to `done`. A readable referenced body is shown as stored (below). |
 | *(meeting.json absent or ignored)* | `transcript.json` readable / unreadable / absent | `done` / `damaged` with `{transcript-damaged, null}` / `none` |
 
 Rules for references:
@@ -69,6 +69,17 @@ Rules for references:
   cassini-format reader exactly; do not add your own clamping.
 
 The stored error wins over a derived error whenever it has an action.
+
+**Words of a failed or none meeting (D67.2, D67.8a), 2026-11-04.** Readers show the file as stored (D47). When a
+`failed` or `none` meeting's reference is readable, its words are the meeting's words: they name the speaking
+speakers (R7) and show in the preview and the meeting view. The status stays as stored, and there is still no quote
+(R8.5). A missing or unreadable body under `failed` or `none` is no words, never `damaged`. Any hiding is a
+writer-side choice: on failure both writers store `reference: null` (D67.2).
+
+> (D67.8a) a meeting with transcript status none that still references words shows them as stored, as for failed
+> (D47: readers show the file as stored; any hiding is a writer-side choice).
+
+Tested by `library-vectors` `t8-failed-referenced-words` and `t8-none-referenced-words`.
 
 ## R4. lifecycle and interruptedAtMs
 
@@ -97,7 +108,7 @@ The stored error wins over a derived error whenever it has an action.
 5. **Display of an unknown duration:**
    - Row meta: drop the duration and show only the names. If there are no names either, the meta line is not shown.
    - Preview subtitle: `{day}, {time}` with no duration.
-   - `interruptedAtMs` is null when the display end is unknown, even if R4 would set it, so no "Interrupted at" badge
+   - `interruptedAtMs` is null when the display end is unknown, even if R4 would set it, so no "Interrupted" badge
      is shown. This applies only when no track counts at all. D3's display-only zero offset still gives a known end
      whenever a readable WAV exists.
 
@@ -123,17 +134,22 @@ The stored error wins over a derived error whenever it has an action.
 ## R7. Speakers, names, numbering
 
 1. **Speaking speakers** are the speaker ids that have at least one transcript item. They are ordered by the
-   `startMs` of their first item (ties: file order). Their 0-based position is `colourIndex`.
+   `startMs` of their first item (ties: file order). When a speaker first speaks, writers store that 0-based slot as
+   `speakers[id].colourIndex` in `meeting.json` so the speaker's colour slot never shifts later (L-41, HARMONY 10.11).
+   For colour selection (`HARMONY 10.11`), readers use the stored `speakers[id].colourIndex` when present and fall back
+   to this 0-based speaking-order position for files without a stored `colourIndex`.
 2. **Name** of a speaking speaker, using the first that applies:
    - meeting.json `speakers[id].name`, if non-null
    - for received meetings, the embedded speaker label, if it is not of the form `Speaker <n>`
    - otherwise **"Speaker {position+1}"**, where the position is in the speaking order of rule 1
 
-   The stored `colourIndex` is ignored for numbering.
+   The stored `colourIndex` is used for colour (`HARMONY 10.11`) and ignored for fallback `"Speaker {position+1}"` numbering.
 3. **Row meta names** list only speaking speakers, in speaking order, with at most 3 names and then `+{k}`
    (format-vectors `rowMeta`). Speakers stored in meeting.json who never speak are not listed.
 
-## R8. Quote
+## R8. Quote (data derivation; hidden on Library rows per L-53)
+
+> **Phase 1 UI rule (L-53):** Library lists on all four apps drop the transcript quote/preview line under each row (search results keep their match snippet). Rules R8.1–R8.5 remain the binding derivation for `vectors/library-vectors/` fixtures so existing scanner tests stay deterministic.
 
 1. **A turn** is a maximal run of **consecutive** transcript items, in `startMs` order (ties: file order), with the
    same speaker. There is no seam-joining across interjections, and there are no aside rules.
@@ -177,7 +193,7 @@ A received meeting whose transcript is `none` can be written down once (HARMONY 
 
 - `library.untitled` = "Untitled meeting"
 - `library.group.unknownDate` = "Date unknown"
-- `states.badge.transcribing.noEta` = "Transcribing…" (grey/accent as the transcribing badge)
+- `states.badge.transcribing.noEta` = "Transcribing…" (neutral/spinner under W0.4; current wording provisional pending Alex)
 
 ## D6.1 amendments (answers to GNOME R4–R7 and Mac's ETA question), 2026-10-27
 
@@ -233,3 +249,27 @@ belong to the Meeting view (UX3).
 
 A speaker with provenance `source` shows its stored name (Me, The others). It is listed and coloured like any
 speaking speaker, in speaking order. Its sidebar caption is the track description (D11.2).
+
+## R13. Details source lines: no speech heard (D67.1), 2026-11-04
+
+The Details "Audio sources" section has one line per expected source, in captureOutcome order, from its
+captureOutcome (D52.1: `details.sources.captured`, `neverAudio`, `lowAudio`, `failed`). D67.1 adds one line:
+
+> **"Others silent" is a visible state.** New Details line `details.sources.silent`, "{source}: no speech heard."
+> (…, role line, not a warning). It shows for a captured source whose every track is in `writingDown.silentTracks`
+> and whose transcript is done. A never-captured line (`details.sources.neverAudio`) takes precedence over it.
+
+1. **Condition.** All of these hold:
+   - the source is expected and its `captureOutcome` is `captured`;
+   - it has at least one track, and every id in its `trackIds` is in
+     `recordingDetails.writingDown.silentTracks`;
+   - the transcript is `done` (R3).
+2. **Precedence.** A never-captured source shows `details.sources.neverAudio` and never the silent line, even
+   though its 0-frame track is in `silentTracks` (D67.3). A `lowAudio` source likewise shows only
+   `details.sources.lowAudio` and never the silent line, even when every one of its tracks is in `silentTracks`
+   (D67.8b, 2026-11-04):
+
+   > (b) A lowAudio source does not also get the silent line; its warning already explains the missing words.
+3. **Place and role.** The silent line follows that source's own line and its gap lines (`details.sources.gap`, D52.2),
+   before the next source's line. It is a line, not a warning: it never sets the source's problem. Tested by
+   `library-vectors/outcome-lines.json` (T8; `t8-low-audio-silent` for the lowAudio precedence).

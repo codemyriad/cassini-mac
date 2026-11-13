@@ -1,11 +1,11 @@
 {
   "repository": "codemyriad/cassini-ux",
-  "commit": "793209cb3425bece7143178458fddd94b691e12d",
-  "scope": "Standalone W2.2; live app catalog/model unchanged until host integration",
+  "commit": "5e0c34e0f1bb390298dabdf4eedc494e933fd329",
+  "scope": "Phase 1 WP1: Foundations; pinned to codemyriad/cassini-ux 5e0c34e0f1bb390298dabdf4eedc494e933fd329",
   "files": {
     "strings.json": {
       "path": "strings/strings.json",
-      "sha256": "7ec404fad17f96a29ec1ee03612736710db2dba0fb964bbc6153a3ed00b97699"
+      "sha256": "4bbe42b47bbf2e6e61ed15b1c54cabf4096e92aca63b9ed84d428070baa52acf"
     },
     "states-vectors.json": {
       "path": "vectors/states/states-vectors.json",
@@ -17,7 +17,7 @@
     },
     "STATUS-BADGES.md": {
       "path": "contract/STATUS-BADGES.md",
-      "sha256": "eecbb0bddf22571055a87816a19631c2f1bf4f1320d146714ec7d4d1723755ab"
+      "sha256": "1a10d0fbe8f5fe7b95847aaede72a1be862083b6c0bdb99494ba187f83d5454f"
     },
     "library-expected/empty.json": {
       "path": "vectors/library-vectors/expected/empty.json",

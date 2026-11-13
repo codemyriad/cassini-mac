@@ -234,6 +234,13 @@ public struct LibraryScanner: Sendable {
         meeting.transcriptItems = resolved
         // R3 first-speaking roster and stored pull-quote selection keep their chronological
         // semantics. D84 display grouping consumes canonical word order instead.
+        // HARMONY 10.11 / L-41: colourIndex is fixed at first speech in unmerged transcript
+        // order and never shifts when speakers are named, cleared, or merged.
+        let unmergedChronological = sorted.enumerated().sorted { $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }.map(\.element)
+        var firstSpeechColourIndex: [String: Int] = [:]
+        for word in unmergedChronological where firstSpeechColourIndex[word.speaker] == nil {
+            firstSpeechColourIndex[word.speaker] = firstSpeechColourIndex.count
+        }
         let chronological = resolved.enumerated().sorted { $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }.map(\.element)
         var ids: [String] = []
         for word in chronological where !ids.contains(word.speaker) { ids.append(word.speaker) }
@@ -244,7 +251,7 @@ public struct LibraryScanner: Sendable {
             let classification = storedLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
             let embedded = classification.flatMap { $0.isEmpty || $0.range(of: "^Speaker [0-9]+$", options: .regularExpression) != nil ? nil : storedLabel }
             let name = override != nil ? override?.name : embedded
-            return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: index,label:override?.label ?? (override?.nameCleared == true ? nil : storedLabel))
+            return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: firstSpeechColourIndex[id] ?? override?.colourIndex ?? index,label:override?.label ?? (override?.nameCleared == true ? nil : storedLabel))
         }
         if [.done, .queued, .running].contains(meeting.state.transcript) || meeting.transcriptPaused, !words.isEmpty {
             meeting.quote = normalizedOverride(metadata?.quoteOverride) ?? defaultQuote(chronological)

@@ -89,7 +89,7 @@ struct D70SpeakerMergesTests {
         #expect(meeting.mergedInto == ["track-a":"track-c"])
         #expect(meeting.speakers.map(\.id) == ["me","track-c"],"the merged speaker leaves the pane")
         #expect(meeting.speakers.map(\.displayName) == ["Me","Carla"],"the target keeps its own name")
-        #expect(meeting.speakers.map(\.colourIndex) == [0,1],"colours follow first speaking after the merge")
+        #expect(meeting.speakers.map(\.colourIndex) == [0,2],"colourIndex stays fixed at initial first speech across merges (HARMONY 10.11)")
         #expect(meeting.transcriptItems.map(\.speaker) == ["me","track-c","track-c","track-c","me"])
         #expect(meeting.writtenTranscriptItems.map(\.speaker) == conversation.map(\.0),"writers see the stored ids")
         #expect(meeting.transcriptTurns.map(\.speaker) == ["me","track-c","me"],"adjacent turns of a and c become one")

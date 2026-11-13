@@ -308,7 +308,7 @@ struct LibraryView: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
-            .background(CassiniTheme.sidebarGround)
+            .background(NativeSidebarMaterial())
             .frame(minWidth: 400, maxWidth: 400)
             .accessibilityLabel(UXText.text("library.listPane.a11y"))
             Divider()
@@ -354,6 +354,7 @@ struct LibraryView: View {
     private func row(_ meeting: LibraryMeeting) -> some View {
         let selected = store.selectedKeys.contains(meeting.libraryKey)
         let dim = selected ? CassiniTheme.onAccentDim : CassiniTheme.ink2
+        let presentation = LibraryBadgeCatalog.presentation(for: meeting)
         return VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 8) {
                 Text(meeting.title ?? UXText.text("library.untitled")).fontWeight(.semibold).lineLimit(1)
@@ -361,54 +362,47 @@ struct LibraryView: View {
                 if let start = meeting.meetingTime { Text(store.format.rowTime(start)).font(.system(size: 11.5)).foregroundStyle(dim).monospacedDigit() }
             }
             HStack(spacing: 6) {
-                if let badge = meeting.state.badge { badgePill(badge, selected: selected) }
-                if let meta = rowMeta(meeting) { Text(meta).foregroundStyle(dim).lineLimit(1) }
+                if let presentation { catalogStatusBadge(presentation) }
+                if let meta = rowMeta(meeting, badgeKind: presentation?.kind) { Text(meta).foregroundStyle(dim).lineLimit(1) }
             }.font(.system(size: 11.5))
-            if let line = rowSecondLine(meeting) { line.font(.system(size: 11.5)).foregroundStyle(dim).lineLimit(1) }
+            if let line = rowSecondLine(meeting, badgeKind: presentation?.kind) { line.font(.system(size: 11.5)).foregroundStyle(dim).lineLimit(1) }
         }
         .foregroundStyle(selected ? CassiniTheme.onAccent : CassiniTheme.ink)
         .padding(.vertical, 1).frame(minHeight: 50, alignment: .top)
     }
     // R11: visible badge precedence also governs both row text lines.
-    private func rowMeta(_ meeting: LibraryMeeting) -> String? {
-        switch meeting.state.badge?.kind {
+    private func rowMeta(_ meeting: LibraryMeeting, badgeKind: String?) -> String? {
+        switch badgeKind {
         case "recording": return meeting.isBrowserCapture ? UXText.text("common.listeningInsideBrowser") : nil
         case "saving", "transcribing": return nil
         default: return LibraryFormat.rowMeta(durationMs: meeting.durationMs, names: meeting.speakerNames)
         }
     }
-    private func rowSecondLine(_ meeting: LibraryMeeting) -> Text? {
-        switch meeting.state.badge?.kind {
+    private func rowSecondLine(_ meeting: LibraryMeeting, badgeKind: String?) -> Text? {
+        switch badgeKind {
         case "recording": return meeting.isBrowserCapture ? Text(UXText.text("library.row.recording.line")) : nil
         case "saving": return nil
         case "transcribing": return meeting.durationMs.map { Text(UXText.text("library.row.transcribing.line", ["duration": LibraryFormat.meetingDuration($0)])) }
         default: return meeting.quote.map { Text("“") + Text(MeetingPresentation.pullQuote($0)) + Text("”") }
         }
     }
-    private func badgePill(_ badge: MeetingBadge, selected: Bool) -> some View {
-        let tint = CassiniTheme.badgeInk(badge.tint)
-        let wash = CassiniTheme.badgeWash(badge.tint)
-        return HStack(spacing: 4) {
-            if badge.dot == true { Circle().fill(selected ? CassiniTheme.onAccent : tint).frame(width: 5, height: 5) }
-            Text(badge.text).fontWeight(.semibold)
-        }.padding(.horizontal, 7).padding(.vertical, 1)
-            .foregroundStyle(selected ? CassiniTheme.onAccent : tint)
-            .background((selected ? CassiniTheme.onAccent.opacity(0.22) : wash), in: Capsule())
+    private func catalogStatusBadge(_ presentation: CatalogBadgePresentation) -> some View {
+        CatalogStatusBadge(presentation: presentation, isAnimating: !store.context.screenshot && scenePhase == .active)
+            .accessibilityAddTraits(.isStaticText)
     }
     private func preview(_ meeting: LibraryMeeting) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size: 22, weight: .bold)).accessibilityAddTraits(.isHeader)
-                    Text(store.format.previewSubtitle(meeting.meetingTime,durationMs:meeting.durationMs,received:meeting.state.origin == .received)).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("preview-subtitle")
+                    Text(store.format.previewSubtitle(meeting.meetingTime, durationMs: meeting.durationMs, received: meeting.state.origin == .received)).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("preview-subtitle")
+                    if let presentation = LibraryBadgeCatalog.presentation(for: meeting) {
+                        catalogStatusBadge(presentation)
+                            .padding(.top, 2)
+                            .accessibilityIdentifier(presentation.kind == "transcribing" ? "preview-transcribing" : "preview-status-badge")
+                    }
                 }
                 if let line = RecordingOverview.libraryDiskLine { Text(line).foregroundStyle(CassiniTheme.warningNotice) }
-                if meeting.state.transcript == .queued || meeting.state.transcript == .running {
-                    HStack(spacing:8) {
-                        ProgressView().controlSize(.small)
-                        if let badge = meeting.state.badge { Text(badge.text).foregroundStyle(CassiniTheme.ink2) }
-                    }.accessibilityIdentifier("preview-transcribing")
-                }
                 if meeting.state.transcript == .failed { InlineMeetingLine(id: "errors.transcribeFailed.line", actionID: "common.tryAgain", action: { TranscriptionQueue.shared.enqueue(meeting, retry: true) }).disabled(LibraryMoveCoordinator.shared.busy) }
                 if meeting.state.transcript == .damaged { InlineMeetingLine(id: "errors.transcriptDamaged.line", action: nil) }
                 if let folder = meeting.received?.originalFolderName {
@@ -422,7 +416,8 @@ struct LibraryView: View {
                     HStack(spacing: 8) {
                         ForEach(meeting.speakers, id: \.id) { speaker in
                             HStack(spacing: 6) {
-                                Text(speaker.displayName)
+                                Circle().fill(CassiniTheme.speakerInk(speaker)).frame(width: 7, height: 7).accessibilityHidden(true)
+                                Text(speaker.displayName).foregroundStyle(CassiniTheme.ink)
                                 if speaker.provenance == .recognised { autoTag }
                             }.fixedSize().padding(.horizontal, 12).frame(height: 28).background(CassiniTheme.chipFill, in: Capsule())
                         }
@@ -454,10 +449,15 @@ struct LibraryView: View {
                         ForEach(Array(store.excerpt(meeting).enumerated()), id: \.offset) { _, turn in
                             HStack(alignment: .top, spacing: 16) {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    if !turn.continuation { HStack(spacing: 5) {
-                                        Text(meeting.speakers.first { $0.id == turn.speaker }?.displayName ?? UXText.text("common.speaker.unnamed", ["n": "1"])).fontWeight(.semibold)
-                                        if meeting.speakers.first(where: { $0.id == turn.speaker })?.provenance == .recognised { autoTag }
-                                    } }
+                                    if !turn.continuation {
+                                        let turnSpeaker = meeting.speaker(for: turn.speaker)
+                                        HStack(spacing: 5) {
+                                            Text(turnSpeaker?.displayName ?? UXText.text("common.speaker.unnamed", ["n": "1"]))
+                                                .fontWeight(.semibold)
+                                                .foregroundStyle(CassiniTheme.speakerInk(turnSpeaker))
+                                            if turnSpeaker?.provenance == .recognised { autoTag }
+                                        }
+                                    }
                                     Text(LibraryFormat.position(turn.startMs)).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.ink2).monospacedDigit()
                                     if !turn.over.isEmpty {
                                         Text(UXText.text("meeting.turn.over",["names":LibraryFormat(locale:UXText.locale,language:UXText.language).list(turn.over.map { meeting.speaker(for:$0)?.displayName ?? $0 })])).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
@@ -513,12 +513,12 @@ struct LibraryView: View {
                 if saving {
                     ProgressView().controlSize(.small)
                 } else {
-                    Circle().fill(big ? CassiniTheme.onRecord : CassiniTheme.recordInk).frame(width: big ? 12 : 10, height: big ? 12 : 10)
+                    Circle().fill(CassiniTheme.onRecord).frame(width: big ? 12 : 10, height: big ? 12 : 10)
                 }
                 Text(title).fontWeight(.semibold)
             }.padding(.horizontal, big ? 22 : 14).frame(height: big ? 44 : 34)
-                .foregroundStyle(saving ? CassiniTheme.ink2 : big ? CassiniTheme.onRecord : CassiniTheme.ink)
-                .background(saving ? CassiniTheme.chipFill : big ? CassiniTheme.record : CassiniTheme.chipFill, in: RoundedRectangle(cornerRadius: big ? 22 : 6))
+                .foregroundStyle(saving ? CassiniTheme.ink2 : CassiniTheme.onRecord)
+                .background(saving ? CassiniTheme.chipFill : CassiniTheme.record, in: RoundedRectangle(cornerRadius: big ? 22 : 6))
         }.buttonStyle(.plain).disabled(!RecordingOverview.canStart).accessibilityLabel(title).accessibilityIdentifier(big ? "first-run-record" : "toolbar-record")
     }
     private func play(_ meeting: LibraryMeeting) {
@@ -638,6 +638,7 @@ final class LibraryToolbarActionView: NSView {
         return indicator
     }()
     private var action: (() -> Void)?, makeMenu: (() -> NSMenu)?
+    private var currentStyle: LibraryToolbarAction.Style = .bordered
     #if DEBUG
     private var fixtureOnLaidOut: ((String) -> Void)?
     #endif
@@ -657,6 +658,14 @@ final class LibraryToolbarActionView: NSView {
         scheduleFixtureLayoutNotification()
         #endif
     }
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); applyLayerFill() }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); applyLayerFill() }
+    private func applyLayerFill() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let fill: NSColor = [.stop,.record].contains(currentStyle) ? CassiniTheme.nsRecord : [.saving,.capsule].contains(currentStyle) ? CassiniTheme.nsChipFill : .clear
+            button.layer?.backgroundColor = fill.cgColor
+        }
+    }
     override func layout() {
         super.layout(); button.frame = bounds
         spinner.frame = NSRect(x:10,y:(bounds.height - 16) / 2,width:16,height:16)
@@ -667,7 +676,7 @@ final class LibraryToolbarActionView: NSView {
         #endif
     }
     func update(_ value: LibraryToolbarAction) {
-        action = value.action; makeMenu = value.menu
+        action = value.action; makeMenu = value.menu; currentStyle = value.style
         #if DEBUG
         fixtureOnLaidOut = value.fixtureOnLaidOut
         #endif
@@ -680,10 +689,9 @@ final class LibraryToolbarActionView: NSView {
         button.font = font; button.image = nil
         button.isBordered = value.style == .bordered; button.bezelStyle = .rounded
         button.imagePosition = .imageLeft
-        let tint: NSColor = value.style == .stop ? CassiniTheme.nsOnRecord : value.style == .saving ? CassiniTheme.nsInk2 : CassiniTheme.nsInk
+        let tint: NSColor = [.stop,.record].contains(value.style) ? CassiniTheme.nsOnRecord : value.style == .saving ? CassiniTheme.nsInk2 : CassiniTheme.nsInk
         button.attributedTitle = NSAttributedString(string:value.title,attributes:[.font:font,.foregroundColor:tint])
-        let fill: NSColor = value.style == .stop ? CassiniTheme.nsRecord : [.record,.saving,.capsule].contains(value.style) ? CassiniTheme.nsChipFill : .clear
-        button.layer?.backgroundColor = fill.cgColor
+        applyLayerFill()
         let text = ceil((value.title as NSString).size(withAttributes:[.font:font]).width)
         size = NSSize(width:text + 28,height:34)
         if value.style == .saving { spinner.isHidden = false; spinner.startAnimation(nil) }
@@ -695,7 +703,7 @@ final class LibraryToolbarActionView: NSView {
             size.width = 28
         case .record:
             button.image = NSImage(size:NSSize(width:18,height:10),flipped:false) { _ in
-                CassiniTheme.nsRecordInk.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:0,width:10,height:10)).fill(); return true
+                CassiniTheme.nsOnRecord.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:0,width:10,height:10)).fill(); return true
             }
             button.imageHugsTitle = true; size.width += 18
         case .saving:

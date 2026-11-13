@@ -95,7 +95,7 @@ final class Fixture {
         let result = try #require(LibraryScanner(root: f.root).scan().meetings.first)
         #expect(result.durationMs == 1000)
         #expect(result.state.interruptedAtMs == 1000)
-        #expect(result.state.badge?.text == "Interrupted at 00:00:01")
+        #expect(result.state.badge?.text == "Interrupted")
         #expect(result.issues.contains(.unknownStartOffset))
         #expect(result.start == nil && result.audioFiles.count == 2)
         #expect(try Data(contentsOf: f.folder.appendingPathComponent("session.json")) == original)
