@@ -23,6 +23,9 @@ struct MeetingTranscriptText: NSViewRepresentable {
     let seek: (Int) -> Void
     var listeningWords: Set<Int> = []
     var canPlay = true
+    var findRanges: [NSRange] = []
+    var selectedFindRange: NSRange? = nil
+    var dark = false
     var listen: (Int) -> Void = { _ in }
     var playFromHere: () -> Void = {}
 
@@ -42,7 +45,7 @@ struct MeetingTranscriptText: NSViewRepresentable {
     }
     func update(_ view: MeetingTurnTextView) {
         view.seek = seek; view.listen = listen; view.playFromHere = playFromHere; view.canPlay = canPlay
-        let input = MeetingTurnTextView.Input(items:items,asides:asides,words:listeningWords,canPlay:canPlay,language:UXText.language.rawValue)
+        let input = MeetingTurnTextView.Input(items:items,asides:asides,words:listeningWords,canPlay:canPlay,language:UXText.language.rawValue,findRanges:findRanges,selectedFindRange:selectedFindRange,dark:dark)
         if view.input != input {
             view.input = input
             view.boundaries = Array(Set((items+asides.flatMap(\.items)).flatMap { [$0.startMs,$0.endMs] }
@@ -143,6 +146,13 @@ struct MeetingTranscriptText: NSViewRepresentable {
                 text.append(NSAttributedString(string: " ")); text.append(chip(aside))
             }
         }
+        for range in findRanges where range.location >= 0 && range.length > 0 && NSMaxRange(range) <= text.length {
+            text.addAttributes([.backgroundColor: CassiniTheme.nsLegacyMatchFill(dark:dark,isCurrent:false),
+                                .foregroundColor: CassiniTheme.nsHighlightInk ?? CassiniTheme.nsInk], range: range)
+        }
+        if let range = selectedFindRange, range.location >= 0, range.length > 0, NSMaxRange(range) <= text.length {
+            text.addAttribute(.backgroundColor,value:CassiniTheme.nsLegacyMatchFill(dark:dark,isCurrent:true),range:range)
+        }
         return text
     }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView view: MeetingTurnTextView, context: Context) -> CGSize? {
@@ -162,6 +172,9 @@ final class MeetingTurnTextView: NSTextView {
         let words: Set<Int>
         let canPlay: Bool
         let language: String
+        let findRanges: [NSRange]
+        let selectedFindRange: NSRange?
+        let dark: Bool
     }
     var input: Input?
     var boundaries: [Int64] = []
@@ -301,6 +314,18 @@ extension MeetingTranscriptText {
         let chip = string.range(of:"Unidentified voice"), word = string.range(of:"Yes."), hostWord = string.range(of:"We")
         let chipTint = storage.attribute(.backgroundColor,at:chip.location,effectiveRange:nil) as? NSColor
         var report = ["asideHasExactListeningTint": storage.attribute(.cassiniListenCurrent,at:word.location,effectiveRange:nil) as? Bool == true && abs((chipTint?.alphaComponent ?? 0)-0.18) < 0.001 && storage.attribute(.cassiniListenCurrent,at:hostWord.location,effectiveRange:nil) == nil]
+        // Exercise the real native update cache at a fixed playback phase.
+        do {
+            var search = MeetingTranscriptText(items:host,positionMs:-1,seek:{ _ in },findRanges:[NSRange(location:0,length:2),NSRange(location:3,length:6)],selectedFindRange:NSRange(location:0,length:2))
+            let target = makeView(); search.update(target)
+            func fill(_ offset:Int) -> NSColor? { target.textStorage?.attribute(.backgroundColor,at:offset,effectiveRange:nil) as? NSColor }
+            let first = fill(0), inactive = fill(3)
+            search.selectedFindRange = NSRange(location:3,length:6); search.update(target)
+            report["findSelectionInvalidatesNativeCache"] = first != inactive && fill(0) == inactive && fill(3) == first
+            let light = fill(3)
+            search.dark = true; search.update(target)
+            report["findAppearanceInvalidatesNativeCache"] = fill(3) != light && fill(3) == CassiniTheme.nsLegacyMatchFill(dark:true,isCurrent:true)
+        }
         let button = view.accessibilityChildren()?.first as? NSButton
         button?.sendAction(button?.action,to:button?.target)
         report["asideNativeListenButton"] = listened == 1 && sought == -1
