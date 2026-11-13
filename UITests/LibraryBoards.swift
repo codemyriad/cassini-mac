@@ -991,6 +991,7 @@ final class LibraryBoards: XCTestCase {
             let exact = NSPredicate { _,_ in abs(window.frame.width - 1120) < 0.1 && abs(window.frame.height - 720) < 0.1 }
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:exact,object:nil)],timeout:10),.completed)
             XCTAssertFalse(window.textViews["recording-notes"].exists)
+            XCTAssertGreaterThanOrEqual(window.buttons["recording-more-actions"].frame.minX,window.frame.minX + 400,"Recording actions belong to the detail toolbar")
             capture(window,name:silent ? "recording-silent" : "recording")
             window.buttons["recording-more-actions"].click()
             app.menuItems["recording-details"].click()
@@ -1016,7 +1017,9 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.outlines.firstMatch.exists)
         XCTAssertTrue(stop.isHittable && window.frame.contains(stop.frame))
         let check = window.buttons["recording-check-microphone"]
-        XCTAssertTrue(check.waitForExistence(timeout:5))
+        // Production reveals Check after20 seconds of quiet microphone input.
+        // Observe that state transition rather than sleeping or forcing it.
+        XCTAssertTrue(check.waitForExistence(timeout:30))
         XCTAssertTrue(check.isHittable && window.frame.contains(check.frame))
         for id in ["recording-microphone-meter","recording-others-meter","recording-change-sources"] {
             let control = window.descendants(matching:.any).matching(identifier:id).firstMatch

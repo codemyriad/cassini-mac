@@ -128,7 +128,7 @@ struct RecordingPageView: View {
                     Text(UXText.text("recording.changeWhatIsRecorded"))
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.right").foregroundStyle(CassiniTheme.ink3).accessibilityHidden(true)
-                }.padding(.horizontal, 14).frame(minHeight: 38)
+                }.padding(.horizontal, 14).frame(minHeight: 38).contentShape(Rectangle())
             }.buttonStyle(.plain).font(.system(size: 13, weight: .medium))
                 .foregroundStyle(CassiniTheme.ink).disabled(model.owned == nil && !model.frozen)
                 .accessibilityIdentifier("recording-change-sources")

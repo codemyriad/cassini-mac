@@ -77,6 +77,9 @@ struct LibraryView: View {
                         }.accessibilityElement(children:.contain).accessibilityIdentifier("recording-toolbar-saving")
                     }
                 }
+                ToolbarItem(placement: .principal) {
+                    Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
+                }
                 ToolbarItem(placement: .primaryAction) {
                     LibraryToolbarAction(title: "", label: UXText.text("meeting.moreActions"), identifier: "recording-more-actions", style: .more, menu: {
                         LibraryToolbarAction.menu([
