@@ -30,7 +30,7 @@ struct SpeakerEditorView:View {
             .accessibilityAddTraits(.isModal).accessibilityIdentifier("speaker-editor")
             .onChange(of:focused) {_,value in if let value {lastFocused=value}}
             .onAppear {focused = .name;SpeakerEditorChrome.advanceFocus=advanceFocus}
-            .onDisappear {SpeakerEditorChrome.advanceFocus=nil;detail?.speakerSample.cancel()}
+            .onDisappear {SpeakerEditorChrome.dismiss();detail?.speakerSample.cancel()}
     }
     private func header(_ speaker:MeetingSpeaker)->some View {
         HStack(spacing:12) {
@@ -189,6 +189,7 @@ struct SpeakerEditFailureNotice:View {
     static var advanceFocus:((Bool)->Void)?
     private static let undoGate=SpeakerUndoGate()
     private static let identifier=NSUserInterfaceItemIdentifier("speaker-titlebar-scrim")
+    static func dismiss() {advanceFocus=nil;undoGate.reset()}
     #if DEBUG
     static func nativeSelfTest()->[String:Bool] {
         let window=NSWindow(contentRect:NSRect(x:0,y:0,width:760,height:480),styleMask:[.titled],backing:.buffered,defer:false)
@@ -247,12 +248,12 @@ private final class SpeakerTitlebarShade:NSView {
     }
     private var entries:[Entry]=[]
     private weak var window:NSWindow?
+    func reset() {
+        for entry in entries {entry.item.target=entry.target}
+        entries=[];window=nil
+    }
     func update(_ window:NSWindow,visible:Bool) {
-        guard visible else {
-            for entry in entries {entry.item.target=entry.target}
-            entries=[];self.window=nil
-            return
-        }
+        guard visible else {reset();return}
         self.window=window
         func install(_ menu:NSMenu) {
             for item in menu.items {
