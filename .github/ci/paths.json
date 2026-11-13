@@ -22,6 +22,7 @@
     "scripts/*opus*",
     "project.yml",
     "scripts/export-ux-boards.py",
+    "scripts/export-speaker-before.py",
     "scripts/test-export-ux-boards.py",
     "scripts/pr-shots.py",
     "scripts/report-pr-shots-baseline.py",
