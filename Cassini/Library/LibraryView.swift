@@ -100,7 +100,7 @@ struct LibraryView: View {
                         }
                     }
                 }
-                ToolbarItem(placement:.navigation) {
+                ToolbarItem(placement:.principal) {
                     if detail.compactHeader {
                         HStack(spacing: 8) {
                             Text(detail.meeting.title ?? UXText.text("library.untitled")).fontWeight(.semibold).lineLimit(1)
@@ -108,6 +108,8 @@ struct LibraryView: View {
                                                               received: detail.meeting.state.origin == .received))
                                 .foregroundStyle(CassiniTheme.ink2).lineLimit(1)
                         }.accessibilityElement(children: .contain).accessibilityIdentifier("meeting-compact-header")
+                    } else {
+                        Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
                     }
                 }
                 if let spec = meetingTranscriptionToolbarSpec(detail) {

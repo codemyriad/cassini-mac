@@ -644,6 +644,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(window.buttons["preview-read-transcript"].exists)
         XCTAssertFalse(window.buttons["Summary"].exists)
         if window.buttons["Not now"].exists { window.buttons["Not now"].click() }
+        XCTAssertGreaterThanOrEqual(window.buttons["meeting-export"].frame.minX,window.frame.minX + 400,"Meeting actions belong to the detail toolbar")
         capture(window,name:"meeting-open")
         let before = visibleText(window.staticTexts["meeting-elapsed"])
         let beforePlay = window.buttons["meeting-play"].label
@@ -685,6 +686,8 @@ final class LibraryBoards: XCTestCase {
         let compact = window.descendants(matching:.any)["meeting-compact-header"]
         let scrolled = NSPredicate { _,_ in compact.exists && compact.isHittable }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:scrolled,object:nil)],timeout:10),.completed,app.debugDescription)
+        XCTAssertGreaterThanOrEqual(compact.frame.minX,window.frame.minX + 400,"The compact title stays above the detail pane")
+        XCTAssertGreaterThanOrEqual(window.buttons["meeting-export"].frame.minX,window.frame.minX + 400)
         XCTAssertTrue(window.textFields["meeting-find"].isHittable,"Find stays pinned while reading")
         XCTAssertTrue(window.buttons["meeting-play"].isHittable,"Floating transport stays in the hit-test tree")
         XCTAssertTrue(window.outlines.firstMatch.exists)
