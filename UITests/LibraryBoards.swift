@@ -838,7 +838,7 @@ final class LibraryBoards: XCTestCase {
         let app = try launch("received",fixture:"received-only"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"preview-subtitle").firstMatch.waitForExistence(timeout:20),window.debugDescription)
-        XCTAssertTrue(text("Imported · Transcribed on another device",in:window),window.debugDescription)
+        XCTAssertTrue(window.staticTexts.matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","Imported · Transcribed on another device","Imported · Transcribed on another device")).firstMatch.exists,window.debugDescription)
         XCTAssertFalse(window.descendants(matching:.any)["received-folder-card"].exists)
         XCTAssertFalse(window.descendants(matching:.any)["import-summary"].exists)
         XCTAssertTrue(window.buttons["preview-play"].isEnabled)
@@ -1221,7 +1221,7 @@ final class LibraryBoards: XCTestCase {
         let received = library.descendants(matching: .any).matching(identifier: "meeting-Received-a0000000-0000-4000-8000-000000000006").firstMatch
         XCTAssertTrue(received.waitForExistence(timeout: 20), app.debugDescription)
         received.click()
-        let selectedReceived = NSPredicate { _,_ in self.text("Onboarding walkthrough",in:library) && self.text("Imported · Transcribed on another device",in:library) }
+        let selectedReceived = NSPredicate { _,_ in self.text("Onboarding walkthrough",in:library) && library.staticTexts.matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","Imported · Transcribed on another device","Imported · Transcribed on another device")).firstMatch.exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:selectedReceived,object:nil)],timeout:5),.completed,library.debugDescription)
         library.buttons["preview-read-transcript"].click()
         XCTAssertTrue(library.buttons["meeting-back"].waitForExistence(timeout: 15))
