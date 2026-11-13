@@ -56,9 +56,9 @@ def due_slot(now):
 
 
 def ci_state(runs,sha):
-    # API pages are newest-first. PR merge-ref results (even this repo's main)
-    # and fork runs must neither authorize nor block a main release.
-    run=next((r for r in runs if r.get('event') in ('push','workflow_dispatch','schedule')
+    # API pages are newest-first. PR/fork results and non-push runs (schedule,
+    # workflow_dispatch) must neither authorize nor block a main release.
+    run=next((r for r in runs if r.get('event')=='push'
               and (r.get('head_repository') or {}).get('full_name')==REPO),None)
     if not run:return 'missing'
     if run.get('head_sha')!=sha or run.get('head_branch')!='main':return 'red'
@@ -71,7 +71,7 @@ def eligible_ci(runs,sha):
 
 
 def main_ci_state(sha):
-    pages=gh(['--paginate','--slurp',f'repos/{REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha={sha}&per_page=100'])
+    pages=gh(['--paginate','--slurp',f'repos/{REPO}/actions/workflows/ci.yml/runs?branch=main&event=push&head_sha={sha}&per_page=100'])
     return ci_state([run for page in pages for run in page['workflow_runs']],sha)
 
 
