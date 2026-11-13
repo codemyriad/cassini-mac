@@ -2,7 +2,7 @@
 import Foundation
 
 /// L-45: desktop engines publish retained words, not a live draft for reading.
-/// Do not infer audio processed, pipeline stages or battery drain from word timings:
+/// Do not infer audio processed or pipeline stages from word timings:
 /// silence, overlapping tracks and resumed jobs make those estimates misleading.
 public struct TranscribingPresentation: Sendable {
     public let isActive: Bool
@@ -16,8 +16,18 @@ public struct TranscribingPresentation: Sendable {
     public static func isActive(_ state: MeetingState) -> Bool {
         state.lifecycle == .saved && [.queued, .running].contains(state.transcript)
     }
+    /// Project the system's discharge estimate across the worker's remaining ETA.
+    /// Unknown estimates, AC power and absent batteries are supplied as nil.
+    public static func batteryAtFinish(etaMinutes: Int64?, chargePercent: Double?, secondsRemaining: Double?) -> Int? {
+        guard let etaMinutes, etaMinutes >= 0, let chargePercent,
+              chargePercent.isFinite, (0...100).contains(chargePercent),
+              let secondsRemaining, secondsRemaining.isFinite, secondsRemaining > 0 else { return nil }
+        let fraction = max(0, 1 - Double(etaMinutes) * 60 / secondsRemaining)
+        return Int((chargePercent * fraction).rounded())
+    }
 
     public init(state: MeetingState, readOnly: Bool, wordCount: Int, durationMs: Int64?,
+                batteryPercentAtFinish: Int? = nil,
                 language: CassiniLanguage = .system, locale: Locale = .current) {
         isActive = Self.isActive(state)
         canStop = isActive && !readOnly
@@ -39,6 +49,7 @@ public struct TranscribingPresentation: Sendable {
         wordsSoFar = max(0, wordCount).formatted(.number.locale(locale))
         audioDone = durationMs.flatMap { $0 > 0 ? LibraryFormat.position($0) : nil }
             .map { text("transcribing.stat.audioDoneValue", ["done":"—", "total":$0]) } ?? "—"
-        batteryAtFinish = "—"
+        batteryAtFinish = batteryPercentAtFinish.flatMap { (0...100).contains($0) ? $0 : nil }
+            .map { text("transcribing.stat.batteryValue", ["percent":String($0)]) } ?? "—"
     }
 }

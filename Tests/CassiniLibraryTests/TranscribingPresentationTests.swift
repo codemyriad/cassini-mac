@@ -55,4 +55,17 @@ struct TranscribingPresentationTests {
             }
         }
     }
+    @Test func batteryProjectionRequiresRealSystemInputsAndClampsAtEmpty() {
+        #expect(TranscribingPresentation.batteryAtFinish(etaMinutes:15,chargePercent:80,secondsRemaining:3600) == 60)
+        #expect(TranscribingPresentation.batteryAtFinish(etaMinutes:90,chargePercent:80,secondsRemaining:3600) == 0)
+        #expect(TranscribingPresentation.batteryAtFinish(etaMinutes:Int64.max,chargePercent:80,secondsRemaining:1) == 0)
+        #expect(TranscribingPresentation.batteryAtFinish(etaMinutes:nil,chargePercent:80,secondsRemaining:3600) == nil)
+        #expect(TranscribingPresentation.batteryAtFinish(etaMinutes:1,chargePercent:nil,secondsRemaining:3600) == nil)
+        for remaining in [-1.0, 0, .infinity, .nan] {
+            #expect(TranscribingPresentation.batteryAtFinish(etaMinutes:1,chargePercent:80,secondsRemaining:remaining) == nil)
+        }
+        let value = TranscribingPresentation(state:.init(transcript:.running),readOnly:false,wordCount:0,
+                                            durationMs:nil,batteryPercentAtFinish:60,language:.en)
+        #expect(value.batteryAtFinish == "About 60%")
+    }
 }

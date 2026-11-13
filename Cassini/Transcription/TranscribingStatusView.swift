@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import CassiniLibrary
 import SwiftUI
+import IOKit.ps
 
 /// Status belongs to the meeting pane; the Library keeps its compact row badge.
 struct TranscribingStatusView: View {
@@ -8,11 +9,13 @@ struct TranscribingStatusView: View {
     @State private var showingDetails = false
     @State private var queue = TranscriptionQueue.shared
     @State private var move = LibraryMoveCoordinator.shared
+    @State private var batteryPercentAtFinish: Int?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var presentation: TranscribingPresentation {
         .init(state:meeting.state, readOnly:meeting.metadataReadOnly,
               wordCount:meeting.transcriptItems.count, durationMs:meeting.durationMs,
+              batteryPercentAtFinish:batteryPercentAtFinish,
               language:UXText.language, locale:UXText.locale)
     }
     private var stopDisabled: Bool {
@@ -61,6 +64,13 @@ struct TranscribingStatusView: View {
             .font(.system(size:13)).foregroundStyle(CassiniTheme.ink)
             .accessibilityElement(children:.contain).accessibilityIdentifier("transcribing-controls")
             .onChange(of:meeting.libraryKey) { _,_ in showingDetails = false }
+            .task(id:meeting.state.etaMinutes) {
+                batteryPercentAtFinish = nil
+                let eta = meeting.state.etaMinutes
+                let estimate = await Task.detached { TranscribingBattery.estimate(etaMinutes:eta) }.value
+                guard !Task.isCancelled else { return }
+                batteryPercentAtFinish = estimate
+            }
     }
     private var details: some View {
         VStack(alignment:.leading, spacing:18) {
@@ -105,5 +115,25 @@ struct TranscribingStatusView: View {
             Text(UXText.text(id)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
             Text(value).monospacedDigit().fontWeight(.semibold)
         }.accessibilityElement(children:.combine).accessibilityIdentifier("transcribing-" + id)
+    }
+}
+
+private enum TranscribingBattery {
+    /// System power-source queries run off the UI actor. Only a discharging
+    /// internal battery with a valid system runtime estimate supports projection.
+    static func estimate(etaMinutes: Int64?) -> Int? {
+        guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let sources = IOPSCopyPowerSourcesList(info)?.takeRetainedValue() as? [CFTypeRef] else { return nil }
+        let remaining = IOPSGetTimeRemainingEstimate()
+        for source in sources {
+            guard let description = IOPSGetPowerSourceDescription(info,source)?.takeUnretainedValue() as? [String:Any],
+                  description[kIOPSTypeKey] as? String == kIOPSInternalBatteryType,
+                  description[kIOPSPowerSourceStateKey] as? String == kIOPSBatteryPowerValue,
+                  let charge = description[kIOPSCurrentCapacityKey] as? Double,
+                  let capacity = description[kIOPSMaxCapacityKey] as? Double, capacity > 0 else { continue }
+            return TranscribingPresentation.batteryAtFinish(etaMinutes:etaMinutes,
+                chargePercent:100 * charge / capacity,secondsRemaining:remaining)
+        }
+        return nil
     }
 }
