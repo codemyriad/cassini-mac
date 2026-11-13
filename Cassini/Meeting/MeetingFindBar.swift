@@ -18,7 +18,7 @@ struct MeetingFindBar: View {
                 ProgressView().controlSize(.mini).accessibilityIdentifier("meeting-find-searching")
             } else if !model.query.isEmpty {
                 Text(model.status).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.ink2)
-                    .lineLimit(1).frame(maxWidth: 160, alignment: .trailing).layoutPriority(2)
+                    .lineLimit(1).fixedSize(horizontal:true,vertical:false).layoutPriority(2)
                     .accessibilityIdentifier("meeting-find-count")
                 Button { model.step(.previous) } label: { Image(systemName: "chevron.up") }
                     .accessibilityLabel(UXText.text("mac.legacy.previousMatch"))

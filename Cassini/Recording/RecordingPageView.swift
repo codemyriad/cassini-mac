@@ -6,6 +6,9 @@ import CassiniLibrary
 struct RecordingPageView: View {
     @State private var changingCapture = false
     @State private var renaming = false
+    @State private var titleDraft = ""
+    @State private var titleCancelled = false
+    @State private var sourcesWidth: CGFloat = 640
     @State private var sourceProblem = false
     @State private var explainingFallback = false
     let detail: MeetingDetailModel
@@ -64,6 +67,8 @@ struct RecordingPageView: View {
             .onChange(of:titleFocused) { _,focused in if !focused { model.flush() } }
             .onChange(of:detail.meeting.state.lifecycle) { _,_ in model.update(detail.meeting) }
             .onChange(of:detail.meeting.state.liveMs) { _,_ in model.update(detail.meeting) }
+            .onChange(of:detail.meeting.title) { _,_ in model.update(detail.meeting) }
+            .onChange(of:detail.meeting.titleIsUntitled) { _,_ in model.update(detail.meeting) }
             .onChange(of:detail.meeting.audioTracks) { _,_ in model.update(detail.meeting) }
             .onDisappear { model.flush() }
     }
@@ -73,7 +78,7 @@ struct RecordingPageView: View {
                 Text(model.displayTitle).font(.system(size: 22, weight: .bold))
                     .textSelection(.enabled).accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("recording-page-title")
-                Button { renaming = true } label: { Image(systemName: "pencil").frame(width: 26, height: 26) }
+                Button { titleDraft = model.title; titleCancelled = false; renaming = true } label: { Image(systemName: "pencil").frame(width: 26, height: 26) }
                     .buttonStyle(.borderless).foregroundStyle(CassiniTheme.ink2)
                     .disabled(detail.meeting.metadataReadOnly || model.saving || model.frozen)
                     .accessibilityLabel(UXText.text("meeting.renameEllipsis"))
@@ -135,6 +140,7 @@ struct RecordingPageView: View {
         }.background(CassiniTheme.surface, in: RoundedRectangle(cornerRadius: 12))
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay { RoundedRectangle(cornerRadius: 12).stroke(CassiniTheme.cardStroke) }
+            .onGeometryChange(for:CGFloat.self) { $0.size.width } action: { sourcesWidth = $0 }
             .accessibilityElement(children: .contain).accessibilityIdentifier("recording-sources")
     }
     private var recordingDate: String {
@@ -143,20 +149,22 @@ struct RecordingPageView: View {
     }
     private var titleEditor: some View {
         VStack(alignment: .leading, spacing: 14) {
-            TextField(UXText.text("recording.title.label"), text: Binding(get: { model.title }, set: {
-                model.title = $0; model.changeTitle()
-            })).textFieldStyle(.roundedBorder).focused($titleFocused)
+            TextField(UXText.text("recording.title.label"), text: $titleDraft).textFieldStyle(.roundedBorder).focused($titleFocused)
                 .accessibilityIdentifier("recording-title")
-                .onSubmit { model.flush(); renaming = false }
+                .onSubmit { commitTitle(); renaming = false }
             if detail.meeting.isBrowserCapture {
                 Text(UXText.text("recording.title.caption")).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.ink2)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            HStack { Spacer(); Button(UXText.text("common.done")) { model.flush(); renaming = false }.keyboardShortcut(.defaultAction) }
+            HStack { Spacer(); Button(UXText.text("common.done")) { commitTitle(); renaming = false }.keyboardShortcut(.defaultAction) }
         }.padding(18).frame(width: 320)
             .onAppear { titleFocused = true }
-            .onDisappear { model.flush() }
-            .onExitCommand { model.flush(); renaming = false }
+            .onDisappear { if !titleCancelled { commitTitle() } }
+            .onExitCommand { titleCancelled = true; renaming = false }
+    }
+    private func commitTitle() {
+        guard !titleCancelled, model.title != titleDraft else { return }
+        model.title = titleDraft; model.changeTitle(); model.flush()
     }
     private func sourceCaption(microphone: Bool) -> some View {
         let silent = microphone && model.microphoneSilent
@@ -190,23 +198,26 @@ struct RecordingPageView: View {
             if !model.frozen { NSWorkspace.shared.open(URL(string:"x-apple.systempreferences:com.apple.Sound-Settings.extension?input")!) }
         }.buttonStyle(.plain).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.warnInk)
             .frame(width: 58, height: 30).background(CassiniTheme.controlFill, in: RoundedRectangle(cornerRadius: 6))
+            .overlay { RoundedRectangle(cornerRadius:6).stroke(CassiniTheme.cardStroke,lineWidth:1) }
             .accessibilityIdentifier("recording-check-microphone").allowsHitTesting(!model.frozen)
     }
     private func source(microphone: Bool) -> some View {
         let silent = microphone && model.microphoneSilent
-        return ViewThatFits(in: .horizontal) {
+        return Group {
+            if sourcesWidth - 32 >= 460 {
             HStack(spacing: 14) {
                 sourceCaption(microphone: microphone).frame(minWidth: 160)
                 sourceMeter(microphone: microphone).frame(width: 200, height: 32)
                 if silent { microphoneCheck }
-                else { Color.clear.frame(width: 58, height: 30).accessibilityHidden(true) }
             }
+            } else {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 12) {
                     sourceCaption(microphone: microphone)
                     if silent { microphoneCheck }
                 }
-                sourceMeter(microphone: microphone).frame(maxWidth: .infinity).frame(height: 32)
+                sourceMeter(microphone: microphone).frame(width:200,height:32).frame(maxWidth:.infinity,alignment:.leading)
+            }
             }
         }.padding(.horizontal, 16).padding(.vertical, 12).frame(minHeight: 62)
             .background(silent ? CassiniTheme.warnTint : Color.clear)
