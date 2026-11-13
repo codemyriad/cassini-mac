@@ -12,7 +12,7 @@ struct MeetingView: View {
     @State private var controlsHeight: CGFloat = 40
     var showsCompanionSuggestion: Bool { !suggestionDismissed && !CaptureCollection.shared.connected }
     private var meeting: LibraryMeeting { model.meeting }
-    private var transcribing: Bool { [.queued, .running].contains(meeting.state.transcript) }
+    private var transcribing: Bool { !model.showsTranscript }
     /// M11: paragraphs only; an aside is shown inside its host.
     private var visibleTurns: [MeetingPresentation.Turn] { MeetingPresentation.visibleTurns(model.turns) }
     private func name(_ speaker: String) -> String { model.speakerName(speaker) }
@@ -151,6 +151,9 @@ struct MeetingView: View {
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headingHeight = $0 }
                         if transcribing {
                             MeetingTranscriptionStatus(model: model)
+                            if let line = RecordingOverview.libraryDiskLine {
+                                Text(line).foregroundStyle(CassiniTheme.warningNotice)
+                            }
                         } else {
                             Section {
                                 transcriptContent

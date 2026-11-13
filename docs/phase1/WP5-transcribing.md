@@ -3,7 +3,8 @@
 The desktop meeting pane puts the transcription status below the title and date,
 with an accent spinner, thin indeterminate bar, Stop and a chevron for details.
 Audio remains playable. Running and queued meetings show no partial transcript,
-Find field, speaker rows, listening excerpt or companion suggestion. Completed
+Find field, speaker rows, listening excerpt or companion suggestion. Transcript-only
+keyboard commands follow the same rule; actionable disk warnings remain visible. Completed
 meetings retain the WP3 transcript and player. User-paused progress keeps the
 existing resume behavior.
 

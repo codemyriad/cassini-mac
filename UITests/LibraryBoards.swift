@@ -1253,6 +1253,11 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(details.waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertTrue(details.label.contains("Transcribing · about 4 min left"), details.label)
         XCTAssertFalse(window.textFields["meeting-find"].exists)
+        app.menuBars.menuBarItems["Edit"].click()
+        let findCommand = app.menuItems["Find in this meeting"]
+        XCTAssertTrue(findCommand.exists, app.debugDescription)
+        XCTAssertFalse(findCommand.isEnabled, "No invisible Find target while desktop withholds words")
+        app.typeKey(.escape, modifierFlags: [])
         XCTAssertFalse(window.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "meeting-turn-")).firstMatch.exists,
                        "The running Library vector contains partial words; desktop must withhold them")
         XCTAssertFalse(window.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "speaker-row-")).firstMatch.exists)

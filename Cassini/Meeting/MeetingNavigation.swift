@@ -112,6 +112,7 @@ import Observation
     let audio: SessionPlayback
     let listen: ListenController
     private let fileAccessLease: AnyObject?
+    var showsTranscript: Bool { ![.queued, .running].contains(meeting.state.transcript) }
     var allowsTranscriptionChanges: Bool { !frozen && fileURL == nil && !meeting.metadataReadOnly }
     private let frozen: Bool
     private var fixturePosition = 192_000
@@ -184,7 +185,7 @@ import Observation
     // Commands observe model state only; AppKit focus is checked when invoked.
     var canUseListeningCommands: Bool { listen.active && canUseTranscriptCommands }
     private var canUseTranscriptCommands: Bool {
-        canPlay && !find.focused && MeetingNavigation.shared.detail === self && !LibrarySearchModel.shared.visible &&
+        showsTranscript && canPlay && !find.focused && MeetingNavigation.shared.detail === self && !LibrarySearchModel.shared.visible &&
         MeetingRenameCoordinator.shared.presentation == nil && !MeetingExportCoordinator.shared.showing &&
         !RecordingDetailsCoordinator.shared.showing && !RecordCoordinator.shared.showingFirst &&
         CompanionSetup.shared.presenter != .library && !RecordingConfirmation.active
