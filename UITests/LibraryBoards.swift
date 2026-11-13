@@ -1251,7 +1251,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(client.waitForExistence(timeout: 20), app.debugDescription); client.click()
         let details = window.buttons["meeting-transcription-details"]
         XCTAssertTrue(details.waitForExistence(timeout: 10), app.debugDescription)
-        XCTAssertTrue(details.label.contains("Transcribing · about 4 min left"), details.label)
+        XCTAssertTrue(visibleText(window.staticTexts["meeting-transcribing"]).contains("Transcribing · about 4 min left"))
         XCTAssertFalse(window.textFields["meeting-find"].exists)
         app.menuBars.menuBarItems["Edit"].click()
         let findCommand = app.menuItems["Find in this meeting"]

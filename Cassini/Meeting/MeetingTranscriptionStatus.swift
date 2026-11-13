@@ -35,8 +35,8 @@ struct MeetingTranscriptionStatus: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 12) { statusButton; stopButton; Spacer(minLength: 0) }
-                VStack(alignment: .leading, spacing: 10) { statusButton; stopButton }
+                HStack(spacing: 12) { statusLine; stopButton; Spacer(minLength: 0) }
+                VStack(alignment: .leading, spacing: 10) { statusLine; stopButton }
             }
             // No denominator or trustworthy processed-duration signal is emitted
             // by the worker. Never infer a percentage from ETA or word timestamps.
@@ -47,20 +47,21 @@ struct MeetingTranscriptionStatus: View {
             }
         }.accessibilityElement(children: .contain).accessibilityIdentifier("meeting-transcription-status")
     }
-    private var statusButton: some View {
-        Button { showsDetails.toggle() } label: {
-            HStack(spacing: 8) {
-                if reduceMotion {
-                    Image(systemName: "ellipsis.circle").foregroundStyle(CassiniTheme.accent).accessibilityHidden(true)
-                } else {
-                    ProgressView().controlSize(.small).tint(CassiniTheme.accent).accessibilityHidden(true)
-                }
-                Text(status).fontWeight(.semibold).accessibilityIdentifier("meeting-transcribing")
-                Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(CassiniTheme.ink2)
-            }.contentShape(Rectangle())
-        }.buttonStyle(.plain).accessibilityLabel(status + ", " + UXText.text("transcribing.details.a11y"))
-            .accessibilityIdentifier("meeting-transcription-details")
-            .popover(isPresented: $showsDetails, arrowEdge: .top) { details }
+    private var statusLine: some View {
+        HStack(spacing: 8) {
+            if reduceMotion {
+                Image(systemName: "ellipsis.circle").foregroundStyle(CassiniTheme.accent).accessibilityHidden(true)
+            } else {
+                ProgressView().controlSize(.small).tint(CassiniTheme.accent).accessibilityHidden(true)
+            }
+            Text(status).fontWeight(.semibold).accessibilityIdentifier("meeting-transcribing")
+            Button { showsDetails.toggle() } label: {
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(CassiniTheme.ink2).frame(width: 24, height: 26).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityLabel(UXText.text("transcribing.details.a11y"))
+                .accessibilityIdentifier("meeting-transcription-details")
+                .popover(isPresented: $showsDetails, arrowEdge: .top) { details }
+        }
     }
     private var stopButton: some View {
         Button(UXText.text("common.stop")) { stop() }
