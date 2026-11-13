@@ -986,8 +986,8 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(title.waitForExistence(timeout:5))
         XCTAssertEqual(title.value as? String,"Title retained across selection")
         window.buttons["recording-page-stop"].click()
+        XCTAssertTrue(title.exists,"Stop retains the live pane while Saving starts")
         XCTAssertTrue(window.staticTexts["Saving…"].waitForExistence(timeout:5))
-        XCTAssertTrue(title.exists)
     }
     @MainActor func testRecordingTitleAndHiddenControls() throws {
         let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
@@ -1104,9 +1104,9 @@ final class LibraryBoards: XCTestCase {
         let meterReady = NSPredicate { _, _ in abs(value(mic) - 0.12) < 0.005 && abs(value(output) - 0.38) < 0.005 }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: meterReady, object: nil)], timeout: 5), .completed, window.debugDescription)
         window.buttons["recording-stop"].click()
-        XCTAssertTrue(window.staticTexts["Saving…"].waitForExistence(timeout: 5), window.debugDescription)
         XCTAssertTrue(window.textFields["recording-title"].exists,"Keep the recording pane during tail flush")
         XCTAssertFalse(window.buttons["preview-play"].exists)
+        XCTAssertTrue(window.staticTexts["Saving…"].waitForExistence(timeout: 5), window.debugDescription)
         let saved = NSPredicate { _, _ in window.buttons["preview-play"].exists && window.buttons["preview-play"].isEnabled && !window.staticTexts["Saving…"].exists }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: saved, object: nil)], timeout: 10), .completed, window.debugDescription)
         XCTAssertFalse(window.buttons["recording-stop"].exists)
