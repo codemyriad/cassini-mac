@@ -187,6 +187,7 @@ public enum MeetingPresentation {
         result.recordedTime = file.meetingTime
         result.sortingFallback = file.manifest.flatMap { MeetingTime.parseInstant($0.meeting.createdAtUtc) }
         result.metadataReadOnly = true; result.transcriptItems = words
+        result.summaryMarkdown = trusted ? file.manifest?.summaryMarkdown : nil
         result.wordEndsBoundedByAudio = trusted && file.manifest?.wordEndsBoundedByAudio == true
         result.exportTitle = trusted || file.state == .plainAudio ? title : url.deletingPathExtension().lastPathComponent
         return result

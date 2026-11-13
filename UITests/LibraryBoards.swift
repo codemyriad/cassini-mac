@@ -1201,6 +1201,24 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(window.buttons["Try again"].exists)
         XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
     }
+    @MainActor func testMeetingSummaryIsFirstAndFindOpensTranscript() throws {
+        let app = try launch("meeting", fixture: "main", extra: ["-CassiniSummaryFixture", "YES"])
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let summary = window.descendants(matching: .any)["meeting-summary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertTrue(text("Meeting summary", in: window))
+        XCTAssertTrue(window.descendants(matching: .any)["meeting-tabs"].exists)
+        XCTAssertFalse(window.textFields["meeting-find"].exists)
+        XCTAssertTrue(window.buttons["meeting-play"].isHittable)
+        capture(window, name: "meeting-summary")
+        app.typeKey("f", modifierFlags: .command)
+        let find = window.textFields["meeting-find"]
+        XCTAssertTrue(find.waitForExistence(timeout: 10), window.debugDescription)
+        app.typeText("figures")
+        XCTAssertEqual(find.value as? String, "figures")
+        XCTAssertFalse(summary.exists)
+    }
     @MainActor func testMeetingBoard() throws {
         let app = try launch("meeting", fixture: "main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
@@ -1209,6 +1227,7 @@ final class LibraryBoards: XCTestCase {
         let title = window.staticTexts["meeting-title"]
         XCTAssertTrue(title.waitForExistence(timeout: 5), window.debugDescription)
         XCTAssertTrue(title.isHittable, window.debugDescription)
+        XCTAssertFalse(window.descendants(matching: .any)["meeting-tabs"].exists)
         XCTAssertTrue(text("Client call, Rossi & Partners", in: window))
         XCTAssertTrue(text("Today, 11:30 · 47 min", in: window))
         let nameSpeakers = window.buttons["speaker-name-guest"]

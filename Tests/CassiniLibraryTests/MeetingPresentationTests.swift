@@ -5,6 +5,30 @@ import CassiniKit
 @testable import CassiniLibrary
 
 struct MeetingPresentationTests {
+    @Test(arguments: [true, false]) func summariesRequireVerifiedAttachmentsForExternalAndImportedMeetings(trusted: Bool) throws {
+        let f = try Fixture()
+        let base = try Data(contentsOf: f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus"))
+        let parsed = try CassiniReader.read(base)
+        let summary = "# Summary\n\nA decision at 00:00:04."
+        var manifest = try #require(parsed.manifest?.raw)
+        manifest = try manifest.setting("attachments", to: .array([.object([
+            ("name", .string("summary.md")), ("mime", .string("text/markdown")),
+            ("contentBase64", .string(Data(summary.utf8).base64EncodedString()))])]))
+        if !trusted {
+            manifest = try manifest.setting("integrity", to: #require(manifest["integrity"]).setting("matchPolicy", to: .string("future-policy")))
+        }
+        let speaker = try #require(parsed.manifest?.speakers.first?.id)
+        let body = try JSONSerialization.data(withJSONObject: ["items": [["speaker": speaker, "startMs": 0, "endMs": 100, "text": "Decision."]]])
+        let tags = try PortableMeetingTags.make(manifest: manifest, transcript: body, wordCount: 1)
+        let url = f.root.appendingPathComponent("Summary.opus")
+        _ = try OpusStreamFile.rewrite(base, tags: tags, to: url)
+        let file = try CassiniReader.read(contentsOf: url)
+        #expect(file.manifest?.summaryMarkdown == summary)
+        let external = MeetingPresentation.external(file, url: url)
+        let imported = try LibraryImport.copy(url, into: f.root.appendingPathComponent("Library"))
+        #expect(external.summaryMarkdown == (trusted ? summary : nil))
+        #expect(imported.summaryMarkdown == (trusted ? summary : nil))
+    }
     @Test func openingVerifiedWordsKeepsTheirIdentityAndText() throws {
         let f = try Fixture()
         let base = try Data(contentsOf:f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus"))

@@ -158,9 +158,23 @@ struct MeetingView: View {
                         MeetingPaneHeader(model: model, format: format)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headingHeight = $0 }
                         Section {
-                            transcriptContent
+                            if model.tab == .summary, let markdown = meeting.summaryMarkdown {
+                                SummaryView(markdown: markdown, meeting: model).content
+                                    .accessibilityIdentifier("meeting-summary")
+                            } else { transcriptContent }
                         } header: {
-                            MeetingFindBar(model: model.find).padding(.vertical, 8).background(CassiniTheme.surface)
+                            VStack(alignment: .leading, spacing: 8) {
+                                if meeting.summaryMarkdown != nil {
+                                    Picker("", selection: $model.tab) {
+                                        Text(UXText.text("mac.legacy.summary")).tag(MeetingDetailModel.Tab.summary)
+                                        Text(UXText.text("library.preview.transcriptHeading")).tag(MeetingDetailModel.Tab.transcript)
+                                    }.pickerStyle(.segmented).labelsHidden()
+                                        .accessibilityIdentifier("meeting-tabs")
+                                }
+                                if model.tab == .transcript {
+                                    MeetingFindBar(model: model.find)
+                                }
+                            }.padding(.vertical, 8).background(CassiniTheme.surface)
                         }
                     }.padding(.horizontal, 44).padding(.top, 12).padding(.bottom, controlsHeight + 36)
                 }.accessibilityIdentifier("meeting-transcript")
@@ -177,6 +191,9 @@ struct MeetingView: View {
                     .onChange(of: model.turnsRevision) { _, _ in revealSearchHit(in: proxy) }
                     .onChange(of: model.revealTurnID) { _, _ in revealSearchHit(in: proxy) }
                     .onChange(of: model.revealPositionMs) { _, _ in revealSearchHit(in: proxy) }
+                    .onChange(of: model.tab) { _, tab in
+                        if tab == .transcript { revealSearchHit(in: proxy) }
+                    }
                     .task {
                         await Task.yield()
                         if let turn = model.listeningHost { proxy.scrollTo(turn,anchor:.center) }
@@ -221,6 +238,7 @@ struct MeetingView: View {
         }
     }
     private func revealSearchHit(in proxy: ScrollViewProxy) {
+        guard model.tab == .transcript else { return }
         let exact = model.revealTurnID.flatMap { id in visibleTurns.first { $0.id == id } }
         let fallback = model.revealPositionMs.flatMap { position in visibleTurns.first { $0.endMs > position } }
         guard let target = exact ?? fallback else { return }
