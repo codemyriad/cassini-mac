@@ -2,7 +2,7 @@
 
 This package follows L-22, L-24, L-43 and L-44 in the Phase 1 decisions log. `LibraryOpen-Mac*.dc.html` is the pane reference; it supersedes the older separate-speakers `Meeting-Mac` board. No summaries exist, so no Summary/Transcript tabs are added.
 
-The coordinator authorized integration from current main while WP1 is built. WP3 is stacked on agy-mac's published WP1 #290 at 18a492c111ac4b495b862c47654d0579d3b3ecad; keep the PR draft until WP1 merges, then rebase onto main while preserving the pane integration. WP1 carries the canonical UX pin `5e0c34e0f1bb390298dabdf4eedc494e933fd329`, including the Find/empty-selection strings and final theme helpers. WP2's sidebar/search styling remains with agy-mac.
+The coordinator authorized integration from current main while WP1 is built. WP3 integrates agy-mac's WP1 #290, including its 4c7cfc53 speaker-slot and off-main preparation fixes; keep the PR draft until WP1 merges, then rebase onto main while preserving the pane integration. WP1 carries the canonical UX pin `5e0c34e0f1bb390298dabdf4eedc494e933fd329`, including the Find/empty-selection strings and final theme helpers. WP2's sidebar/search styling remains with agy-mac.
 
 ## Pane and ownership
 
@@ -30,4 +30,4 @@ TranscriptFindTests exercise Unicode offsets, accented/decomposed words, phrases
 
 Native UI tests exercise direct selection changes, read-only/writable speaker controls, local Find/cycling/clear/space input, global Search guards and actual scroll geometry. The app prepares the scrolled case from a sealed Library fixture inside its own sandbox, with additional bounded transcript turns; no forced compact-header state. Find also asserts the match count has enough visible width, rather than accepting an accessibility label on a squeezed-away view. Header and compact-title containers expose their children independently. Screenshot export requires meeting-open, meeting-find and meeting-scrolled in both light and dark, alongside existing meeting boards. The explicit dark-mode CI test list includes both new test cases; the light lane runs the whole LibraryBoards suite.
 
-The existing ui-shots job supplies actual app before/after pr-shots and source/run provenance. App seats do not run publish/prune. Ready only after WP1 merges and complete exact-head CI plus light/dark pr-shots pass. One WP3 PR on main, Seat: big-mac; no AI attribution in commits. WP4, WP5, WP6 and WP7 follow in the dispatched order; Phase 2 is excluded.
+The existing ui-shots job supplies actual app before/after pr-shots and source/run provenance. The coordinator explicitly authorized big-mac to publish the final exact-head light/dark artifacts with scripts/pr-shots.py; no pruning. Ready only after WP1 merges and complete exact-head CI plus light/dark pr-shots pass. One WP3 PR on main, Seat: big-mac; no AI attribution in commits. WP4, WP5, WP6 and WP7 follow in the dispatched order; Phase 2 is excluded.
