@@ -409,7 +409,7 @@ import Darwin
                 return result
             }.value
             guard let value else { return }
-            value.paint(me:columns.map { .init(slot:$0.slot,bands:[UInt8](repeating:0,count:32)) },others:columns,
+            value.paint(me:RecordingPageFixture.microphoneSilent ? columns.map { .init(slot:$0.slot,bands:[UInt8](repeating:0,count:32)) } : columns,others:columns,
                         displayMs:Double(max(0,atMs-40)))
             value.reconcile()
         }

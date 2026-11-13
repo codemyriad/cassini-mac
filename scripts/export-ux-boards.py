@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Export every LibraryBoards PNG attachment (27 light + 27 dark pairs) and write shots.json."""
+"""Export every LibraryBoards PNG attachment (31 light + 31 dark pairs) and write shots.json."""
 from __future__ import annotations
 import argparse, json, os, platform, re, shutil, struct, subprocess, zlib
 from pathlib import Path
@@ -13,7 +13,7 @@ CORE_ORDER = {n: i for i, n in enumerate(('library', 'recording', 'meeting', 'se
 
 EXPECTED_BOARDS = frozenset((
     'library', 'library-fr', 'first-run', 'first-run-fr', 'record-first', 'record-first-fr',
-    'meeting', 'meeting-open', 'meeting-find', 'meeting-scrolled', 'recording', 'received', 'export', 'export-success', 'search',
+    'meeting', 'meeting-open', 'meeting-find', 'meeting-scrolled', 'recording', 'recording-silent', 'received', 'export', 'export-success', 'search',
     'settings-recording', 'settings-transcription', 'settings-parakeet-recommendation-en-GB',
     'settings-parakeet-recommendation-fr-FR', 'settings-parakeet-recommendation-pt-PT',
     'companion-setup', 'what-is-recorded', 'trash', 'trash-meeting', 'trash-after', 'rename',

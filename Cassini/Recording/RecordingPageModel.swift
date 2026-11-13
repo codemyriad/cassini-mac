@@ -142,7 +142,7 @@ private actor RecordingEdits {
     var output: Float { owned?.levels[.others] ?? (native ? RecordingController.shared.levels["output",default:0] : (frozen ? 0.58 : 0)) }
     var microphoneSilent: Bool {
         if let owned { return owned.microphoneSilent }
-        return native ? RecordingController.shared.microphoneSilent : frozen
+        return native ? RecordingController.shared.microphoneSilent : (frozen && RecordingPageFixture.microphoneSilent)
     }
     var displayTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? UXText.text("library.untitled") : title }
     func changeTitle() {
@@ -171,6 +171,13 @@ private actor RecordingEdits {
 }
 
 enum RecordingPageFixture {
+    static var microphoneSilent: Bool {
+        #if DEBUG
+        return !enabled || LibraryLaunchContext.argument("-CassiniRecordingMicSilent") != "NO"
+        #else
+        return false
+        #endif
+    }
     static var enabled: Bool {
         #if DEBUG
         ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" && LibraryLaunchContext.argument("-CassiniScreenshot") == "recording"
