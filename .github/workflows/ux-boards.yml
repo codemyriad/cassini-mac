@@ -94,12 +94,13 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testExportReceivedAudioThroughAFileOnlySaveGrant \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordFirstBoard \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testTranscribingBoardKeepsPartialWordsHiddenAndAudioAvailable \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingFindIsLocalAndKeepsTransportAndSidebar \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingScrolledHeaderKeepsFindAndFloatingPlayerReachable \
           -resultBundlePath build/UXBoardsDark.xcresult \
           2>&1 | tee build/ux-boards-dark.log
-        echo "Dark Library boards: 24 tests (31 boards), $((SECONDS - dark_start)) s wall" >> "$GITHUB_STEP_SUMMARY"
+        echo "Dark Library boards: 25 tests (33 boards), $((SECONDS - dark_start)) s wall" >> "$GITHUB_STEP_SUMMARY"
     - name: Library boards test durations
       if: always()
       run: |

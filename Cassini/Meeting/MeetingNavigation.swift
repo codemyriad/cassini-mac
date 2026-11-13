@@ -112,6 +112,7 @@ import Observation
     let audio: SessionPlayback
     let listen: ListenController
     private let fileAccessLease: AnyObject?
+    var allowsTranscriptionChanges: Bool { !frozen && fileURL == nil && !meeting.metadataReadOnly }
     private let frozen: Bool
     private var fixturePosition = 192_000
     private var fixturePlaying = true

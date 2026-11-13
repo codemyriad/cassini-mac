@@ -29,6 +29,24 @@ enum ScreenshotFixture {
             return directory
         } catch { preconditionFailure("Cannot prepare long meeting screenshot fixture: \(error)") }
     }()
+    /// Finished-meeting boards use a completed copy. The shared Library vector
+    /// deliberately contains a running transcript with retained partial words;
+    /// using it as a finished page would violate desktop completion-only UI.
+    static let completedMeetingDirectory: URL? = {
+        guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
+              LibraryLaunchContext.argument("-CassiniScreenshot") == "meeting" else { return nil }
+        let source = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Fixtures/Library/main")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniCompletedMeeting-" + UUID().uuidString)
+        do {
+            try FileManager.default.copyItem(at: source, to: directory)
+            let file = directory.appendingPathComponent("root/Recording-a0000000-0000-4000-8000-000000000002/meeting.json")
+            var metadata = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as! [String:Any]
+            var transcript = metadata["transcript"] as! [String:Any]
+            transcript["status"] = "done"; metadata["transcript"] = transcript; metadata["etaMinutes"] = NSNull()
+            try JSONSerialization.data(withJSONObject: metadata).write(to: file, options: .atomic)
+            return directory
+        } catch { preconditionFailure("Cannot prepare completed meeting screenshot fixture: \(error)") }
+    }()
     static func launchIfRequested() -> Bool {
         let arguments = ProcessInfo.processInfo.arguments
         guard arguments.contains("-CassiniScreenshot") else { return false }

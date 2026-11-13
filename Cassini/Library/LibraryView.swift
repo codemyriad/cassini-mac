@@ -513,10 +513,7 @@ struct LibraryView: View {
             let title = detail.meeting.transcriptPaused ? UXText.mac("transcription.resume") : UXText.text("common.writeDown")
             return .init(title:title,identifier:"meeting-write-down",enabled:!busy) { TranscriptionQueue.shared.writeDown(detail) }
         }
-        if [.queued,.running].contains(detail.meeting.state.transcript) && !detail.meeting.metadataReadOnly {
-            let title = UXText.mac("transcription.stop")
-            return .init(title:title,identifier:"meeting-stop-transcription",enabled:!busy) { TranscriptionQueue.shared.stop(detail.meeting) }
-        }
+        // L-45: Stop lives beside the transcription status in the pane.
         return nil
     }
     @ViewBuilder
