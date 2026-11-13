@@ -542,7 +542,7 @@ struct LibraryView: View {
                     }.padding(16).frame(maxWidth:.infinity,alignment:.leading)
                         .background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:8)).accessibilityIdentifier("received-folder-card")
                 }
-                if meeting.state.origin == .own { ScrollView(.horizontal) {
+                if meeting.state.origin == .own && !TranscribingPresentation.isActive(meeting.state) { ScrollView(.horizontal) {
                     HStack(spacing: 8) {
                         ForEach(meeting.speakers, id: \.id) { speaker in
                             HStack(spacing: 6) {
@@ -564,7 +564,7 @@ struct LibraryView: View {
                     Button { readTranscript(meeting) } label: {
                         Text(UXText.text("library.preview.readTranscript")).fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36)
                     }.buttonStyle(.plain).background(CassiniTheme.chipFill, in: RoundedRectangle(cornerRadius: 6))
-                        .disabled(meeting.transcriptItems.isEmpty || LibraryMoveCoordinator.shared.busy)
+                        .disabled((meeting.transcriptItems.isEmpty && !TranscribingPresentation.isActive(meeting.state)) || LibraryMoveCoordinator.shared.busy)
                         .accessibilityIdentifier("preview-read-transcript")
                 }
                 if meeting.hasNoSpeech {
@@ -572,7 +572,7 @@ struct LibraryView: View {
                     NoSpeechTranscriptLine(action:meeting.canWriteDown ? { TranscriptionQueue.shared.enqueue(meeting,retry:true) } : nil)
                         .disabled(LibraryMoveCoordinator.shared.busy)
                 }
-                if !meeting.transcriptItems.isEmpty {
+                if !meeting.transcriptItems.isEmpty && !TranscribingPresentation.isActive(meeting.state) {
                     VStack(alignment: .leading, spacing: 16) {
                         Divider()
                         Text(UXText.text("library.preview.transcriptHeading")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2).padding(.top, 4)

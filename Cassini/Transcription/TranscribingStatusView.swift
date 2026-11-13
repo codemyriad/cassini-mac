@@ -29,8 +29,16 @@ struct TranscribingStatusView: View {
         VStack(alignment:.leading, spacing:10) {
             HStack(spacing:10) {
                 StatusSpinner(ink:CassiniTheme.accent,size:12).accessibilityHidden(true)
-                Text(presentation.status).monospacedDigit().foregroundStyle(CassiniTheme.ink2)
+                statusText.monospacedDigit()
                     .accessibilityIdentifier("transcribing-status")
+                Button { showingDetails.toggle() } label: {
+                    Image(systemName:"chevron.down").frame(width:28,height:28)
+                }.buttonStyle(.plain)
+                    .accessibilityLabel(UXText.text("transcribing.details.a11y"))
+                    .accessibilityIdentifier("transcribing-details")
+                    .popover(isPresented:$showingDetails, arrowEdge:.bottom) {
+                        details.presentationBackground(CassiniTheme.raised)
+                    }
                 Spacer(minLength:8)
                 if presentation.canStop {
                     Button(UXText.text("common.stop"), action:stop)
@@ -39,12 +47,6 @@ struct TranscribingStatusView: View {
                         .background(CassiniTheme.chipFill,in:Capsule())
                         .disabled(stopDisabled).accessibilityIdentifier("meeting-stop-transcription")
                 }
-                Button { showingDetails.toggle() } label: {
-                    Image(systemName:"chevron.down").frame(width:28,height:28)
-                }.buttonStyle(.plain)
-                    .accessibilityLabel(UXText.text("transcribing.details.a11y"))
-                    .accessibilityIdentifier("transcribing-details")
-                    .popover(isPresented:$showingDetails, arrowEdge:.bottom) { details }
             }
             // The workers do not expose a processed-audio fraction. An indeterminate
             // bar avoids inventing a percentage from ETA or the last spoken word.
@@ -65,6 +67,13 @@ struct TranscribingStatusView: View {
                 guard !Task.isCancelled else { return }
                 batteryPercentAtFinish = estimate
             }
+    }
+    private var statusText: Text {
+        if let eta = meeting.state.etaMinutes, eta > 0 {
+            return Text(UXText.text("transcribing.heading")).fontWeight(.semibold).foregroundColor(CassiniTheme.ink)
+                + Text(" · " + UXText.text("transcribing.eta.minutes",["n":String(eta)])).foregroundColor(CassiniTheme.ink2)
+        }
+        return Text(presentation.status).fontWeight(.semibold).foregroundColor(CassiniTheme.ink)
     }
     private var details: some View {
         VStack(alignment:.leading, spacing:18) {
@@ -99,7 +108,7 @@ struct TranscribingStatusView: View {
                 .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
                 .fixedSize(horizontal:false,vertical:true)
         }.padding(20).frame(width:340).font(.system(size:13))
-            .foregroundStyle(CassiniTheme.ink).background(CassiniTheme.paneGround)
+            .foregroundStyle(CassiniTheme.ink).background(CassiniTheme.raised)
             .accessibilityElement(children:.contain)
             .accessibilityLabel(UXText.text("transcribing.details.a11y"))
             .accessibilityIdentifier("transcribing-details-popover")

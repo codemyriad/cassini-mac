@@ -275,8 +275,9 @@ struct MeetingView: View {
             Button { model.skip(10) } label: { Image(systemName: "goforward.10").frame(width: 24, height: 36) }.help(UXText.text("player.forward10")).accessibilityLabel(UXText.text("player.forward10"))
             Text(LibraryFormat.position(Int64(model.positionMs))).monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk).font(.system(size: 11.5)).accessibilityIdentifier("meeting-elapsed")
             MeetingPositionSlider(position:Binding(get:{ Double(model.positionMs) },set:{ model.seek(Int($0)) }),duration:Double(max(1,model.durationMs)),
-                                  readout:model.timelineReadout,names:meeting.speakerDisplayNames,
-                                  timeline:model.listen.timeline)
+                                  readout:isTranscribing ? TimelineReadout() : model.timelineReadout,
+                                  names:isTranscribing ? [:] : meeting.speakerDisplayNames,
+                                  timeline:isTranscribing ? ListeningTimeline() : model.listen.timeline)
                 .frame(minWidth:80,maxWidth:.infinity).frame(height:22)
             Text(LibraryFormat.position(Int64(model.durationMs))).monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk).font(.system(size: 11.5))
             Button(UXText.text("format.playbackRate", ["rate": model.rate.formatted(.number.precision(.fractionLength(0...2)).locale(UXText.locale))])) { model.cycleRate() }

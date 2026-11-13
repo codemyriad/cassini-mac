@@ -41,7 +41,7 @@ public struct TranscribingPresentation: Sendable {
         } else if state.etaMinutes == 0 {
             // Keep the provisional under-minute catalog wording (STATUS-BADGES.md).
             status = text("states.badge.transcribing.underMinute")
-            timeLeft = status
+            timeLeft = text("transcribing.stat.timeLeftValue", ["n":"1"])
         } else {
             status = text("states.badge.transcribing.noEta")
             timeLeft = "—"

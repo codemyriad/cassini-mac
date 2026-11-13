@@ -49,6 +49,10 @@ struct TranscribingPresentationTests {
             #expect(!value.status.contains("{"))
             #expect(!value.timeLeft.contains("{"))
             if language != .en { #expect(value.status != "Transcribing · about 4 min left") }
+            let finalMinute = presentation(.init(transcript:.running,etaMinutes:0),language:language)
+            #expect(finalMinute.timeLeft == LibraryLocalization.shared.text(
+                "transcribing.stat.timeLeftValue",["n":"1"],language:language,locale:Locale(identifier:"en_GB")))
+            #expect(finalMinute.timeLeft != finalMinute.status)
             for step in TranscribingPresentation.steps {
                 let key = step
                 #expect(LibraryLocalization.shared.text(key,language:language) != key)

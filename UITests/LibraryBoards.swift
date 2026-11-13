@@ -12,7 +12,11 @@ final class LibraryBoards: XCTestCase {
             let window = app.windows["cassini-library-window"]
             let client = window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch
             XCTAssertTrue(client.waitForExistence(timeout:20),app.debugDescription)
-            client.doubleClick()
+            client.click()
+            XCTAssertTrue(window.descendants(matching:.any)["preview-transcribing"].waitForExistence(timeout:5))
+            XCTAssertTrue(window.buttons["preview-read-transcript"].isEnabled)
+            XCTAssertFalse(text("Marta",in:window),"Active preview hides partial speakers and turns")
+            window.buttons["preview-read-transcript"].click()
             let status = window.staticTexts["transcribing-status"]
             XCTAssertTrue(status.waitForExistence(timeout:10),app.debugDescription)
             XCTAssertEqual(visibleText(status),"Transcribing · about 4 min left")
@@ -24,6 +28,8 @@ final class LibraryBoards: XCTestCase {
             window.buttons["transcribing-details"].click()
             let stop = app.buttons["transcribing-stop-keep-progress"]
             XCTAssertTrue(stop.waitForExistence(timeout:5),app.debugDescription)
+            let popover = app.descendants(matching:.any)["transcribing-details-popover"]
+            XCTAssertTrue(window.frame.contains(popover.frame),"Details fit inside the window: \(popover.frame)")
             for (id,label) in [("audioDone","Audio done"),("timeLeft","Time left"),("wordsSoFar","Words so far"),("batteryAtFinish","Battery at finish")] {
                 let metric = app.descendants(matching:.any).matching(identifier:"transcribing.stat." + id).firstMatch
                 XCTAssertTrue(metric.exists,label)
@@ -1172,7 +1178,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:exited,object:nil)],timeout:5),.completed)
         app = try launch("first-run",fixture:"empty",extra:base)
         window = app.windows["cassini-library-window"]
-        let resumed = NSPredicate { _,_ in window.buttons["preview-read-transcript"].exists && window.buttons["preview-read-transcript"].isEnabled }
+        let resumed = NSPredicate { _,_ in window.buttons["preview-read-transcript"].exists && window.buttons["preview-read-transcript"].isEnabled && !window.descendants(matching:.any)["preview-transcribing"].exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:resumed,object:nil)],timeout:40),.completed,app.debugDescription)
         XCTAssertFalse(window.buttons["Try again"].exists)
         XCTAssertTrue(window.buttons["preview-play"].isEnabled)
