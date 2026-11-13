@@ -468,10 +468,14 @@ final class CaptureProbeProcess: @unchecked Sendable {
             report["browserSelectionIgnoresHardwareFailure"] = true
             report["realSelectionUsesOwnedInputLifecycle"] = true
             stage = "stop only first meeting"
+            let stoppingDetail = try MeetingNavigation.shared.detail.unwrap()
+            try require(stoppingDetail.meeting.folder.standardizedFileURL.path == first.snapshot.directory.standardizedFileURL.path,"Stop fixture is viewing the first capture")
             collection.stop(first.snapshot.manifest.id)
-            try require(MeetingNavigation.shared.detail == nil,"Stop returns the viewed recording to the Library")
+            try require(MeetingNavigation.shared.detail === stoppingDetail && stoppingDetail.meeting.state.lifecycle == .saving,
+                        "Stop retains the viewed capture in Saving before browser flush")
+            try require(LibraryStore.shared.selectedKey == stoppingDetail.meeting.libraryKey,"Saving keeps the matching sidebar selection")
             try require(RecordingOverview.saving && !LibraryMoveCoordinator.shared.canChoose,"Move is disabled while an owned recording saves")
-            report["ownedStopReturnsToLibraryBeforeFlush"] = true
+            report["ownedStopKeepsSavingDetailBeforeFlush"] = true
             try require(CaptureFixture.microphoneStarts == 0,"Stop cannot open a native microphone")
             let stoppedMicFrames = first.owner.snapshot.manifest.tracks.filter { $0.kind == "local" }.reduce(UInt64(0)) { $0 + $1.frames }
             try await two.emit() // Another source progresses while this tail remains open.

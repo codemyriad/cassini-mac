@@ -73,7 +73,7 @@ for name in [
     'ownedEditorUsesFolderIdentity',
     'ownedSilenceMatchesMenuAndPage',
     'micDCDoesNotMaskSilence',
-    'ownedStopReturnsToLibraryBeforeFlush',
+    'ownedStopKeepsSavingDetailBeforeFlush',
     'deniedMicIsNotSilent',
     'ownedDiskWarningUsesOverview',
     'deferredMovePreservesUnrelatedViewAndExport',
