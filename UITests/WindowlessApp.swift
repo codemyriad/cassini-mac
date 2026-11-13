@@ -193,7 +193,7 @@ extension LibraryBoards {
         XCTAssertTrue(waitForPresent(library,timeout:15),app.debugDescription)
         XCTAssertTrue(waitForPresent(library.buttons["recording-stop"],timeout:15),app.debugDescription)
         library.buttons["recording-stop"].click()
-        XCTAssertTrue(waitForPresent(library.buttons["preview-play"],timeout:15))
+        XCTAssertTrue(waitForPresent(library.buttons["meeting-play"],timeout:15))
     }
 
     @MainActor func testInsertedIdleMenuTracksRecordingStartAndStop() throws {
@@ -223,13 +223,12 @@ extension LibraryBoards {
     @MainActor func testDockReopenKeepsMinimizedMeetingAndSearchState() async throws {
         let app=try launch("meeting",fixture:"main");defer { app.terminate() }
         let window=app.windows["cassini-library-window"]
-        XCTAssertTrue(window.buttons["meeting-back"].waitForExistence(timeout:15))
+        XCTAssertTrue(window.textFields["meeting-find"].waitForExistence(timeout:15))
         window.buttons["_XCUI:MinimizeWindow"].click()
         try await dockReopen(app)
-        XCTAssertTrue(window.buttons["meeting-back"].waitForExistence(timeout:10),"Minimized meeting stays open")
-        waitForWindowless { window.buttons["meeting-back"].isHittable }
-        window.buttons["meeting-back"].click()
-        app.typeKey("f",modifierFlags:.command);app.typeText("budget")
+        XCTAssertTrue(window.textFields["meeting-find"].waitForExistence(timeout:10),"Minimized meeting stays open")
+        waitForWindowless { window.textFields["meeting-find"].isHittable }
+        window.searchFields["library-search-field"].click(); app.typeText("budget")
         let field=window.searchFields["library-search-field"]
         XCTAssertEqual(field.value as? String,"budget")
         window.buttons["_XCUI:MinimizeWindow"].click()

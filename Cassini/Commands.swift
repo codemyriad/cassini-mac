@@ -58,11 +58,14 @@ struct AppCommands: Commands {
                 .keyboardShortcut("[", modifiers: .command).disabled(detail == nil && !LibrarySearchModel.shared.visible)
         }
         CommandGroup(replacing:.textEditing) {
-            Button(UXText.text("search.field.a11y")) { LibrarySearchModel.shared.open() }.keyboardShortcut("f",modifiers:.command)
+            Button(UXText.text(detail == nil ? "search.field.a11y" : "meeting.find.placeholder")) {
+                if let detail, detail.meeting.state.lifecycle == .saved { detail.find.requestFocus() }
+                else { LibrarySearchModel.shared.open() }
+            }.keyboardShortcut("f",modifiers:.command)
         }
         CommandMenu(UXText.mac("menu.playback")) {
             Button(UXText.text(detail?.isPlaying == true ? "player.pause" : "common.play")) { detail?.toggle() }
-                .keyboardShortcut(.space, modifiers: []).disabled(detail?.canPlay != true)
+                .keyboardShortcut(.space, modifiers: []).disabled(detail?.canPlay != true || detail?.find.focused == true)
             Button(UXText.text("player.back10")) { detail?.skip(-10) }.keyboardShortcut(.leftArrow, modifiers: []).disabled(detail?.canPlay != true)
             Button(UXText.text("player.forward10")) { detail?.skip(10) }.keyboardShortcut(.rightArrow, modifiers: []).disabled(detail?.canPlay != true)
             Divider()

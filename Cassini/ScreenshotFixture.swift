@@ -6,6 +6,29 @@ import AppKit
 /// hosted screenshot test's launch environment, and absent from release builds.
 @MainActor
 enum ScreenshotFixture {
+    /// A long sealed input is copied and extended by the app inside its own
+    /// sandbox. The UI runner cannot write another app's container.
+    static let longMeetingDirectory: URL? = {
+        guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
+              LibraryLaunchContext.argument("-CassiniScreenshot") == "library",
+              LibraryLaunchContext.argument("-CassiniLongMeetingFixture") == "YES" else { return nil }
+        let source = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Fixtures/Library/main")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniLongMeeting-" + UUID().uuidString)
+        do {
+            try FileManager.default.copyItem(at: source, to: directory)
+            let file = directory.appendingPathComponent("root/Recording-a0000000-0000-4000-8000-000000000001/transcript.json")
+            var body = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as! [String:Any]
+            var items = body["items"] as! [[String:Any]]
+            for index in 0..<30 {
+                items.append(["speaker":["marta","dario","guest"][index % 3],"startMs":1_000_000 + index * 30_000,
+                              "endMs":1_008_000 + index * 30_000,
+                              "text":"We will review this decision with the team and keep the updated figures in the meeting notes."])
+            }
+            body["items"] = items
+            try JSONSerialization.data(withJSONObject: body).write(to: file, options: .atomic)
+            return directory
+        } catch { preconditionFailure("Cannot prepare long meeting screenshot fixture: \(error)") }
+    }()
     static func launchIfRequested() -> Bool {
         let arguments = ProcessInfo.processInfo.arguments
         guard arguments.contains("-CassiniScreenshot") else { return false }

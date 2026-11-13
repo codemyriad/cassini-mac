@@ -85,7 +85,7 @@ import Darwin
             MeetingExportCoordinator.shared.show(active)
             trash.move(active,undoManager:nil); await trash.waitForShutdown()
             try check(trash.failure == nil && queue.active != active.folder,"active child ended before trash")
-            try check(MeetingNavigation.shared.detail == nil && !MeetingExportCoordinator.shared.showing && MeetingExportCoordinator.shared.meeting == nil,"meeting and export closed")
+            try check(MeetingNavigation.shared.detail?.meeting.folder != active.folder && !MeetingExportCoordinator.shared.showing && MeetingExportCoordinator.shared.meeting == nil,"trashed meeting and export closed; another selection may open")
             await RecordingPageModel.flushAll()
             try check(!FileManager.default.fileExists(atPath:active.folder.path),"hidden edits cannot recreate meeting")
             report["activeCancelWaitsForChild"] = true; report["hiddenEditsDiscarded"] = true; report["meetingAndExportClosed"] = true
