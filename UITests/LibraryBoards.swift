@@ -15,7 +15,10 @@ final class LibraryBoards: XCTestCase {
             client.click()
             XCTAssertTrue(window.descendants(matching:.any)["preview-transcribing"].waitForExistence(timeout:5))
             XCTAssertTrue(window.buttons["preview-read-transcript"].isEnabled)
-            XCTAssertFalse(text("Marta",in:window),"Active preview hides partial speakers and turns")
+            let preview = window.descendants(matching:.any).matching(identifier:"library-preview").firstMatch
+            XCTAssertTrue(preview.exists)
+            XCTAssertFalse(preview.staticTexts["Marta"].exists,"Active preview hides partial speakers")
+            XCTAssertFalse(preview.staticTexts["Transcript"].exists,"Active preview hides partial turns")
             window.buttons["preview-read-transcript"].click()
             let status = window.staticTexts["transcribing-status"]
             XCTAssertTrue(status.waitForExistence(timeout:10),app.debugDescription)

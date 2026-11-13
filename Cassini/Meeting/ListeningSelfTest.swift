@@ -13,6 +13,9 @@ import CassiniLibrary
         guard var meeting = try? LibraryScanner(root:LibraryStore.shared.context.root).scan().meetings.first(where:{ $0.state.lifecycle == .saved && !$0.speakers.isEmpty }) else {
             FileHandle.standardError.write(Data("No saved speaker fixture\n".utf8)); exit(2)
         }
+        // This proof exercises a completed transcript, independently of the
+        // source fixture's queued/running badge state.
+        meeting.state.transcript = .done
         guard let template = meeting.speakers.first else { exit(2) }
         var a = template, b = template
         a.id = "a"; b.id = "b"; a.name = "Unidentified voice"; b.name = "Unidentified voice"

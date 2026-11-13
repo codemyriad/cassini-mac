@@ -604,6 +604,7 @@ struct LibraryView: View {
             .background(CassiniTheme.paneGround)
             .accessibilityElement(children: .contain)
             .accessibilityLabel(UXText.text("library.previewPane.a11y"))
+            .accessibilityIdentifier("library-preview")
     }
     private var autoTag: some View {
         Text(UXText.text("common.autoTag")).font(.system(size: 10, weight: .medium)).foregroundStyle(CassiniTheme.ink2)
