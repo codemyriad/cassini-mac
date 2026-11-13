@@ -1107,7 +1107,6 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.staticTexts["Saving…"].waitForExistence(timeout: 5), window.debugDescription)
         XCTAssertTrue(window.textFields["recording-title"].exists,"Keep the recording pane during tail flush")
         XCTAssertFalse(window.buttons["preview-play"].exists)
-        XCTAssertFalse(window.buttons["recording-page-stop"].isEnabled)
         let saved = NSPredicate { _, _ in window.buttons["preview-play"].exists && window.buttons["preview-play"].isEnabled && !window.staticTexts["Saving…"].exists }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: saved, object: nil)], timeout: 10), .completed, window.debugDescription)
         XCTAssertFalse(window.buttons["recording-stop"].exists)

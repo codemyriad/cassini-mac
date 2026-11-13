@@ -143,6 +143,8 @@ import SwiftUI
             // Independent synthetic browser source: no browser, device or live
             // desktop is involved. A quiet source must still advance its clock.
             let browser = try RecordingSession(parent:root,title:"Private browser",source:"chromium")
+            CaptureActivityStore.shared.set(browser.manifest.id,.recording)
+            defer { CaptureActivityStore.shared.set(browser.manifest.id,nil) }
             try browser.addTrack(id:"a",label:"A",kind:"remote",sampleRate:16000,channels:1)
             try browser.appendNative(id:"a",pcm:Data(repeating:0,count:3200),offsetMs:0)
             let browserScanner = LibraryScanner(root:root,activity:CaptureActivitySnapshot([browser.manifest.id:.recording]))
@@ -163,6 +165,7 @@ import SwiftUI
                 .scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("saving browser meeting")
             editor.update(saving)
             let savingTime = editor.elapsedMs
+            try require(editor.saving,"browser Saving remains explicit after capture ownership ends")
             browserUptime += 1000
             try require(savingTime == saving.durationMs && editor.elapsedMs == savingTime,"browser Saving uses the producer end instead of the hidden wall-clock interval")
             var noStart = saving; noStart.start = nil; noStart.state.liveMs = nil
