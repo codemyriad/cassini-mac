@@ -214,10 +214,14 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(window.sheets.firstMatch.exists,"WP6 is a floating dialog")
         let quote=app.staticTexts["speaker-quote"]
         XCTAssertTrue(quote.waitForExistence(timeout:10),app.debugDescription)
-        let remember=app.switches["speaker-remember-voice"]
+        let remember=app.descendants(matching:.any).matching(identifier:"speaker-remember-voice").firstMatch
         XCTAssertTrue(remember.exists)
         XCTAssertFalse(remember.isEnabled,"Unprepared voices cannot be remembered")
         capture(window,name:"speakers")
+        app.typeKey("[",modifierFlags:.command)
+        XCTAssertTrue(nameField.exists,"Back must not navigate behind the modal dialog")
+        app.typeKey("f",modifierFlags:.command)
+        XCTAssertTrue(nameField.exists,"Find must not replace the meeting behind the dialog")
         // Focus enters the name field without a click; spaces belong to the editor.
         app.typeKey("a",modifierFlags:.command);app.typeText(" Draft name ")
         XCTAssertEqual(nameField.value as? String," Draft name ")

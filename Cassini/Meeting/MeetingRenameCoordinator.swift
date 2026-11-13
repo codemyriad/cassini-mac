@@ -67,6 +67,21 @@ import CassiniLibrary
     func showSpeaker(_ meeting:LibraryMeeting,id:String? = nil) {
         guard canEditSpeakers(meeting),presentation==nil,
               let speaker=id.flatMap({meeting.speaker(for:$0)}) ?? meeting.speakers.first else {return}
+        presentSpeaker(meeting,speaker:speaker)
+    }
+    #if DEBUG
+    /// Local bitmap evidence uses the sealed, read-only meeting fixture. All save
+    /// and merge paths still pass canEditSpeakers, so preview cannot write it.
+    func previewSpeaker(_ meeting:LibraryMeeting) async {
+        guard LibraryStore.shared.context.screenshot,
+              ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1",
+              presentation == nil,
+              let speaker=meeting.speakers.first(where: {$0.provenance == .unnamed}) ?? meeting.speakers.first else {return}
+        presentSpeaker(meeting,speaker:speaker)
+        await speakerPreparation?.value
+    }
+    #endif
+    private func presentSpeaker(_ meeting:LibraryMeeting,speaker:MeetingSpeaker) {
         self.meeting=meeting;speakerID=speaker.id;name=speaker.name ?? ""
         if let detail=MeetingNavigation.shared.detail,detail.meeting.folder==meeting.folder {detail.namingSpeakerID=speaker.id}
         speakerChangeFailed=false;speakerRetry=nil;presentation = .speakers

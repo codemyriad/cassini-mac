@@ -76,6 +76,10 @@ enum ScreenshotFixture {
                 if name == "search" && LibrarySearchModel.shared.hits.count == 4 { break }
                 try? await Task.sleep(for:.milliseconds(100))
             }
+            if name == "meeting", CommandLine.arguments.contains("--speaker-editor-preview"),
+               let meeting=MeetingNavigation.shared.detail?.meeting {
+                await MeetingRenameCoordinator.shared.previewSpeaker(meeting)
+            }
             try? await Task.sleep(for:.seconds(1))
             guard (name != "recording" || MeetingNavigation.shared.detail?.meeting.state.lifecycle == .recording),
                   (name != "meeting" || MeetingNavigation.shared.detail != nil),
