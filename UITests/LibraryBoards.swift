@@ -217,9 +217,20 @@ final class LibraryBoards: XCTestCase {
         let remember=app.descendants(matching:.any).matching(identifier:"speaker-remember-voice").firstMatch
         XCTAssertTrue(remember.exists)
         XCTAssertFalse(remember.isEnabled,"Unprepared voices cannot be remembered")
+        let explanation=app.staticTexts["speaker-remember-explanation"]
+        XCTAssertEqual(explanation.label,"Cassini hasn’t prepared this meeting’s voices yet. You can still save the name.")
         XCTAssertFalse(window.buttons["meeting-back"].isEnabled,"Native toolbar cannot act behind the dialog")
         XCTAssertFalse(window.buttons["meeting-export"].isEnabled)
         capture(window,name:"speakers")
+        // Tab must reach the dialog's merge menu, never an inline transcript button.
+        app.typeKey(.tab,modifierFlags:[])
+        app.typeKey("z",modifierFlags:.command)
+        app.typeKey("z",modifierFlags:[.command,.shift])
+        XCTAssertTrue(nameField.exists,"Undo/redo must stay inside the dialog")
+        app.typeKey(.space,modifierFlags:[])
+        XCTAssertTrue(app.menuItems["Speaker 3"].waitForExistence(timeout:5),app.debugDescription)
+        app.typeKey(.escape,modifierFlags:[])
+        app.typeKey(.tab,modifierFlags:.shift)
         app.typeKey("[",modifierFlags:.command)
         XCTAssertTrue(nameField.exists,"Back must not navigate behind the modal dialog")
         app.typeKey("f",modifierFlags:.command)
@@ -230,6 +241,7 @@ final class LibraryBoards: XCTestCase {
         app.typeKey(.escape, modifierFlags: [])
         let dismissed = NSPredicate { _,_ in !nameField.exists }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: dismissed, object: nil)], timeout: 10), .completed)
+        XCTAssertFalse(window.buttons["listen-stop"].exists,"Modal keys must not start background speaker listening")
         let marta=window.buttons["speaker-name-marta"]
         XCTAssertTrue(marta.waitForExistence(timeout:10),app.debugDescription);marta.click()
         let field=app.textFields["speaker-name-field"],save=app.buttons["speaker-save-name"]
@@ -269,6 +281,34 @@ final class LibraryBoards: XCTestCase {
         readAgain.click()
         XCTAssertTrue(again.buttons["speaker-name-dario"].waitForExistence(timeout:10))
         XCTAssertFalse(again.buttons["speaker-name-marta"].label.contains("Ada"),"The clear and Undo survive reopening")
+    }
+
+    @MainActor func testSpeakerDialogActionsAtMinimumWindowHeight() throws {
+        let app=try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString,"-CassiniScreenshotSize","760x480"])
+        defer {app.terminate()}
+        let window=app.windows["cassini-library-window"]
+        let budget=window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
+        XCTAssertTrue(budget.waitForExistence(timeout:20));budget.click()
+        let read=window.buttons["preview-read-transcript"]
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate {_,_ in read.exists && read.isEnabled},object:nil)],timeout:10),.completed)
+        read.click()
+        let names=window.buttons["name-the-speakers"]
+        XCTAssertTrue(names.waitForExistence(timeout:10));names.click()
+        let field=app.textFields["speaker-name-field"]
+        XCTAssertTrue(field.waitForExistence(timeout:10))
+        XCTAssertLessThanOrEqual(window.frame.height,540,"Exercise the minimum content height plus native chrome")
+        field.click();app.typeKey("a",modifierFlags:.command);app.typeText("Short window")
+        let save=app.buttons["speaker-save-name"]
+        if !save.isHittable {window.scrollViews.firstMatch.scroll(byDeltaX:0,deltaY:-500)}
+        XCTAssertTrue(save.isHittable && window.frame.contains(save.frame))
+        let merge=app.descendants(matching:.any).matching(identifier:"speaker-merge-menu").firstMatch
+        XCTAssertTrue(merge.isHittable && window.frame.contains(merge.frame))
+        merge.click()
+        XCTAssertTrue(app.menuItems["Speaker 3"].waitForExistence(timeout:5))
+        app.typeKey(.escape,modifierFlags:[])
+        save.click()
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate {_,_ in !field.exists},object:nil)],timeout:10),.completed)
+        XCTAssertTrue(window.buttons["speaker-name-marta"].label.contains("Short window"))
     }
 
     @MainActor func testRenameFromFileAndWindowTitle() throws {

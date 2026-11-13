@@ -82,6 +82,7 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testWhatIsRecordedBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRenameFromFileAndWindowTitle \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSpeakerNamesClearMergeUndoAndReopen \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testSpeakerDialogActionsAtMinimumWindowHeight \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testListeningBarOffersPlayAgainAfterItsLastTurn \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testTranscriptTimePlaysAndSpeakerNameStartsListening \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSettingsTranscriptionModelChoices \

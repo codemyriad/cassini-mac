@@ -38,9 +38,10 @@ struct MeetingTranscriptText: NSViewRepresentable {
         return view
     }
     func updateNSView(_ view: MeetingTurnTextView, context: Context) {
-        update(view)
+        update(view,isEnabled:context.environment.isEnabled)
     }
-    func update(_ view: MeetingTurnTextView) {
+    func update(_ view: MeetingTurnTextView,isEnabled:Bool = true) {
+        let canPlay = canPlay && isEnabled
         view.seek = seek; view.listen = listen; view.playFromHere = playFromHere; view.canPlay = canPlay
         let input = MeetingTurnTextView.Input(items:items,asides:asides,words:listeningWords,canPlay:canPlay,language:UXText.language.rawValue)
         if view.input != input {
@@ -306,6 +307,15 @@ extension MeetingTranscriptText {
         report["asideNativeListenButton"] = listened == 1 && sought == -1
         report["asideButtonAccessibility"] = button?.accessibilityRole() == .button
         report["asideButtonGeometry"] = (button?.frame.width ?? 0) > 0
+        render.update(view,isEnabled:false)
+        let disabledButton=button as? MeetingTurnTextView.InlineListenButton
+        let before=listened
+        _=disabledButton?.accessibilityPerformPress()
+        report["disabledEnvironmentBlocksInlineListen"] = disabledButton?.isEnabled == false
+            && disabledButton?.acceptsFirstResponder == false && disabledButton?.canBecomeKeyView == false
+            && listened == before && !view.canPlay
+        render.update(view)
+        report["enabledEnvironmentRestoresInlineListen"] = button?.isEnabled == true
         do {
             let words: [Word] = [.init(speaker:"s1",startMs:0,endMs:0,text:"same"),
                 .init(speaker:"s1",startMs:1000,endMs:1150,text:"same"),

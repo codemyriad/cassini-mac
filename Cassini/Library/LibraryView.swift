@@ -163,8 +163,10 @@ struct LibraryView: View {
             if rename.presentation == .speakers {
                 ZStack {
                     CassiniTheme.scrim.ignoresSafeArea().contentShape(Rectangle())
-                    ScrollView { SpeakerEditorView().padding(24) }
-                        .fixedSize(horizontal:false,vertical:true)
+                    ViewThatFits(in:.vertical) {
+                        SpeakerEditorView().padding(24)
+                        ScrollView { SpeakerEditorView().padding(24) }
+                    }
                 }
             }
         }
