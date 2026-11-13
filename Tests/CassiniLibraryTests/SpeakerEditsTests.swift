@@ -25,6 +25,28 @@ struct SpeakerEditsTests {
         try JSONSerialization.data(withJSONObject:["language":"en","items":items]).write(to:session.directory.appendingPathComponent("transcript.json"))
         return (root,try #require(LibraryScanner(root:root).meeting(at:session.directory)))
     }
+    @Test func sampleQuoteUsesOnlyTheRequestedSpeakerAndRealSampleInStableOrder() throws {
+        let (root, original) = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+        var meeting = original
+        meeting.transcriptItems = [
+            .init(speaker: "a", startMs: 500, endMs: 700, text: "later"),
+            .init(speaker: "b", startMs: 100, endMs: 200, text: "someone else"),
+            .init(speaker: "a", startMs: 100, endMs: 300, text: "first"),
+            .init(speaker: "a", startMs: 100, endMs: 250, text: "tie"),
+            .init(speaker: "a", startMs: 800, endMs: 900, text: "outside")]
+        #expect(SpeakerEdits.sampleQuote(meeting, speaker: "a", range: 100..<700) == "first tie later")
+        #expect(SpeakerEdits.sampleQuote(meeting, speaker: "absent", range: 100..<700) == nil)
+        #expect(SpeakerEdits.sampleQuote(meeting, speaker: "a", range: 100..<100) == nil)
+    }
+    @Test func sampleQuoteIsBoundedWithoutSplittingGraphemesOrEditingWords() throws {
+        let (root, original) = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+        var meeting = original
+        let word = String(repeating: "👩🏽‍💻", count: 245)
+        meeting.transcriptItems = [.init(speaker: "a", startMs: 0, endMs: 100, text: word)]
+        let quote = try #require(SpeakerEdits.sampleQuote(meeting, speaker: "a", range: 0..<100))
+        #expect(quote == String(repeating: "👩🏽‍💻", count: 240) + "…")
+        #expect(meeting.transcriptItems.first?.text == word)
+    }
     private func document(_ meeting:LibraryMeeting) throws -> JSON {
         try JSONParser.parse(Data(contentsOf:meeting.folder.appendingPathComponent("meeting.json")))
     }
