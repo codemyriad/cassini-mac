@@ -590,6 +590,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.buttons["toolbar-record"].waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertEqual(window.buttons.matching(identifier:"toolbar-record").count,1)
         XCTAssertEqual(window.buttons["toolbar-record"].label,"Record")
+        XCTAssertEqual(window.buttons["toolbar-record"].frame.width,90,accuracy:2,"Idle Record keeps the compact pill width")
         XCTAssertEqual(window.buttons.matching(identifier:"toolbar-import").count,1)
         XCTAssertEqual(window.buttons["toolbar-import"].label,"Import Audio…")
         XCTAssertEqual(window.buttons["meeting-export"].label,"Export…")
