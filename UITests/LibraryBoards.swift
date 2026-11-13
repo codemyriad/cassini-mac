@@ -27,7 +27,7 @@ final class LibraryBoards: XCTestCase {
             for (id,label) in [("audioDone","Audio done"),("timeLeft","Time left"),("wordsSoFar","Words so far"),("batteryAtFinish","Battery at finish")] {
                 let metric = app.descendants(matching:.any).matching(identifier:"transcribing.stat." + id).firstMatch
                 XCTAssertTrue(metric.exists,label)
-                XCTAssertTrue(metric.label.contains(label),metric.debugDescription)
+                XCTAssertTrue(visibleText(metric).contains(label),metric.debugDescription)
             }
             for label in ["Reading","Preparing","Words","Speakers & matching","Saving"] {
                 XCTAssertTrue(app.staticTexts[label].exists,label)
