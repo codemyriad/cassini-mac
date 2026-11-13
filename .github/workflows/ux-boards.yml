@@ -94,7 +94,7 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testExportReceivedAudioThroughAFileOnlySaveGrant \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordFirstBoard \
-          -only-testing:CassiniWindowScreenshots/LibraryBoards/testTranscribingStatusDetailsAndStopKeepsProgress \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testActiveTranscribingStatusDetailsAndStopKeepsProgress \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingBoard \
           -resultBundlePath build/UXBoardsDark.xcresult \
           2>&1 | tee build/ux-boards-dark.log

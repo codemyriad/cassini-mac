@@ -5,7 +5,7 @@ import XCTest
 final class LibraryBoards: XCTestCase {
     /// D-963: both Stop routes preserve the meeting and expose Resume after the
     /// asynchronous metadata commit. Retained partial words are not a live draft.
-    @MainActor func testTranscribingStatusDetailsAndStopKeepsProgress() throws {
+    @MainActor func testActiveTranscribingStatusDetailsAndStopKeepsProgress() throws {
         for usePopover in [false,true] {
             let app = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString])
             defer { app.terminate() }
