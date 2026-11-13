@@ -8,6 +8,7 @@ struct SpeakerEditorView:View {
     @State private var edit=MeetingRenameCoordinator.shared
     private enum Control:Hashable {case sample,name,merge,retry,cancel,save}
     @FocusState private var focused:Control?
+    @State private var lastFocused:Control = .name
     private var detail:MeetingDetailModel? {MeetingNavigation.shared.detail}
     var body:some View {
         VStack(alignment:.leading,spacing:18) {
@@ -27,6 +28,7 @@ struct SpeakerEditorView:View {
             .shadow(color:CassiniTheme.shadow,radius:24,y:12)
             .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("speakers.dialog.a11y"))
             .accessibilityAddTraits(.isModal).accessibilityIdentifier("speaker-editor")
+            .onChange(of:focused) {_,value in if let value {lastFocused=value}}
             .onAppear {focused = .name;SpeakerEditorChrome.advanceFocus=advanceFocus}
             .onDisappear {SpeakerEditorChrome.advanceFocus=nil;detail?.speakerSample.cancel()}
     }
@@ -117,14 +119,12 @@ struct SpeakerEditorView:View {
     }
     private func footer(_ meeting:LibraryMeeting,_ speaker:MeetingSpeaker)->some View {
         HStack {
-            Menu(UXText.text("speakers.mergeInto")) {
-                ForEach(meeting.speakers.filter {$0.id != speaker.id},id:\.id) {other in
-                    Button(other.displayName) {edit.mergeSpeaker(into:other.id)}
-                        .accessibilityIdentifier("speaker-merge-into-"+other.id)
-                }
-            }.fixedSize().disabled(edit.working || meeting.speakers.count<2)
-                .focusable().focused($focused,equals:.merge)
-                .accessibilityIdentifier("speaker-merge-menu")
+            SpeakerMergeMenu(speakers:meeting.speakers.filter {$0.id != speaker.id},
+                             enabled:!edit.working && meeting.speakers.count>1,
+                             focusRequested:(focused ?? lastFocused) == .merge,
+                             onFocus:{lastFocused = .merge;focused=nil},
+                             merge:{edit.mergeSpeaker(into:$0)})
+                .fixedSize()
             Spacer(minLength:0)
             if edit.working {ProgressView().controlSize(.small)}
             Button(UXText.text("common.cancel")) {edit.cancel()}
@@ -147,8 +147,14 @@ struct SpeakerEditorView:View {
         if edit.canApply {controls.append(.save)}
         guard !controls.isEmpty else {return}
         let step=reverse ? -1 : 1
-        let index=focused.flatMap {controls.firstIndex(of:$0)} ?? (step == 1 ? -1 : 0)
-        focused=controls[(index+step+controls.count)%controls.count]
+        let current=focused ?? lastFocused
+        let index=controls.firstIndex(of:current) ?? (step == 1 ? -1 : 0)
+        let target=controls[(index+step+controls.count)%controls.count]
+        if current == .merge && target != .merge {NSApp.keyWindow?.makeFirstResponder(nil)}
+        lastFocused=target
+        // The native popup owns its AppKit responder directly; FocusState owns
+        // the SwiftUI controls and must release the name field before that move.
+        focused=target == .merge ? nil : target
     }
 }
 struct SpeakerEditFailureNotice:View {
@@ -197,7 +203,13 @@ struct SpeakerEditFailureNotice:View {
         let blocked=changes == 0 && history.canUndo
         gate.update(window,visible:false)
         history.undo()
-        return ["speakerModalBlocksLibraryUndo":blocked && changes == 1]
+        let popup=SpeakerMergeMenu.Popup(frame:NSRect(x:0,y:0,width:120,height:24),pullsDown:true)
+        popup.addItem(withTitle:UXText.text("speakers.mergeInto"))
+        window.contentView!.addSubview(popup)
+        let nativeFocus=window.makeFirstResponder(popup) && window.firstResponder === popup && popup.canBecomeKeyView
+        window.makeFirstResponder(nil);popup.isEnabled=false
+        return ["speakerModalBlocksLibraryUndo":blocked && changes == 1,
+                "speakerMergeHasNativeKeyboardFocus":nativeFocus && !popup.acceptsFirstResponder && !popup.canBecomeKeyView]
     }
     #endif
     static func update(_ window:NSWindow,visible:Bool) {
@@ -264,4 +276,64 @@ private final class SpeakerTitlebarShade:NSView {
     }
     @objc func undo(_ sender:Any?) {editingUndo?.undo()}
     @objc func redo(_ sender:Any?) {editingUndo?.redo()}
+}
+
+/// SwiftUI Menu does not acquire an AppKit first responder when focused on Mac.
+/// Use the native popup so Tab followed by Space opens the actual merge menu.
+private struct SpeakerMergeMenu:NSViewRepresentable {
+    let speakers:[MeetingSpeaker]
+    let enabled:Bool
+    let focusRequested:Bool
+    let onFocus:()->Void
+    let merge:(String)->Void
+    func makeNSView(context:Context)->Popup {
+        let button=Popup(frame:.zero,pullsDown:true)
+        button.font = .systemFont(ofSize:13)
+        button.setAccessibilityIdentifier("speaker-merge-menu")
+        return button
+    }
+    func updateNSView(_ button:Popup,context:Context) {
+        button.merge=merge;button.onFocus=onFocus
+        let entries=speakers.map {Popup.Entry(id:$0.id,title:$0.displayName)}
+        if button.entries != entries {
+            button.entries=entries;button.removeAllItems()
+            button.addItem(withTitle:UXText.text("speakers.mergeInto"))
+            for entry in entries {
+                let item=NSMenuItem(title:entry.title,action:#selector(Popup.choose(_:)),keyEquivalent:"")
+                item.representedObject=entry.id;item.target=button
+                item.setAccessibilityIdentifier("speaker-merge-into-"+entry.id)
+                button.menu?.addItem(item)
+            }
+        }
+        button.isEnabled=enabled && context.environment.isEnabled
+        button.focusRequested=focusRequested
+        DispatchQueue.main.async { [weak button] in button?.requestFocus() }
+    }
+    final class Popup:NSPopUpButton {
+        struct Entry:Equatable {let id:String;let title:String}
+        var entries:[Entry]=[]
+        var focusRequested=false
+        var onFocus:(()->Void)?
+        var merge:((String)->Void)?
+        override var acceptsFirstResponder:Bool {isEnabled}
+        override var canBecomeKeyView:Bool {isEnabled && !isHiddenOrHasHiddenAncestor}
+        override func becomeFirstResponder()->Bool {
+            let accepted=super.becomeFirstResponder()
+            if accepted {onFocus?()}
+            return accepted
+        }
+        override func viewDidMoveToWindow() {super.viewDidMoveToWindow();requestFocus()}
+        func requestFocus() {
+            guard focusRequested,isEnabled,let window,window.firstResponder !== self else {return}
+            window.makeFirstResponder(self)
+        }
+        override func keyDown(with event:NSEvent) {
+            if [36,49,76].contains(event.keyCode),event.modifierFlags.intersection([.command,.option,.control,.shift]).isEmpty {
+                performClick(nil)
+            } else {super.keyDown(with:event)}
+        }
+        @objc func choose(_ sender:NSMenuItem) {
+            if isEnabled,let id=sender.representedObject as? String {merge?(id)}
+        }
+    }
 }
