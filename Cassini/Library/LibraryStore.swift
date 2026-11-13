@@ -44,6 +44,9 @@ struct LibraryLaunchContext {
                let phases = try? JSONDecoder().decode([String: String].self, from: bytes) {
                 for (id, phase) in phases { if let id = UUID(uuidString: id) { context.activity[id] = phase == "saving" ? .saving : .recording } }
             }
+            // Accessibility checks for the idle Record action use the same
+            // read-only meetings with no capture activity, rather than a live header.
+            if argument("-CassiniFixtureActivity") == "none" { context.activity = [:] }
         }
         #endif
         #if DEBUG
