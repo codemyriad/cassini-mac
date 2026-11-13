@@ -4,7 +4,7 @@
 
 The coordinator approved a component-only slice. This source is deliberately outside the app target: agy-mac will add it to the target and wire LibraryView later. Include this source alongside CassiniTokens; do not duplicate either source. The caller supplies its localized label, resolves model precedence and maps the model's `needsAttention` to visual `.attention`. The importing fixture does not introduce an app state. Current labels and model logic are unchanged.
 
-Geometry is 18 pt high, 11.5 pt semibold monospaced digits, 8 pt horizontal padding and 4 pt gap. Glyph sizes are 6 pt recording dot, 10 pt busy spinner and 11 pt alert/incoming symbol. Received has a transparent fill and 1 pt token-line outline. Explicit foreground roles prevent a selected row from replacing the badge ink.
+Geometry is 22 pt high, 12 pt semibold monospaced digits, 8 pt horizontal padding and 4 pt gap (`L-54`). Glyph sizes are 6 pt recording dot, 10 pt busy spinner and 11 pt alert/incoming symbol. Neutral pills use `ink` at 10% (`L-46`, `L-54`), and the `transcribing` spinner uses `accent` while `importing` and `saving` spinners use `ink-2` (`L-45`). Received has a transparent fill and 1 pt token-line outline. Explicit foreground roles prevent a selected row from replacing the badge ink.
 
 Busy glyphs rotate once per second, at most 30 updates per second. Reduce Motion freezes the glyph; callers can also pass `isAnimating: false` when inactive or offscreen. The label is the single accessibility element; decorative glyphs are hidden. The standalone snapshots freeze animation and do not establish app-level accessibility or live-animation behaviour.
 

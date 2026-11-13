@@ -29,6 +29,9 @@ class BrandTokenSyncTests(unittest.TestCase):
         (base / 'Sources/CassiniSpectrogram').mkdir(parents=True)
         shutil.copy2(ROOT / 'Cassini/Resources/Brand/tokens.json', base / 'Cassini/Resources/Brand/tokens.json')
         shutil.copy2(ROOT / 'Cassini/Resources/Brand/UPSTREAM.json', base / 'Cassini/Resources/Brand/UPSTREAM.json')
+        shutil.copy2(ROOT / 'Cassini/Resources/Brand/marks-UPSTREAM.json', base / 'Cassini/Resources/Brand/marks-UPSTREAM.json')
+        for mark in ('saturn-nav.svg', 'saturn-mid.svg', 'saturn-full.svg', 'mark-flat.svg'):
+            shutil.copy2(ROOT / 'Cassini/Resources/Brand' / mark, base / 'Cassini/Resources/Brand' / mark)
         shutil.copy2(ROOT / 'Cassini/Theme/CassiniTokens.swift', base / 'Cassini/Theme/CassiniTokens.swift')
         shutil.copy2(ROOT / 'Cassini/Theme/CassiniTheme.swift', base / 'Cassini/Theme/CassiniTheme.swift')
         return base
@@ -135,17 +138,32 @@ class BrandTokenSyncTests(unittest.TestCase):
     def test_unapplied_token_accounting_and_pr_b_theme_literal_gate(self) -> None:
         base = self.make_tree()
         theme = base / 'Cassini/Theme/CassiniTheme.swift'
-        # Dropping a decided token from unappliedDecidedTokens without wiring CassiniTokens.<role> fails.
-        theme.write_text(theme.read_text(encoding='utf-8').replace('"error-fill", ', ''), encoding='utf-8')
-        with self.assertRaisesRegex(ValueError, "Active token 'error-fill' is not in unappliedDecidedTokens"):
-            checker.verify(base)
-        # Once unappliedDecidedTokens is empty (PR B), colour literals inside CassiniTheme.swift fail too.
         doc = json.loads((base / 'Cassini/Resources/Brand/tokens.json').read_text(encoding='utf-8'))
-        refs = '\n'.join(
-            f'    static let ref_{checker.camel_case(tid)} = CassiniTokens.{checker.camel_case(tid)}'
+        all_ids = [
+            tid
             for block in ('tokens', 'derived')
             for tid, spec in doc.get(block, {}).items()
             if spec.get('status') in {'decided', 'placeholder'}
+        ]
+        # Dropping a decided token from unappliedDecidedTokens without wiring CassiniTokens.<role> fails.
+        refs_without_error_fill = '\n'.join(
+            f'    static let ref_{checker.camel_case(tid)} = CassiniTokens.{checker.camel_case(tid)}'
+            for tid in all_ids
+            if tid != 'error-fill'
+        )
+        theme.write_text(
+            'enum CassiniTheme {\n'
+            '    static let unappliedDecidedTokens: Set<String> = []\n'
+            f'{refs_without_error_fill}\n'
+            '}\n',
+            encoding='utf-8',
+        )
+        with self.assertRaisesRegex(ValueError, "Active token 'error-fill' is not in unappliedDecidedTokens"):
+            checker.verify(base)
+        # Once unappliedDecidedTokens is empty, colour literals inside CassiniTheme.swift fail too.
+        refs = '\n'.join(
+            f'    static let ref_{checker.camel_case(tid)} = CassiniTokens.{checker.camel_case(tid)}'
+            for tid in all_ids
         )
         theme.write_text(
             'enum CassiniTheme {\n'
@@ -156,6 +174,13 @@ class BrandTokenSyncTests(unittest.TestCase):
             encoding='utf-8',
         )
         with self.assertRaisesRegex(ValueError, 'Cassini/Theme/CassiniTheme.swift'):
+            checker.verify(base)
+
+    def test_mark_svg_sha256_mismatch_fails(self) -> None:
+        base = self.make_tree()
+        nav = base / 'Cassini/Resources/Brand/saturn-nav.svg'
+        nav.write_text(nav.read_text(encoding='utf-8') + '\n', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'saturn-nav.svg SHA-256 mismatch'):
             checker.verify(base)
 
 

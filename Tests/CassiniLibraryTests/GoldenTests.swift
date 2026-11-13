@@ -27,6 +27,10 @@ private enum Golden {
         let root = try! JSONSerialization.jsonObject(with: data("states-vectors")) as! [String: Any]
         return (root["vectors"] as! [[String: Any]]).map { try! JSONSerialization.data(withJSONObject: $0) }
     }()
+    static let entryStates: [Data] = {
+        let root = try! JSONSerialization.jsonObject(with: data("states-vectors")) as! [String: Any]
+        return (root["entryVectors"] as! [[String: Any]]).map { try! JSONSerialization.data(withJSONObject: $0) }
+    }()
 }
 
 @Suite struct LibraryGoldenTests {
@@ -37,17 +41,18 @@ private enum Golden {
         #expect(format.searchContext(date,durationMs:0,positionMs:300000) == "Today, 00:00 · under 1 min · at 00:05:00")
     }
     @Test func goldenBytesAndCounts() throws {
-        let hashes = ["format-vectors": "8d9449e30b28b117c85f5396de6b0123b1f79cc9b53f6504157b1a0dfffcc791",
-                      "states-vectors": "33f4e5596d0d84912ea75388df2825e4008eae824b1c672f0c47c1482df89415",
+        let hashes = ["format-vectors": "561e2acb1f44473904d87280447ea98e45f8185ae399a47084bec50f82595960",
+                      "states-vectors": "2857b5af75191714b04b9974aebe7903b41e9dd96857c6b79c969bac0ae2ce67",
                       "meeting.schema": "b20f930cdd689c779a225939e2c35f2379c965d81454b54a80aa70478c7b679e"]
         for (name, expected) in hashes {
             #expect(SHA256.hash(data: try Golden.data(name)).map { String(format: "%02x", $0) }.joined() == expected)
         }
         #expect(MetadataSchema.bytes == (try Golden.data("meeting.schema")))
         let rules = try #require(Bundle.module.url(forResource: "LIBRARY-RULES", withExtension: "md", subdirectory: "Golden"))
-        #expect(SHA256.hash(data: try Data(contentsOf: rules)).map { String(format: "%02x", $0) }.joined() == "95a0e5068a08efa521f6eed73799b715ab50b2cf6aee374570b5337a6a3bdd2a")
+        #expect(SHA256.hash(data: try Data(contentsOf: rules)).map { String(format: "%02x", $0) }.joined() == "415d866eb4a098400c76a3975969d9764bb70eed905726fbdcf7e90e42f85ce8")
         #expect(Golden.formats.count == 76)
-        #expect(Golden.states.count == 17)
+        #expect(Golden.states.count == 18)
+        #expect(Golden.entryStates.count == 1)
     }
     @Test(arguments: Golden.formats) private func formatVector(vector: FormatCase) throws {
         let value = try JSONDecoder().decode(FormatInput.self, from: vector.data)
@@ -80,6 +85,13 @@ private enum Golden {
         let vector = try JSONDecoder().decode(Vector.self, from: data)
         #expect(vector.fields.badge == vector.badge, "\(vector.id)")
         if let expected = vector.canWriteDown { #expect(vector.fields.canWriteDown == expected, "\(vector.id)") }
+    }
+    @Test(arguments: Golden.entryStates) func entryStateVector(data: Data) throws {
+        struct EntryFields: Decodable { var importing: Bool }
+        struct EntryVector: Decodable { var id: String; var fields: EntryFields; var badge: MeetingBadge }
+        let vector = try JSONDecoder().decode(EntryVector.self, from: data)
+        #expect(vector.fields.importing)
+        #expect(MeetingState.importingEntryBadge(language: .en, locale: Locale(identifier: "en_GB")) == vector.badge, "\(vector.id)")
     }
     @Test func timeZoneUsesCalendarDaysAcrossDSTAndIgnoresTheProcessLocale() throws {
         let zone = try #require(TimeZone(identifier: "America/New_York"))

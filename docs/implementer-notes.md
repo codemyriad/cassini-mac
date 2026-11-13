@@ -117,7 +117,7 @@ Build Cassini as a document-based app (`DocumentGroup`), read-only for v1, that 
 - **Files:** register `.opus` as a document type with the Viewer role, so Cassini shows in Finder's Open With. Support recent documents, window restoration and drag-to-open.
 - **Quick Look:** a Quick Look preview extension that shows the title, speakers and the first lines of the transcript.
 - **Controls:** system controls, not custom ones: `NavigationSplitView` with an inspector, a segmented `Picker`, `.searchable` in the toolbar, `Toggle(.switch)` and `Slider` for the scrubber.
-- **Colors:** system semantic colors only and the user's accent color. Speaker colors use the system orange, indigo, teal, green and pink in order.
+- **Colors:** app surfaces, inks, accents, highlights, status tints, speaker slots and record roles come from `Cassini/Theme/CassiniTokens.swift` (pinned to `Cassini/Resources/Brand/tokens.json`), while sidebars use native macOS sidebar material and native chrome (menus, sheets, alerts, toolbars) remains system-rendered.
 - **Type:** SF Pro through the system font. 15 pt for transcript body, monospaced digits for times.
 - **Now Playing:** register with `MPNowPlayingInfoCenter` and `MPRemoteCommandCenter`, so media keys, Control Center and AirPods controls work.
 - **Accessibility:** every word is reachable with VoiceOver, its label giving the speaker and time. Announce turn changes, not every word. With Reduce Motion on, follow-along jumps instead of animating. With Increase Contrast on, use a solid accent outline for the current word.

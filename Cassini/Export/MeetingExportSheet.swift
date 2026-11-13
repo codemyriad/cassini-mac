@@ -102,7 +102,8 @@ struct TransferStatusBanner: View {
         }
         if CassiniTheme.toastUsesInverse {
             base
-                .tint(warning ? nil : CassiniTheme.inverseAccent)
+                .buttonStyle(ToastButtonStyle(warning: warning))
+                .tint(warning ? CassiniTheme.warnInk : CassiniTheme.inverseAccent)
                 .shadow(color: CassiniTheme.shadow, radius: 6, y: 2)
                 .accessibilityElement(children: .contain)
         } else {
