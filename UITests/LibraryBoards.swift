@@ -217,6 +217,8 @@ final class LibraryBoards: XCTestCase {
         let remember=app.descendants(matching:.any).matching(identifier:"speaker-remember-voice").firstMatch
         XCTAssertTrue(remember.exists)
         XCTAssertFalse(remember.isEnabled,"Unprepared voices cannot be remembered")
+        XCTAssertFalse(window.buttons["meeting-back"].isEnabled,"Native toolbar cannot act behind the dialog")
+        XCTAssertFalse(window.buttons["meeting-export"].isEnabled)
         capture(window,name:"speakers")
         app.typeKey("[",modifierFlags:.command)
         XCTAssertTrue(nameField.exists,"Back must not navigate behind the modal dialog")

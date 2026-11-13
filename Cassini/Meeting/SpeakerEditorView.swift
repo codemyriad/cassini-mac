@@ -142,3 +142,25 @@ struct SpeakerEditFailureNotice:View {
         }
     }
 }
+
+/// SwiftUI's content overlay stops below the native titlebar. Cover that remaining
+/// strip in the existing frame view as well, so toolbar and traffic-light clicks
+/// cannot pass behind the dialog. Removed as soon as the presentation ends.
+@MainActor enum SpeakerEditorChrome {
+    private static let identifier=NSUserInterfaceItemIdentifier("speaker-titlebar-scrim")
+    static func update(_ window:NSWindow,visible:Bool) {
+        guard let frame=window.contentView?.superview else {return}
+        let existing=frame.subviews.first {$0.identifier == identifier}
+        guard visible else {existing?.removeFromSuperview();return}
+        let shade=existing ?? NSView()
+        shade.identifier=identifier;shade.wantsLayer=true
+        shade.setAccessibilityElement(false)
+        let bottom=window.contentLayoutRect.maxY
+        shade.frame=NSRect(x:0,y:bottom,width:frame.bounds.width,height:max(0,frame.bounds.maxY-bottom))
+        shade.autoresizingMask=[.width,.minYMargin]
+        window.effectiveAppearance.performAsCurrentDrawingAppearance {
+            shade.layer?.backgroundColor=NSColor(CassiniTheme.scrim).cgColor
+        }
+        if existing == nil {frame.addSubview(shade,positioned:.above,relativeTo:nil)}
+    }
+}
