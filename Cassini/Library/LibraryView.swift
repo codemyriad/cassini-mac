@@ -586,7 +586,7 @@ struct LibraryView: View {
         if !big {
             LibraryToolbarAction(title:title,label:title,identifier:"toolbar-record",style:.record,enabled:enabled) {
                 sessionPlayback.stop(); RecordCoordinator.shared.request(parent: store.context.root)
-            }.frame(minWidth:90)
+            }.frame(minWidth:90).fixedSize(horizontal:true,vertical:false)
         } else {
         Button { sessionPlayback.stop(); RecordCoordinator.shared.request(parent: store.context.root) } label: {
             HStack(spacing: big ? 10 : 7) {
