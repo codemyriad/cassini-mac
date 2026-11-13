@@ -114,7 +114,7 @@ struct TranscribingStatusView: View {
         VStack(alignment:.leading,spacing:4) {
             Text(UXText.text(id)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
             Text(value).monospacedDigit().fontWeight(.semibold)
-        }.accessibilityElement(children:.combine).accessibilityIdentifier("transcribing-" + id)
+        }.accessibilityElement(children:.combine).accessibilityIdentifier(id)
     }
 }
 

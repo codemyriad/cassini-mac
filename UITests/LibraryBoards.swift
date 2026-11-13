@@ -24,7 +24,12 @@ final class LibraryBoards: XCTestCase {
             window.buttons["transcribing-details"].click()
             let stop = app.buttons["transcribing-stop-keep-progress"]
             XCTAssertTrue(stop.waitForExistence(timeout:5),app.debugDescription)
-            for label in ["Audio done","Time left","Words so far","Battery at finish","Reading","Preparing","Words","Speakers & matching","Saving"] {
+            for (id,label) in [("audioDone","Audio done"),("timeLeft","Time left"),("wordsSoFar","Words so far"),("batteryAtFinish","Battery at finish")] {
+                let metric = app.descendants(matching:.any).matching(identifier:"transcribing.stat." + id).firstMatch
+                XCTAssertTrue(metric.exists,label)
+                XCTAssertTrue(metric.label.contains(label),metric.debugDescription)
+            }
+            for label in ["Reading","Preparing","Words","Speakers & matching","Saving"] {
                 XCTAssertTrue(app.staticTexts[label].exists,label)
             }
             if !usePopover { capture(window,name:"transcribing-details") }
