@@ -402,7 +402,7 @@ struct LibraryView: View {
                 if let start = meeting.meetingTime { Text(store.format.rowTime(start)).font(.system(size: 11.5)).foregroundStyle(dim).monospacedDigit() }
             }
             HStack(spacing: 6) {
-                if let presentation { catalogStatusBadge(presentation) }
+                if let presentation { catalogStatusBadge(presentation, onAccent: selected) }
                 if let meta = rowMeta(meeting, badgeKind: presentation?.kind) { Text(meta).foregroundStyle(dim).lineLimit(1) }
             }.font(.system(size: 11.5))
             if let line = rowSecondLine(meeting, badgeKind: presentation?.kind) { line.font(.system(size: 11.5)).foregroundStyle(dim).lineLimit(1) }
@@ -426,8 +426,8 @@ struct LibraryView: View {
         default: return meeting.quote.map { Text("“") + Text(MeetingPresentation.pullQuote($0)) + Text("”") }
         }
     }
-    private func catalogStatusBadge(_ presentation: CatalogBadgePresentation) -> some View {
-        CatalogStatusBadge(presentation: presentation, isAnimating: !store.context.screenshot && scenePhase == .active)
+    private func catalogStatusBadge(_ presentation: CatalogBadgePresentation, onAccent: Bool = false) -> some View {
+        CatalogStatusBadge(presentation: presentation, isAnimating: !store.context.screenshot && scenePhase == .active, onAccent: onAccent)
             .accessibilityAddTraits(.isStaticText)
     }
 

@@ -250,3 +250,26 @@ enum CassiniTheme {
         speakerWashes[savedVoiceSlot(saveOrder: saveOrder)]
     }
 }
+
+/// High-contrast pill button style for inverse toasts (`inverse` + `inverse-accent`, L-16/L-39/L-42)
+/// and warning banners (`warn-tint` + `warn-ink`), avoiding AppKit `.bordered` label mismatch in dark mode.
+struct ToastButtonStyle: ButtonStyle {
+    var warning: Bool = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        let useInverse = !warning && CassiniTheme.toastUsesInverse
+        let fg = warning ? CassiniTheme.warnInk : (useInverse ? CassiniTheme.inverseAccent : CassiniTheme.ink)
+        let fillBase = warning ? CassiniTheme.warnInk : (useInverse ? CassiniTheme.onInverse : CassiniTheme.ink)
+        configuration.label
+            .font(.system(size: 12.5, weight: .semibold))
+            .foregroundStyle(fg)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 24)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(fillBase.opacity(configuration.isPressed ? 0.22 : 0.12))
+            )
+            .opacity(isEnabled ? 1 : 0.45)
+    }
+}

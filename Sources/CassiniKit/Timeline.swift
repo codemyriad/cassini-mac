@@ -53,6 +53,43 @@ public struct Timeline: Sendable {
         let projection = try TranscriptRendering.render(input,endsBoundedByAudio:endsBoundedByAudio,breakBefore:[],cancellable:true)
         return Timeline(words,projection:projection)
     }
+
+    public struct PreparedSessionTranscript: Sendable {
+        public let timeline: Timeline
+        public let speakerColourIndices: [String: Int]
+        public let unlistedSpeakers: [String]
+
+        /// Single-pass earliest-item scan + timeline preparation off the main actor.
+        public static func preparing(_ words: [Word], knownSpeakerIDs: Set<String> = [], endsBoundedByAudio: Bool = false) throws -> PreparedSessionTranscript {
+            var earliest: [String: (startMs: Int, firstIndex: Int)] = [:]
+            var known = knownSpeakerIDs
+            var unlisted: [String] = []
+            for (index, word) in words.enumerated() {
+                if index & 0xFFF == 0 { try Task.checkCancellation() }
+                if let previous = earliest[word.speaker] {
+                    if word.startMs < previous.startMs {
+                        earliest[word.speaker] = (word.startMs, index)
+                    }
+                } else {
+                    earliest[word.speaker] = (word.startMs, index)
+                }
+                if known.insert(word.speaker).inserted {
+                    unlisted.append(word.speaker)
+                }
+            }
+            let orderedSpeakers = earliest.sorted {
+                $0.value.startMs != $1.value.startMs ? $0.value.startMs < $1.value.startMs : $0.value.firstIndex < $1.value.firstIndex
+            }.map(\.key)
+            var slots: [String: Int] = [:]
+            slots.reserveCapacity(orderedSpeakers.count)
+            for (slot, speaker) in orderedSpeakers.enumerated() {
+                slots[speaker] = slot
+            }
+            let timeline = try Timeline.preparing(words, endsBoundedByAudio: endsBoundedByAudio)
+            try Task.checkCancellation()
+            return PreparedSessionTranscript(timeline: timeline, speakerColourIndices: slots, unlistedSpeakers: unlisted)
+        }
+    }
     private init(_ words: [Word], projection: TranscriptRendering.Result) {
         self.words = zip(words,projection.words).map { original,display in var copy = original; copy.endMs = Int(display.endMs); return copy }
         let turns = Timeline.buildTurns(projection)

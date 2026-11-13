@@ -157,6 +157,56 @@ public enum MeetingTranscriber {
     static func placedStart(offsetMs: Double?) -> Int { Int(TrackPlacement.frame(ms:offsetMs ?? 0,rate:16000)) }
     /// Session milliseconds of a track-local 16 kHz sample (word times add the segment start here,
     /// and each word's start inside the segment in clamped).
+    static func updatedSpeakerMetadata(existing: [[String: Any]], tracks: [TranscriptSpeaker],
+                                       ordered: [LibraryTranscriptItem], status: String,
+                                       uiLanguage: CassiniLanguage) -> [[String: Any]] {
+        var speakers = existing
+        var usedSlots = Set<Int>()
+        for entry in speakers {
+            if let slot = entry["colourIndex"] as? Int, slot >= 0 { usedSlots.insert(slot) }
+        }
+        func nextFreeSlot() -> Int {
+            var candidate = 0
+            while usedSlots.contains(candidate) { candidate += 1 }
+            usedSlots.insert(candidate)
+            return candidate
+        }
+        // D47/D50 + L-41: producing words writes their labels in the writer's language,
+        // recomputing unnamed label numbers as partials gain earlier turns, while
+        // preserving established colourIndex slots across publishes, resume and retry.
+        var seen = Set<String>()
+        let spoken = ordered.compactMap { seen.insert($0.speaker).inserted ? $0.speaker : nil }
+        for (number, id) in spoken.enumerated() {
+            let defaultLabel = LibraryLocalization.shared.text("common.speaker.unnamed", ["n": String(number + 1)], language: uiLanguage)
+            if let index = speakers.firstIndex(where: { $0["id"] as? String == id }) {
+                if let slot = speakers[index]["colourIndex"] as? Int, slot >= 0 {
+                    // Keep established persistent slot untouched.
+                } else {
+                    speakers[index]["colourIndex"] = nextFreeSlot()
+                }
+                speakers[index]["label"] = (speakers[index]["name"] as? String) ?? defaultLabel
+            } else if let trackSpeaker = tracks.first(where: { $0.id == id }) {
+                speakers.append([
+                    "id": id,
+                    "name": trackSpeaker.name as Any? ?? NSNull(),
+                    "provenance": trackSpeaker.name == nil ? "unnamed" : "source",
+                    "colourIndex": nextFreeSlot(),
+                    "label": trackSpeaker.name ?? defaultLabel,
+                ])
+            }
+        }
+        if status == "done" {
+            for trackSpeaker in tracks where !speakers.contains(where: { ($0["id"] as? String) == trackSpeaker.id }) {
+                speakers.append([
+                    "id": trackSpeaker.id,
+                    "name": trackSpeaker.name as Any? ?? NSNull(),
+                    "provenance": trackSpeaker.name == nil ? "unnamed" : "source",
+                    "colourIndex": nextFreeSlot(),
+                ])
+            }
+        }
+        return speakers
+    }
     static func sessionMs(startSample: Int, local: Int) -> Int64 { Int64(startSample + local) * 1000 / 16000 }
     static func clamped(_ words: [WhistleTranscript.Word], startMs: Int64, lengthMs: Int64) throws -> [RecognitionFallback.Word] {
         try words.map { word in
@@ -316,27 +366,13 @@ public enum MeetingTranscriber {
                     metadata["transcript"] = transcript
                     metadata["etaMinutes"] = status == "running" ? eta : NSNull()
                     metadata["error"] = NSNull()
-                    var speakers = metadata["speakers"] as? [[String:Any]] ?? []
-                    for track in tracks where !speakers.contains(where: { ($0["id"] as? String) == track.speaker.id }) {
-                        speakers.append(["id":track.speaker.id, "name":track.speaker.name as Any? ?? NSNull(), "provenance":track.speaker.name == nil ? "unnamed" : "source", "colourIndex":speakers.count])
-                    }
-                    // D47/D50: producing words also writes their labels in the
-                    // writer's language. Recompute unnamed numbers as partials
-                    // gain earlier turns (including after resume); readers and
-                    // metadata-only edits never rewrite these stored labels.
-                    var seen=Set<String>()
-                    let spoken=ordered.compactMap {seen.insert($0.speaker).inserted ? $0.speaker : nil}
-                    for (number,id) in spoken.enumerated() {
-                        guard let index=speakers.firstIndex(where:{$0["id"] as? String == id}) else {continue}
-                        speakers[index]["colourIndex"]=number
-                        speakers[index]["label"]=(speakers[index]["name"] as? String) ?? LibraryLocalization.shared.text("common.speaker.unnamed",["n":String(number+1)],language:uiLanguage)
-                    }
-                    var nextUnspokenSlot=spoken.count
-                    for index in speakers.indices where !seen.contains((speakers[index]["id"] as? String) ?? "") {
-                        speakers[index]["colourIndex"]=nextUnspokenSlot
-                        nextUnspokenSlot += 1
-                    }
-                    metadata["speakers"] = speakers
+                    metadata["speakers"] = Self.updatedSpeakerMetadata(
+                        existing: metadata["speakers"] as? [[String:Any]] ?? [],
+                        tracks: tracks.map(\.speaker),
+                        ordered: ordered,
+                        status: status,
+                        uiLanguage: uiLanguage
+                    )
                     if status == "done" {
                         // D28 writingDown facts of this successful attempt (the schema requires
                         // wallDurationMs, resumed and speakerSeparation). Known facts are replaced by

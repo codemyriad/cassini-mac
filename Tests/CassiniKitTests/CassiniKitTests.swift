@@ -217,5 +217,44 @@ private func vector(_ name: String) throws -> Data {
         }
     }
 
+    @Test func preparedSessionTranscriptFindsEarliestSpeakerSlotsInSinglePassAndHonorsCancellation() async throws {
+        // Out-of-order words and equal-startMs tie-breaking by file order, plus unlisted speaker discovery.
+        let words: [Word] = [
+            w("c", 5000, 5200, "Later"),
+            w("b", 1000, 1200, "Tie first in file"),
+            w("a", 1000, 1200, "Tie second in file"),
+            w("d", 200, 400, "Earliest overall"),
+            w("c", 800, 900, "Earlier turn for c"),
+        ]
+        let prepared = try Timeline.PreparedSessionTranscript.preparing(words, knownSpeakerIDs: ["a", "b"])
+        #expect(prepared.speakerColourIndices == ["d": 0, "c": 1, "b": 2, "a": 3])
+        #expect(prepared.unlistedSpeakers == ["c", "d"])
+        #expect(prepared.timeline.words.count == words.count)
+
+        // Large-input linear preparation (20,000 words across 6 speakers) and cooperative cancellation.
+        let large: [Word] = (0..<20_000).map { i in
+            let order = 19_999 - i
+            return w("spk-\(order % 6)", order * 120, order * 120 + 90, "word")
+        }
+        let started = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+        let largePrepared = try Timeline.PreparedSessionTranscript.preparing(large, knownSpeakerIDs: ["spk-0", "spk-1"])
+        let cpuNs = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - started
+        #expect(largePrepared.speakerColourIndices == [
+            "spk-0": 0, "spk-1": 1, "spk-2": 2, "spk-3": 3, "spk-4": 4, "spk-5": 5,
+        ])
+        #expect(Set(largePrepared.unlistedSpeakers) == ["spk-2", "spk-3", "spk-4", "spk-5"])
+        print("PreparedSessionTranscript 20k words thread CPU ms: \(Double(cpuNs) / 1_000_000)")
+
+        let cancelledTask = Task.detached { () throws -> Timeline.PreparedSessionTranscript in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try Timeline.PreparedSessionTranscript.preparing(large)
+        }
+        do {
+            _ = try await cancelledTask.value
+            Issue.record("Cancelled preparation should throw CancellationError")
+        } catch is CancellationError {
+            // Expected cooperative cancellation before finishing long input.
+        }
+    }
 
 }

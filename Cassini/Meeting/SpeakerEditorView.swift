@@ -75,6 +75,7 @@ struct SpeakerEditFailureNotice:View {
                 Button {edit.dismissSpeakerFailure()} label: {Image(systemName:"xmark")}.accessibilityLabel(UXText.text("common.close"))
             }.font(.system(size:13)).padding(14)
                 .foregroundStyle(CassiniTheme.toastUsesInverse ? CassiniTheme.onInverse : CassiniTheme.ink)
+                .buttonStyle(ToastButtonStyle(warning: false))
                 .background {
                     if CassiniTheme.toastUsesInverse {
                         RoundedRectangle(cornerRadius:8).fill(CassiniTheme.inverse)

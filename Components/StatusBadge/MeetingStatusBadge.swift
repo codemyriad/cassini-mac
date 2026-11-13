@@ -48,6 +48,7 @@ struct MeetingStatusBadge: View {
     let kind: StatusBadgeKind
     let label: String
     var isAnimating = true
+    var onAccent = false
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -66,21 +67,42 @@ struct MeetingStatusBadge: View {
         Color(nsColor: entry.resolvedNSColor(dark: scheme == .dark))
     }
 
+    private var adaptsToAccent: Bool {
+        onAccent && (kind.fill == nil || kind.fillOpacity < 1)
+    }
+
+    private var resolvedTextInk: Color {
+        adaptsToAccent ? color(CassiniTokens.onAccentEntry) : color(kind.ink)
+    }
+
+    private var resolvedGlyphInk: Color {
+        adaptsToAccent ? color(CassiniTokens.onAccentEntry) : color(kind.glyphInk)
+    }
+
     var body: some View {
         HStack(spacing: Metrics.gap) {
             glyph.accessibilityHidden(true)
             Text(label).font(.system(size: Metrics.font, weight: .semibold))
                 .monospacedDigit().fixedSize(horizontal: true, vertical: true)
-                .foregroundStyle(color(kind.ink))
+                .foregroundStyle(resolvedTextInk)
         }
         .padding(.horizontal, Metrics.horizontalPadding)
         .frame(height: Metrics.height)
         .fixedSize(horizontal: true, vertical: true)
         .background {
-            if let fill = kind.fill { Capsule().fill(color(fill).opacity(kind.fillOpacity)) }
+            if adaptsToAccent, kind.fill != nil {
+                Capsule().fill(color(CassiniTokens.onAccentEntry).opacity(0.16))
+            } else if let fill = kind.fill {
+                Capsule().fill(color(fill).opacity(kind.fillOpacity))
+            }
         }
         .overlay {
-            if kind == .received { Capsule().strokeBorder(color(CassiniTokens.lineEntry), lineWidth: Metrics.outlineWidth) }
+            if kind == .received {
+                Capsule().strokeBorder(
+                    adaptsToAccent ? color(CassiniTokens.onAccentEntry).opacity(0.45) : color(CassiniTokens.lineEntry),
+                    lineWidth: Metrics.outlineWidth
+                )
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(label))
@@ -89,19 +111,19 @@ struct MeetingStatusBadge: View {
     @ViewBuilder private var glyph: some View {
         switch kind.glyph {
         case .dot:
-            Circle().fill(color(kind.glyphInk)).frame(width: Metrics.dotSize, height: Metrics.dotSize)
+            Circle().fill(resolvedGlyphInk).frame(width: Metrics.dotSize, height: Metrics.dotSize)
         case .spinner:
             if isAnimating && !reduceMotion {
                 TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
                     let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1)
-                    BadgeGlyph(glyph: .spinner, ink: color(kind.glyphInk))
+                    BadgeGlyph(glyph: .spinner, ink: resolvedGlyphInk)
                         .rotationEffect(.degrees(phase * 360))
                 }.frame(width: Metrics.spinnerSize, height: Metrics.spinnerSize)
             } else {
-                BadgeGlyph(glyph: .spinner, ink: color(kind.glyphInk)).frame(width: Metrics.spinnerSize, height: Metrics.spinnerSize)
+                BadgeGlyph(glyph: .spinner, ink: resolvedGlyphInk).frame(width: Metrics.spinnerSize, height: Metrics.spinnerSize)
             }
         case .alert, .incoming:
-            BadgeGlyph(glyph: kind.glyph, ink: color(kind.glyphInk)).frame(width: Metrics.symbolSize, height: Metrics.symbolSize)
+            BadgeGlyph(glyph: kind.glyph, ink: resolvedGlyphInk).frame(width: Metrics.symbolSize, height: Metrics.symbolSize)
         }
     }
 }
