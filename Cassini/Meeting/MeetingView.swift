@@ -160,6 +160,7 @@ struct MeetingView: View {
                         Section {
                             if model.tab == .summary, let markdown = meeting.summaryMarkdown {
                                 SummaryView(markdown: markdown, meeting: model).content
+                                    .accessibilityElement(children: .contain)
                                     .accessibilityIdentifier("meeting-summary")
                             } else { transcriptContent }
                         } header: {
