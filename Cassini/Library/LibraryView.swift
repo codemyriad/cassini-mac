@@ -519,7 +519,7 @@ struct LibraryView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size: 22, weight: .bold)).accessibilityAddTraits(.isHeader)
                     Text(store.format.previewSubtitle(meeting.meetingTime, durationMs: meeting.durationMs, received: meeting.state.origin == .received, transcribedOnAnotherDevice: meeting.transcribedOnAnotherDevice)).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("preview-subtitle")
-                    if let presentation = LibraryBadgeCatalog.presentation(for: meeting) {
+                    if let presentation = LibraryBadgeCatalog.presentation(for: meeting), presentation.kind != "received" {
                         catalogStatusBadge(presentation)
                             .padding(.top, 2)
                             .accessibilityIdentifier(presentation.kind == "transcribing" ? "preview-transcribing" : "preview-status-badge")

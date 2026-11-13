@@ -840,6 +840,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"preview-subtitle").firstMatch.waitForExistence(timeout:20),window.debugDescription)
         XCTAssertTrue(window.staticTexts.matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","Imported · Transcribed on another device","Imported · Transcribed on another device")).firstMatch.exists,window.debugDescription)
         XCTAssertFalse(window.descendants(matching:.any)["received-folder-card"].exists)
+        XCTAssertFalse(window.descendants(matching:.any)["preview-status-badge"].exists)
         XCTAssertFalse(window.descendants(matching:.any)["import-summary"].exists)
         XCTAssertTrue(window.buttons["preview-play"].isEnabled)
         XCTAssertTrue(text("Record your own meetings with the button above.",in:window))
@@ -1202,10 +1203,20 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [cancelled], timeout: 5), .completed)
         XCTAssertFalse(library.exists)
         let fixture = try fixtureDirectory().appendingPathComponent("meeting.opus")
-        for _ in 0..<2 {
+        for attempt in 0..<2 {
             try await finderOpen(fixture)
             XCTAssertTrue(library.buttons["preview-read-transcript"].waitForExistence(timeout: 15), app.debugDescription)
             XCTAssertFalse(library.descendants(matching:.any)["received-folder-card"].exists)
+            if attempt == 0 {
+                let summary = library.staticTexts["import-summary"]
+                XCTAssertTrue(summary.waitForExistence(timeout:5),library.debugDescription)
+                XCTAssertEqual(visibleText(summary),"Imported from Fixtures. A copy is kept in your Meeting Library.")
+                XCTAssertTrue(library.buttons["import-notice-done"].exists)
+                capture(library,name:"received-first")
+            } else {
+                let silent = NSPredicate { _,_ in !library.descendants(matching:.any)["import-summary"].exists }
+                XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:silent,object:nil)],timeout:5),.completed,library.debugDescription)
+            }
             XCTAssertEqual(app.windows.count, 1)
         }
         library.buttons["_XCUI:CloseWindow"].click()
