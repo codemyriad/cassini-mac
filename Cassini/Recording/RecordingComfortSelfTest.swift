@@ -140,6 +140,9 @@ import SwiftUI
             let browserMeeting = try browserScanner.scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("private browser meeting")
             var browserUptime: TimeInterval = 100
             let editor = RecordingPageModel.editor(for:browserMeeting,uptime:{ browserUptime }), elapsed = editor.elapsedMs
+            try await waitForVoiceCount(editor,1)
+            browserUptime += 2
+            try require(!editor.native && editor.elapsedMs == elapsed + 2000 && editor.voiceCount == 1,"browser clock advances without a manifest write")
             var retitled = browserMeeting; retitled.title = "Updated browser window"
             editor.update(retitled)
             try require(editor.title == retitled.title && editor.displayTitle == retitled.title,"scanner title reaches cached editor")
@@ -169,9 +172,6 @@ import SwiftUI
             navigation.update([],offline:false)
             try require(navigation.detail == nil,"discarded empty live capture closes its detail")
 
-            try await waitForVoiceCount(editor,1)
-            browserUptime += 2
-            try require(!editor.native && editor.elapsedMs == elapsed + 2000 && editor.voiceCount == 1,"browser clock advances without a manifest write")
             try browser.addTrack(id:"b",label:"B",kind:"remote",sampleRate:16000,channels:1)
             try browser.appendNative(id:"b",pcm:Data(repeating:0,count:3200),offsetMs:0)
             let newer = try browserScanner.scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("changed browser source list")
