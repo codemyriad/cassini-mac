@@ -67,4 +67,22 @@ public enum SpeakerEdits {
         guard let turn=longest else {return nil}
         return turn.startMs..<min(turn.endMs,turn.startMs+10_000)
     }
+    /// Bounded words from the actual sample, in chronological order. Display only;
+    /// the original sidecar, timing and speaker identity remain untouched.
+    public static func sampleQuote(_ meeting: LibraryMeeting, speaker: String, range: Range<Int64>) -> String? {
+        guard !range.isEmpty else { return nil }
+        let words = meeting.transcriptItems.enumerated().filter {
+            $0.element.speaker == speaker && $0.element.endMs > range.lowerBound && $0.element.startMs < range.upperBound
+        }.sorted {
+            $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs
+        }
+        var quote = ""
+        for (_, word) in words where !word.text.isEmpty {
+            if !quote.isEmpty { quote += " " }
+            quote += word.text.prefix(max(0, 241 - quote.count))
+            if quote.count > 240 { return String(quote.prefix(240)) + "…" }
+        }
+        return quote.isEmpty ? nil : quote
+    }
+
 }

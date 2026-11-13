@@ -63,7 +63,7 @@ jobs:
           -resultBundlePath build/UXBoards.xcresult \
           2>&1 | tee build/ux-boards.log
     - name: Render dark Library boards
-      timeout-minutes: 9
+      timeout-minutes: 12
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
         TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'
@@ -94,13 +94,14 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testExportReceivedAudioThroughAFileOnlySaveGrant \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordFirstBoard \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testSpeakerNamesClearMergeUndoAndReopen \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testTranscribingBoardKeepsPartialWordsHiddenAndAudioAvailable \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingFindIsLocalAndKeepsTransportAndSidebar \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingScrolledHeaderKeepsFindAndFloatingPlayerReachable \
           -resultBundlePath build/UXBoardsDark.xcresult \
           2>&1 | tee build/ux-boards-dark.log
-        echo "Dark Library boards: 25 tests (33 boards), $((SECONDS - dark_start)) s wall" >> "$GITHUB_STEP_SUMMARY"
+        echo "Dark Library boards: 26 tests (34 boards), $((SECONDS - dark_start)) s wall" >> "$GITHUB_STEP_SUMMARY"
     - name: Library boards test durations
       if: always()
       run: |

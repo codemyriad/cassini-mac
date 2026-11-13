@@ -209,6 +209,19 @@ final class LibraryBoards: XCTestCase {
         nameSpeakers.click()
         let nameField = app.textFields["speaker-name-field"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 10), app.debugDescription)
+        let quote = app.staticTexts["speaker-quote"]
+        XCTAssertTrue(quote.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(visibleText(quote).contains("Do we know why it moved?"), visibleText(quote))
+        XCTAssertEqual(visibleText(app.staticTexts["speaker-editor-heading"]), "Speaker 3")
+        XCTAssertTrue(app.sheets.firstMatch.exists, "The floating editor retains native sheet modality")
+        XCTAssertTrue(quote.frame.minY < nameField.frame.minY, "The real sample quote precedes Name")
+        XCTAssertTrue(app.buttons["speaker-play-sample"].isEnabled)
+        app.typeText("Lea")
+        let initiallyFocused = NSPredicate { _, _ in nameField.value as? String == "Lea" }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: initiallyFocused, object: nil)], timeout: 5), .completed, "Name receives initial keyboard focus")
+        let merge = app.descendants(matching: .any).matching(identifier: "speaker-merge-menu").firstMatch
+        XCTAssertLessThan(merge.frame.minX, app.buttons["speaker-save-name"].frame.minX)
+        capture(window, name: "speaker-editor")
         app.typeKey(.escape, modifierFlags: [])
         let dismissed = NSPredicate { _,_ in !nameField.exists }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: dismissed, object: nil)], timeout: 10), .completed)
