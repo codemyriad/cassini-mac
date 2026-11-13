@@ -270,6 +270,18 @@ def external_build():
     return runner,root
 
 
+def external_preflight(runner,root):
+    try:
+        result=subprocess.run([runner,sys.executable,str(SOURCE/'scripts/external-derived-build.py'),'--preflight',root],
+                              cwd=SOURCE,capture_output=True,text=True,timeout=120)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError('External build volume preflight timed out') from None
+    if result.returncode:
+        lines=[line.strip() for line in (result.stderr or result.stdout).splitlines() if line.strip()]
+        detail=lines[-1] if lines else f'exit {result.returncode}'
+        raise RuntimeError('External build volume preflight failed: '+detail)
+
+
 def signed_build(args,env,log):
     process=subprocess.Popen(args,cwd=SOURCE,env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
     try:
@@ -377,8 +389,9 @@ def tick(now):
         head=fetch_main()
         command(['git','-C',SOURCE,'checkout','--detach','--force',head])
         # Never continue executing an older pipeline after fetching its update.
+        # Preserve prior slot/request watermarks and any active pending_ci wait across exec.
         if pipeline_source()!=before:
-            state.pop('slot',None);state['request']=0;atomic(state_file,state)
+            atomic(state_file,state)
             os.execv(sys.executable,[sys.executable,str(Path(__file__).resolve())])
         head_started_at=min(parse_utc(prior.get('head_started_at'),now_utc),now_utc) if (same_attempt and prior.get('head')==head) else now_utc
         raw_candidates=prior.get('candidates') if (same_attempt and isinstance(prior.get('candidates'),list)) else []
@@ -451,8 +464,10 @@ def tick(now):
         external=external_build()
         if external is None and shutil.disk_usage(BASE).free < 25*1024**3:
             raise ValueError('At least25GiB free required before a signed test build')
-        if external is not None and shutil.disk_usage(BASE).free < EXTERNAL_INTERNAL_RESERVE:
-            raise ValueError('At least13GiB free required for the products of a signed test build')
+        if external is not None:
+            if shutil.disk_usage(BASE).free < EXTERNAL_INTERNAL_RESERVE:
+                raise ValueError('At least13GiB free required for the products of a signed test build')
+            external_preflight(*external)
         build=next_build(version,initial,releases,state)
         state.update(build=build,head=head,phase='building');atomic(state_file,state)
         stage='release notes'

@@ -192,6 +192,71 @@ class DailyExecution(unittest.TestCase):
             replace.assert_called_once();build.assert_not_called()
             self.assertNotIn('slot',json.loads((base/'state.json').read_text()))
 
+    def test_pipeline_update_preserves_consumed_request_slot_and_pending_wait_across_exec(self):
+        class Replaced(BaseException):pass
+        instant=datetime.fromisoformat('2026-11-11T08:00:00+00:00')
+        due=daily.due_slot(instant)
+        # 1. Scheduled wake after an already-consumed manual request: self-exec must keep request=43252940679
+        #    so the re-executed process does not re-arm yesterday's manual dispatch.
+        with tempfile.TemporaryDirectory() as directory:
+            base,calls,build=self.context(directory)
+            prior_slot='2026-11-10T20:00:00+01:00'
+            daily.atomic(base/'state.json',dict(slot=prior_slot,request=43252940679,build=2))
+            original_calls=calls.side_effect
+            updated=[False]
+            def changed(args,**kwargs):
+                if 'checkout' in args and not updated[0]:
+                    updated[0]=True
+                    (base/'source/scripts/daily-test-release.py').write_text('new pipeline')
+                return original_calls(args,**kwargs)
+            calls.side_effect=changed
+            original_gh=daily.gh
+            def api(args):
+                if 'request-mac' in args[-1]:
+                    return {'workflow_runs':[dict(id=43252940679,conclusion='success',head_branch='main',event='workflow_dispatch')]}
+                return original_gh(args)
+            with patch.object(daily,'gh',side_effect=api),patch.object(daily.os,'execv',side_effect=Replaced):
+                with self.assertRaises(Replaced):daily.tick(instant)
+            saved=json.loads((base/'state.json').read_text())
+            self.assertEqual(saved['slot'],prior_slot)
+            self.assertEqual(saved['request'],43252940679)
+            # Re-executed tick enters the due scheduled slot without treating 43252940679 as a new manual request.
+            with patch.object(daily,'gh',side_effect=api),patch.object(daily,'main_ci_state',return_value='pending'):
+                daily.tick(instant)
+            saved=json.loads((base/'state.json').read_text())
+            self.assertEqual(saved['request'],43252940679)
+            self.assertEqual(saved['pending_ci']['request'],0)
+        # 2. New manual request during an already-completed slot + mid-wait pipeline update: both the completed
+        #    slot and active pending_ci wait budget survive self-exec, and the new manual request still runs.
+        with tempfile.TemporaryDirectory() as directory:
+            base,calls,build=self.context(directory)
+            pending=dict(slot=due,request=50000000000,head='a'*40,started_at='2026-11-11T07:50:00+00:00',
+                         head_started_at='2026-11-11T07:50:00+00:00',candidates=[])
+            daily.atomic(base/'state.json',dict(slot=due,request=43252940679,pending_ci=pending,build=2))
+            original_calls=calls.side_effect
+            updated=[False]
+            def changed(args,**kwargs):
+                if 'checkout' in args and not updated[0]:
+                    updated[0]=True
+                    (base/'source/scripts/daily-test-release.py').write_text('newer pipeline')
+                return original_calls(args,**kwargs)
+            calls.side_effect=changed
+            original_gh=daily.gh
+            def api(args):
+                if 'request-mac' in args[-1]:
+                    return {'workflow_runs':[dict(id=50000000000,conclusion='success',head_branch='main',event='workflow_dispatch')]}
+                return original_gh(args)
+            with patch.object(daily,'gh',side_effect=api),patch.object(daily.os,'execv',side_effect=Replaced):
+                with self.assertRaises(Replaced):daily.tick(instant)
+            saved=json.loads((base/'state.json').read_text())
+            self.assertEqual(saved['slot'],due)
+            self.assertEqual(saved['request'],43252940679)
+            self.assertEqual(saved['pending_ci']['started_at'],'2026-11-11T07:50:00+00:00')
+            with patch.object(daily,'gh',side_effect=api),self.assertRaises(SystemExit):
+                daily.tick(instant)
+            build.assert_called_once()
+            self.assertEqual(json.loads((base/'state.json').read_text())['request'],50000000000)
+
     def test_pending_ci_does_not_consume_slot_or_manual_request_and_next_pulse_admits_green(self):
         for request_id in [None,42]:
             with self.subTest(request=request_id),tempfile.TemporaryDirectory() as directory:
@@ -917,6 +982,66 @@ class ExternalDerivedData(unittest.TestCase):
                 daily.os.environ.pop('CASSINI_MAC_TEST_RELEASE_AQUA',None);daily.tick(instant)
             build.assert_not_called()
             self.assertNotIn('build',json.loads((base/'state.json').read_text()),'no build number is used')
+
+    def test_external_preflight_failures_report_disk_reserve_without_burning_a_build_number(self):
+        volumes=self.volumes();root=volumes/'Disk/cassini-mac-test-releases'
+        self.assertEqual(external.preflight(str(root),free=lambda _:25*1024**3),root)
+        self.assertEqual(list(root.iterdir()),[])
+        self.assertEqual(root.stat().st_mode&0o777,0o700)
+        with self.assertRaises(ValueError):
+            external.preflight(str(root),free=lambda _:25*1024**3-1)
+        with patch.object(external.tempfile,'mkdtemp',side_effect=PermissionError(1,'Operation not permitted',str(root))):
+            with self.assertRaises(PermissionError):
+                external.preflight(str(root),free=lambda _:30*1024**3)
+        # CLI --preflight and build mode convert PermissionError (macOS TCC removable-volume denial) to exit 2 without traceback.
+        import contextlib,io,runpy,shutil
+        tcc_root='/Volumes/DrMeyers2/cassini-mac-test-releases'
+        for cli_argv in [['external-derived-build.py','--preflight',tcc_root],
+                         ['external-derived-build.py',tcc_root,'true']]:
+            err=io.StringIO()
+            with patch.object(sys,'argv',cli_argv), \
+                 patch.object(external.os.path,'ismount',return_value=True), \
+                 patch.object(shutil,'disk_usage',return_value=type('Disk',(),{'free':30*1024**3})()), \
+                 patch('pathlib.Path.mkdir',side_effect=PermissionError(1,'Operation not permitted',tcc_root)), \
+                 contextlib.redirect_stderr(err), \
+                 self.assertRaises(SystemExit) as exited:
+                runpy.run_path(str(ROOT/'scripts/external-derived-build.py'),run_name='__main__')
+            self.assertEqual(exited.exception.code,2)
+            self.assertIn('Operation not permitted',err.getvalue())
+            self.assertNotIn('Traceback',err.getvalue())
+        real_cli=subprocess.run([sys.executable,str(ROOT/'scripts/external-derived-build.py'),'--preflight','/tmp/not-in-volumes'],
+                                capture_output=True,text=True)
+        self.assertEqual(real_cli.returncode,2)
+        self.assertNotIn('Traceback',real_cli.stderr)
+        self.assertIn('External build root must be a folder inside /Volumes/<volume>',real_cli.stderr)
+        # Scheduler integration: when Aqua runner / external-derived-build.py --preflight fails (TCC EPERM or runner 69),
+        # tick() fails in 'disk reserve' BEFORE next_build() reserves a build number or creates a build-* job.
+        execution=DailyExecution();self.addCleanup(execution.doCleanups)
+        instant=datetime.fromisoformat('2026-11-11T13:00:00+00:00')
+        import shlex
+        for code,stderr,expected in [
+            (2,"[Errno 1] Operation not permitted: '/Volumes/DrMeyers2/cassini-mac-test-releases/preflight-x'",'Operation not permitted'),
+            (69,'GUI tmux session is unavailable','GUI tmux session is unavailable'),
+        ]:
+            with self.subTest(code=code),tempfile.TemporaryDirectory() as directory:
+                base,_,build=execution.context(directory)
+                daily.atomic(base/'state.json',dict(build=2))
+                runner=Path(directory)/'guirun'
+                runner.write_text(f'#!/bin/sh\nprintf "%s\\n" {shlex.quote(stderr)} >&2\nexit {code}\n')
+                runner.chmod(0o700)
+                environment=dict(CASSINI_MAC_TEST_RELEASE_DERIVED_ROOT='/Volumes/DrMeyers2/cassini-mac-test-releases',
+                                 CASSINI_MAC_TEST_RELEASE_AQUA=str(runner))
+                with patch.dict(daily.os.environ,environment),self.assertRaises(SystemExit):
+                    daily.tick(instant)
+                build.assert_not_called()
+                saved=json.loads((base/'state.json').read_text())
+                self.assertEqual(saved['build'],2,'failed preflight must not burn build 3')
+                self.assertEqual(list(base.glob('build-*')),[])
+                self.assertFalse((base/'failures').exists())
+                inbox=(base/'inbox').read_text()
+                self.assertIn('daily test release failed: disk reserve: External build volume preflight failed:',inbox)
+                self.assertIn(expected,inbox)
+                self.assertNotIn('signing/notarization',inbox)
 
     def test_an_unconfigured_scheduler_builds_as_before(self):
         execution=DailyExecution();self.addCleanup(execution.doCleanups)

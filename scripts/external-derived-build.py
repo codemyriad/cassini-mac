@@ -2,11 +2,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Run one release build with its DerivedData on an external volume.
 
+    external-derived-build.py --preflight ROOT
     external-derived-build.py ROOT COMMAND [ARG...]
 
 Started by the test-release scheduler through the logged-in (Aqua) session's runner, because a LaunchAgent has no
-access to removable volumes. Makes a private folder under ROOT, appends `--derived-data FOLDER` to COMMAND, waits for
-it and removes the folder again, whatever the outcome. The scheduler itself never touches ROOT.
+access to removable volumes. `--preflight` verifies in that session that ROOT is mounted, has space and is writable
+before the scheduler reserves a build number. Build mode makes a private folder under ROOT, appends
+`--derived-data FOLDER` to COMMAND, waits for it and removes the folder again, whatever the outcome. The scheduler
+itself never touches ROOT.
 """
 import os
 from pathlib import Path
@@ -68,6 +71,16 @@ def stop_group(process,grace=30):
     process.wait()
 
 
+def preflight(root,reserve=RESERVE,free=lambda path:shutil.disk_usage(path).free):
+    """Checks in the logged-in session that ROOT is on a mounted external volume with space and write access."""
+    root=external_root(root)
+    if free(root)<reserve:
+        raise ValueError('At least25GiB free required on the external build volume')
+    probe=Path(tempfile.mkdtemp(prefix='preflight-',dir=root))
+    probe.rmdir()
+    return root
+
+
 def build(root,command,reserve=RESERVE,timeout=TIMEOUT,free=lambda path:shutil.disk_usage(path).free,started=None,grace=30):
     """`started` is called with the running process (tests wait there for the build to be ready)."""
     root=external_root(root)
@@ -91,10 +104,17 @@ def build(root,command,reserve=RESERVE,timeout=TIMEOUT,free=lambda path:shutil.d
 
 
 if __name__=='__main__':
+    if len(sys.argv)==3 and sys.argv[1]=='--preflight':
+        try:
+            preflight(sys.argv[2])
+        except (ValueError,OSError) as error:
+            print(str(error),file=sys.stderr)
+            raise SystemExit(2)
+        raise SystemExit(0)
     if len(sys.argv)<3:
         raise SystemExit(__doc__)
     try:
         raise SystemExit(build(sys.argv[1],sys.argv[2:]))
-    except ValueError as error:
+    except (ValueError,OSError) as error:
         print(str(error),file=sys.stderr)
         raise SystemExit(2)
