@@ -164,6 +164,23 @@ import Testing
         let english=LibraryFormat(locale:Locale(identifier:"fr_FR"),language:.en)
         #expect(english.list(["Dario","Ana","Lea"])=="Dario, Ana and Lea")
     }
+    /// VoiceOver turn announcements join speaker names in the UI language, whatever the region.
+    @Test func speakerAnnouncementsJoinNamesInTheUILanguageNotTheRegion() throws {
+        #expect(LibraryFormat(locale:Locale(identifier:"en_US"),language:.fr).list(["Marta","Dario"])=="Marta et Dario")
+        #expect(LibraryFormat(locale:Locale(identifier:"fr_FR"),language:.en).list(["Marta","Dario"])=="Marta and Dario")
+        #expect(LibraryFormat(locale:Locale(identifier:"en_US"),language:.it).list(["Marta","Dario"])=="Marta e Dario")
+        // App sources never join names with the region-driven Foundation list style.
+        let root=URL(fileURLWithPath:#filePath).resolvingSymlinksInPath().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let app=root.appendingPathComponent("Cassini")
+        let files=try #require(FileManager.default.enumerator(at:app,includingPropertiesForKeys:nil)).compactMap {$0 as? URL}.filter {$0.pathExtension=="swift"}
+        #expect(!files.isEmpty)
+        for file in files {
+            let source=try String(contentsOf:file,encoding:.utf8)
+            #expect(!source.contains(".list(type:"),"\(file.lastPathComponent) joins a list by region; use LibraryFormat.list")
+        }
+        let transcript=try String(contentsOf:app.appendingPathComponent("Transcript/TranscriptView.swift"),encoding:.utf8)
+        #expect(transcript.contains("LibraryFormat(locale: UXText.locale, language: UXText.language).list(names)"))
+    }
     @Test func storedSpeakerLabelsSurviveAnEditAndAreDisplayedVerbatim() throws {
         let fixture=try Fixture()
         let words:[String:Any]=["language":"fr","items":[["speaker":"remote","startMs":0,"endMs":100,"text":"Original words"]]]

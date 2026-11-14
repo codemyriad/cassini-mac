@@ -49,7 +49,7 @@ final class LibraryBoards: XCTestCase {
             }
             let resume = window.buttons["meeting-write-down"]
             XCTAssertTrue(resume.waitForExistence(timeout:10),app.debugDescription)
-            XCTAssertEqual(resume.label,"Resume transcription")
+            XCTAssertEqual(resume.label,"Write it down")
             XCTAssertFalse(status.exists)
             XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
             app.terminate()

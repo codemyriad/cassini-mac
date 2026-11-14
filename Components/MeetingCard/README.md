@@ -1,6 +1,6 @@
 # W2.3 meeting card surface
 
-`MeetingCard(isSelected:content:)` is a generic visual container for caller-owned row content. It implements the decided rest and neutral selected lift from Row-Mac / L-19. All colours come from CassiniTokens (#270), including sRGB mixtures; no palette is copied here. Light rest uses the approved card-rest role, dark rest uses its surface-equivalent pair. Selected light uses surface; selected dark mixes ink6% into surface. Selected borders mix ink55%/50% into surface respectively.
+`MeetingCard(isSelected:content:)` is a generic visual container for caller-owned row content. It implements the decided rest and neutral selected lift from Row-Mac / L-19. All colours come from CassiniTokens (#270), including sRGB mixtures; no palette is copied here. Rest uses the card-rest role in both modes (light #FAFAFB, dark #171A20, the surface value). Selected light uses surface; selected dark mixes ink7% into raised. Selected borders mix ink55%/50% into surface respectively.
 
 Named metrics follow the canvas: radius7, interior padding8 vertical/10 horizontal, border1, selected inset0.5, inter-card gap6. The selected outline draws a combined1.5pt inner stroke. Light selection has token ink at12% opacity, y2 and native shadow radius4 for the canvas blur8; dark and resting cards have no shadow. Padding is inside the1pt border, as in the CSS border-box model. The content origin is therefore11pt horizontally and9pt vertically from the outer edge.
 

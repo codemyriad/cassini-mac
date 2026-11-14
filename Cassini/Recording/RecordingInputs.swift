@@ -19,7 +19,7 @@ import CassiniRecording
         case .notDetermined: permitted = await AVCaptureDevice.requestAccess(for: .audio)
         default: permitted = false
         }
-        guard permitted else { throw RecordingError.invalid(UXText.mac("recording.micDenied")) }
+        guard permitted else { throw RecordingError.invalid(UXText.text("errors.micPermission.line")) }
     }
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
         let tap = AudioProcessTap(); self.tap = tap

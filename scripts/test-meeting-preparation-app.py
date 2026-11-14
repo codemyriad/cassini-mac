@@ -51,6 +51,7 @@ assert all(report[name] is True for name in ('queuedSkipsTranscriptPresentation'
     'titleAlignmentWideLeadingControlsClampToZero','titleAlignmentPassThroughHitTesting','titleAlignmentRejectsStaleAndInvalidProposals',
     'speakerRowReadOnlyKeepsPrimaryInk','speakerRowCaptionUsesFullRowWidth',
     'brandTokensSynced','brandTokensRejectsDrift',
+    'meetingCardRestLightIsCardRest','meetingCardRestDarkIsCardRest','meetingCardSelectedDarkLiftsAboveRest',
     'sessionPreparedOffMain','sessionMainActorProgressed','sessionSwitchCancelled',
     'sessionCachedSwitchSkipsPreparation','sessionSpeakerSlotsMatchFirstSpeech')),report
 assert report['audioDevicesOpened'] is False

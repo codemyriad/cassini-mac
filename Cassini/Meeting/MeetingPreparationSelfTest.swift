@@ -130,6 +130,7 @@ import Observation
         for (key,value) in MeetingTitleAlignment.nativeSelfTest() { report[key] = value }
         for (key,value) in SpeakerSidebarRow.nativeSelfTest(baseSpeaker:fixture.speakers[0]) { report[key] = value }
         for (key,value) in CassiniTokens.nativeSelfTest() { report[key] = value }
+        for (key,value) in MeetingCardPaint.nativeSelfTest() { report[key] = value }
         var asideMeeting = fixture
         asideMeeting.state.transcript = .done
         asideMeeting.transcriptItems = [.init(speaker:"claire",startMs:0,endMs:800,text:"We agree."),
