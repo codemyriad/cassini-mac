@@ -14,8 +14,8 @@ public enum Voiceprint {
 public struct SavedVoice: Codable, Identifiable, Sendable, Equatable {
     public let id: String
     public var name: String
-    public let model: String
-    public let dim: Int
+    public var model: String
+    public var dim: Int
     public var mean: [Float]
     public var count: Int
     public var seconds: Double
@@ -59,18 +59,21 @@ public enum SavedVoicesError: Error { case newerVersion, invalidName, invalidPri
 /// One atomic document owns profiles and sample references. No audio or biometric
 /// data is written to the Library. flock also serializes separate app processes.
 public actor SavedVoicesStore {
+    private struct Contribution:Codable { let voiceID:String;let embedding:[Float];let clip:VoiceClip }
     private struct Document: Codable {
         var version=1
         var generation:Int64=0
         var voices: [SavedVoice]=[]
         var clips: [String:VoiceClip]=[:]
         var nextColourSlot=0
+        var contributions:[String:Contribution]=[:]
         init() {}
-        enum CodingKeys:String,CodingKey { case version,generation,voices,clips,nextColourSlot }
+        enum CodingKeys:String,CodingKey { case version,generation,voices,clips,nextColourSlot,contributions }
         init(from decoder:Decoder) throws {
             let c=try decoder.container(keyedBy:CodingKeys.self)
             version=try c.decode(Int.self,forKey:.version);generation=try c.decode(Int64.self,forKey:.generation)
             voices=try c.decode([SavedVoice].self,forKey:.voices)
+            contributions=try c.decodeIfPresent([String:Contribution].self,forKey:.contributions) ?? [:]
             clips=try c.decodeIfPresent([String:VoiceClip].self,forKey:.clips) ?? [:]
             for index in voices.indices where voices[index].colourSlot < 0 { voices[index].colourSlot=index }
             nextColourSlot=max(try c.decodeIfPresent(Int.self,forKey:.nextColourSlot) ?? 0,(voices.map(\.colourSlot).max() ?? -1)+1)
@@ -150,9 +153,25 @@ public actor SavedVoicesStore {
         return try transaction({ d in
             guard d.generation == generation else { throw SavedVoicesError.changedGeneration }
             let now=Date().timeIntervalSince1970
+            let key=clip.map { $0.meeting+"\u{1f}"+$0.speaker }
+            var target=id
+            if let key, let previous=d.contributions[key] {
+                let prior=d.voices.first { $0.id == previous.voiceID }
+                if (target == previous.voiceID || target == nil && prior?.name == SpeakerEdits.normalizedName(name)), previous.embedding == print {
+                    return previous.voiceID // Retrying Save never counts a clip twice.
+                }
+                if target == nil, prior?.name == SpeakerEdits.normalizedName(name) { target=previous.voiceID }
+                Self.removeContribution(key,from:&d)
+                if let targetID=target, !d.voices.contains(where:{$0.id == targetID}) { target=nil }
+            }
             let voiceID: String
-            if let id {
-                guard let i=d.voices.firstIndex(where:{$0.id == id}), !d.voices[i].stale else { throw SavedVoicesError.missingVoice }
+            if let id=target {
+                guard let i=d.voices.firstIndex(where:{$0.id == id}) else { throw SavedVoicesError.missingVoice }
+                if d.voices[i].stale {
+                    d.voices[i].model=Voiceprint.model; d.voices[i].dim=512;d.voices[i].mean=print
+                    d.voices[i].count=0;d.voices[i].seconds=0;d.voices[i].meetings=[]
+                    d.contributions=d.contributions.filter { $0.value.voiceID != id }
+                }
                 let weight=Float(min(d.voices[i].count,20))
                 guard let mean=Voiceprint.normalized(zip(d.voices[i].mean,print).map { $0 * weight + $1 }) else { throw SavedVoicesError.invalidPrint }
                 d.voices[i].mean=mean; d.voices[i].count += 1; d.voices[i].seconds += seconds; d.voices[i].updatedAt=now
@@ -164,15 +183,37 @@ public actor SavedVoicesStore {
                     count:1,seconds:seconds,meetings:clip.map { [$0.meeting] } ?? [],createdAt:now,updatedAt:now,colourSlot:d.nextColourSlot))
                 d.nextColourSlot += 1
             }
-            if let clip { d.clips[voiceID]=clip }
+            if let clip, let key {
+                d.clips[voiceID]=clip
+                d.contributions[key] = .init(voiceID:voiceID,embedding:print,clip:clip)
+            }
             return voiceID
         },write:true)
     }
+    private static func removeContribution(_ key:String,from d:inout Document) {
+        guard let previous=d.contributions.removeValue(forKey:key),let i=d.voices.firstIndex(where:{$0.id == previous.voiceID}) else { return }
+        if d.voices[i].count <= 1 { d.voices.remove(at:i);d.clips[previous.voiceID]=nil;return }
+        let voice=d.voices[i], e=previous.embedding
+        if let dot=VoiceMatcher.cosine(voice.mean,e) {
+            let w=Double(min(voice.count-1,20)), v=Double(dot)
+            let length=Float(v+sqrt(max(0,v*v-1+w*w)))
+            if let mean=Voiceprint.normalized(zip(voice.mean,e).map { $0*length-$1 }) { d.voices[i].mean=mean }
+        }
+        d.voices[i].count -= 1 // Confirmed seconds are a lifetime total (D25).
+        let remaining=d.contributions.values.filter { $0.voiceID == previous.voiceID }
+        if !remaining.contains(where:{$0.clip.meeting == previous.clip.meeting}) { d.voices[i].meetings.removeAll { $0 == previous.clip.meeting } }
+        d.clips[previous.voiceID]=remaining.first?.clip
+    }
+    public func unenroll(meeting:String,speakers:Set<String>) throws {
+        try transaction({ d in
+            for speaker in speakers { Self.removeContribution(meeting+"\u{1f}"+speaker,from:&d) }
+        },write:true)
+    }
     public func forget(_ id: String) throws {
-        try transaction({ d in d.voices.removeAll { $0.id == id }; d.clips[id]=nil; d.generation += 1 },write:true)
+        try transaction({ d in d.voices.removeAll { $0.id == id }; d.clips[id]=nil; d.contributions=d.contributions.filter { $0.value.voiceID != id }; d.generation += 1 },write:true)
     }
     public func forgetEveryone() throws {
         // Persist the tombstone before a job holding an old snapshot can commit.
-        try transaction({ d in d.generation += 1; d.voices=[]; d.clips=[:] },write:true)
+        try transaction({ d in d.generation += 1; d.voices=[]; d.clips=[:];d.contributions=[:] },write:true)
     }
 }

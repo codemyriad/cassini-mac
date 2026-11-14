@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import Testing
+import Darwin
 @testable import CassiniLibrary
 
 struct SavedVoicesTests {
@@ -126,5 +127,44 @@ struct DesktopVoiceRulesTests {
         second.mean=[0]
         #expect(second.stale)
         #expect(VoiceMatcher.ranked(axis(1),voices:[second,first]).first?.voice.id == first.id)
+    }
+}
+
+struct VoiceContributionTests {
+    @Test func retryIsIdempotentAndUnenrollmentPreservesLifetimeSpeech() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let store=SavedVoicesStore(directory:root), g=try await store.snapshot().generation
+        let embedding:[Float]=[1]+Array(repeating:0,count:511)
+        let clip=VoiceClip(meeting:"Recording-one",speaker:"person",startMs:0,endMs:5000)
+        let id=try await store.enroll(name:"A",embedding:embedding,seconds:5,generation:g,clip:clip)
+        let retry=try await store.enroll(name:"A",embedding:embedding,seconds:5,generation:g,clip:clip)
+        #expect(retry == id)
+        #expect(try await store.snapshot().voices.first?.count == 1)
+        _=try await store.enroll(name:"A",embedding:embedding,seconds:5,generation:g,into:id,
+            clip:.init(meeting:"Received-one",speaker:"person",startMs:0,endMs:5000))
+        try await store.unenroll(meeting:"Recording-one",speakers:["person"])
+        let remaining=try await store.snapshot().voices.first
+        #expect(remaining?.count == 1)
+        #expect(remaining?.seconds == 10)
+        #expect(remaining?.meetings == ["Received-one"])
+        try await store.unenroll(meeting:"Received-one",speakers:["person"])
+        #expect(try await store.snapshot().voices.isEmpty)
+    }
+}
+
+struct LongVoiceSelectionTests {
+    @Test func elevenHourTranscriptKeepsBoundedSpeech() {
+        let words:[LibraryTranscriptItem]=(0..<100000).map { index in
+            let start=Int64(index)*396
+            return .init(speaker:index/40 % 2 == 0 ? "a":"b",startMs:start,endMs:start+350,text:"word")
+        }
+        let started=clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+        let windows=VoiceSelection.windows(speaker:"a",words:words,durationMs:39_600_000)
+        let cpu=clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-started
+        // Generous Debug CPU budget excludes descheduling and catches a quadratic scan.
+        #expect(cpu < 5_000_000_000)
+        #expect(windows.reduce(0) { $0+$1.count } <= 45000)
+        #expect(!windows.isEmpty)
     }
 }

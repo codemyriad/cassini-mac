@@ -1,0 +1,14 @@
+{
+  "xcode": "27.0 (27A266a)",
+  "nativeDebugBuild": "passed",
+  "targetedSwiftTests": 44,
+  "sharedSelectionChecks": 7,
+  "desktopMergeSelection": "passed",
+  "longInputWords": 100000,
+  "localRenderUtilityTests": 7,
+  "catalogHashAndPlatformChecks": "passed",
+  "microphoneHardwareTested": false,
+  "privacy": "No user audio or voiceprints in evidence; model check uses public CC-BY-4.0 LibriSpeech S-11 fixture.",
+  "capabilityLimit": "Mixed system and received audio require the existing unimplemented Mac D24 separator; no automatic naming is enabled without that capability.",
+  "screenshots": "Cache renders of app fixture views; before from main run 43584592267. Local macOS 27 versus CI macos-15 is advisory, not a pixel-equivalence result."
+}

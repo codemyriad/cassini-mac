@@ -30,6 +30,9 @@ struct SavedVoicesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment:.leading,spacing:20) {
+                Button { SettingsNavigation.shared.savedVoices=false } label: {
+                    Label(UXText.text("savedVoices.back"),systemImage:"chevron.left")
+                }.buttonStyle(.plain).foregroundStyle(CassiniTheme.accent)
                 Text(UXText.text("savedVoices.privacy.mac")).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
                 if voices.readOnly { Text(UXText.text("savedVoices.newerVersion")).foregroundStyle(CassiniTheme.warnInk) }
                 voiceModel
@@ -57,6 +60,7 @@ struct SavedVoicesView: View {
             }.padding(24).frame(maxWidth:.infinity,alignment:.leading)
         }.background(CassiniTheme.windowGround)
             .navigationTitle(UXText.text("common.savedVoices"))
+            .navigationBarBackButtonHidden(true)
             .task { await voices.refresh() }
             .onAppear {
                 if !RecordingPreferences.defaults.bool(forKey:"CassiniVoicesSetupSeen") { voices.requestSetup() }
@@ -174,7 +178,7 @@ struct VoiceEnrollmentView: View {
                 }.disabled(voices.busy || !voices.modelReady)
                 if voices.busy { ProgressView().controlSize(.small) }
                 Spacer()
-                Button(UXText.text("common.cancel")) { voices.cancelEnrollment(); voices.enrollmentPresented=false }.keyboardShortcut(.cancelAction)
+                Button(UXText.text("common.cancel")) { voices.cancelEnrollment(); voices.enrollmentPresented=false }.keyboardShortcut(.cancelAction).disabled(voices.savingEnrollment)
                 Button(UXText.text("voices.enroll.save")) { voices.saveEnrollment() }
                     .disabled(!voices.sampleReady || voices.busy || !SavedVoicesStore.validName(voices.enrollmentName)).keyboardShortcut(.defaultAction)
             }

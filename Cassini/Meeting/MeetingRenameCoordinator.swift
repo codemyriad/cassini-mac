@@ -12,6 +12,8 @@ import CassiniLibrary
     var savedVoiceID:String?
     private(set) var voiceEnrollment:SavedVoicesController.TranscriptEnrollment?
     private(set) var voicePreparationFailed=false
+    struct VoiceCandidate:Identifiable,Sendable { let voice:SavedVoice;let score:Float?;var id:String {voice.id} }
+    private(set) var voiceCandidates:[VoiceCandidate]=[]
     private(set) var speakerID:String?
     private(set) var speakerChangeFailed=false
     private(set) var speakerTalkTime:Int64=0
@@ -89,7 +91,7 @@ import CassiniLibrary
         self.meeting=meeting;speakerID=speaker.id;name=speaker.name ?? ""
         if let detail=MeetingNavigation.shared.detail,detail.meeting.folder==meeting.folder {detail.namingSpeakerID=speaker.id}
         speakerChangeFailed=false;speakerRetry=nil;presentation = .speakers
-        rememberVoice=false;voiceEnrollment=nil;voicePreparationFailed=false;savedVoiceID=nil
+        rememberVoice=false;voiceEnrollment=nil;voicePreparationFailed=false;savedVoiceID=nil;voiceCandidates=[]
         stopSpeakerPreparation();speakerPreparing=true;speakerSampleRange=nil;speakerQuote=nil
         let id=speaker.id
         speakerPreparation=Task {
@@ -104,6 +106,12 @@ import CassiniLibrary
                 let prepared=try await SavedVoicesController.shared.prepare(meeting,speaker:id)
                 guard !Task.isCancelled, presentation == .speakers, speakerID == id else { return }
                 voiceEnrollment=prepared; rememberVoice=prepared != nil && SavedVoicesController.shared.enabled
+                let profiles=SavedVoicesController.shared.voices
+                let ranked=await Task.detached(priority:.userInitiated) {
+                    VoiceMatcher.ranked(prepared?.embedding ?? [],voices:profiles).map { VoiceCandidate(voice:$0.voice,score:$0.score) }
+                }.value
+                guard !Task.isCancelled, presentation == .speakers, speakerID == id else { return }
+                voiceCandidates=ranked
             } catch { if !Task.isCancelled { voicePreparationFailed=true } }
         }
     }
@@ -148,6 +156,16 @@ import CassiniLibrary
                 }.value
                 if let detail=MeetingNavigation.shared.detail,detail.meeting.folder==meeting.folder,detail.fileURL==nil {detail.meeting=updated}
                 LibraryStore.shared.refresh(affected:meeting.folder)
+                switch edit {
+                case .merge(let from,let into):
+                    try await SavedVoicesController.shared.store.unenroll(meeting:meeting.folder.lastPathComponent,speakers:[from,into])
+                case .undoMerge:
+                    try await SavedVoicesController.shared.store.unenroll(meeting:meeting.folder.lastPathComponent,speakers:Set(meeting.mergedInto.keys).union(meeting.mergedInto.values))
+                case .name:
+                    if enrollment == nil, let speakerID {
+                        try await SavedVoicesController.shared.store.unenroll(meeting:meeting.folder.lastPathComponent,speakers:[speakerID])
+                    }
+                }
                 if case .name = edit, let enrollment {
                     do { try await SavedVoicesController.shared.enroll(enrollment,name:enrollmentName,into:voiceID) }
                     catch { speakerChangeFailed=true; working=false;task=nil;return }

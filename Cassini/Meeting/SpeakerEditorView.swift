@@ -84,12 +84,21 @@ struct SpeakerEditorView:View {
             } else {
                 ScrollView {
                     VStack(alignment:.leading,spacing:8) {
-                        ForEach(SavedVoicesController.shared.voices) { voice in
-                            Button(voice.name) { edit.name=voice.name; edit.savedVoiceID=voice.id }
-                                .buttonStyle(.plain).disabled(edit.working)
+                        ForEach(edit.voiceCandidates) { candidate in
+                            Button { edit.name=candidate.voice.name; edit.savedVoiceID=candidate.id } label: {
+                                HStack {
+                                    Text(candidate.voice.name)
+                                    Spacer()
+                                    if candidate.id == edit.voiceCandidates.first?.id, (candidate.score ?? 0) >= 0.5 {
+                                        Text(UXText.text("speakers.savedVoices.likely")).font(.system(size:11))
+                                            .padding(.horizontal,6).background(CassiniTheme.neutralPillFill,in:RoundedRectangle(cornerRadius:5))
+                                    }
+                                }
+                            }.buttonStyle(.plain).disabled(edit.working)
                         }
                     }.frame(maxWidth:.infinity,alignment:.leading)
                 }.frame(maxHeight:100)
+                Text(UXText.text("speakers.savedVoices.closestFirst")).font(.system(size:11)).foregroundStyle(CassiniTheme.ink2)
             }
             if let duplicate=VoiceSelection.matchingName(edit.name,voices:SavedVoicesController.shared.voices).first,
                edit.savedVoiceID == nil {

@@ -22,6 +22,7 @@ import CassiniWhistle
     var playing:String? { sample.active ? playingID:nil }
     private(set) var recording=false
     private(set) var sampleReady=false
+    private(set) var savingEnrollment=false
     var enrollmentName=""
     var selectedExistingID: String?
     var setupPresented=false
@@ -192,9 +193,11 @@ import CassiniWhistle
         guard let prepared, SavedVoicesStore.validName(enrollmentName), !busy, !readOnly else { return }
         busy=true; message=nil
         let name=enrollmentName, existing=selectedExistingID
+        savingEnrollment=true
         enrollmentTask=Task {
-            defer { busy=false }
+            defer { busy=false; savingEnrollment=false }
             do {
+                try Task.checkCancellation()
                 _=try await store.enroll(name:name,embedding:prepared.embedding,seconds:prepared.seconds,generation:prepared.generation,into:existing)
                 snapshot=try await store.snapshot(); self.prepared=nil; sampleReady=false; enrollmentPresented=false
             } catch { message=UXText.text("savedVoices.changeFailed") }
@@ -261,14 +264,64 @@ import CassiniWhistle
             do { _=try await SavedVoicesController.embedding([Float](repeating:0,count:80000),guided:true) }
             catch { silenceRejected=true }
             guard silenceRejected else { throw SavedVoicesError.invalidPrint }
-            let report:[String:Any] = ["dimension":normalized.count,"selectedSeconds":result.seconds,"guidedSilenceRejected":silenceRejected,
+            var report:[String:Any] = ["dimension":normalized.count,"selectedSeconds":result.seconds,"guidedSilenceRejected":silenceRejected,
                 "signedWorkerInference":true,"privateEnrollmentAndForget":true,"audioDevicesOpened":false]
+            var pcm=Data()
+            while let part=try FileHandle.standardInput.read(upToCount:65536), !part.isEmpty {
+                guard pcm.count+part.count <= 1_303_680 else { throw SavedVoicesError.invalidPrint }
+                pcm.append(part)
+            }
+            if !pcm.isEmpty { report["golden"]=try await golden(pcm) }
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:.sortedKeys)+Data([10]))
             exit(0)
         } catch {
             FileHandle.standardError.write(Data("Saved voices proof failed: \(error)\n".utf8)); exit(1)
         }
     }
+    private static func golden(_ data:Data) async throws -> [String:Any] {
+        guard data.count == 651840*2,
+              SHA256.hash(data:data).map({String(format:"%02x",$0)}).joined() == "2726c250b0998b9a28c3cf442e34025e41fe2d568fdcbdbdfce2df6a9cff500e",
+              let url=Bundle.main.url(forResource:"golden",withExtension:"json",subdirectory:"Fixtures/voices"),
+              let spec=try JSONSerialization.jsonObject(with:Data(contentsOf:url)) as? [String:Any] else { throw SavedVoicesError.invalidPrint }
+        let samples=data.withUnsafeBytes { bytes in stride(from:0,to:data.count,by:2).map { Float(Int16(littleEndian:bytes.loadUnaligned(fromByteOffset:$0,as:Int16.self)))/32768 } }
+        var prints:[String:[Float]]=[:]
+        for item in spec["prints"] as! [[String:Any]] {
+            var selected:[Float]=[]
+            for pair in item["windows"] as! [[Int]] { selected.append(contentsOf:samples[pair[0]..<pair[1]]) }
+            let hash=selected.withUnsafeBytes { SHA256.hash(data:Data($0)).map {String(format:"%02x",$0)}.joined() }
+            guard hash == item["inputSHA256"] as? String else { throw SavedVoicesError.invalidPrint }
+            let result=try await SavedVoicesController.embedding(selected)
+            guard let normalized=Voiceprint.normalized(result.embedding) else { throw SavedVoicesError.invalidPrint }
+            prints[item["id"] as! String]=normalized
+        }
+        var comparisons:[[String:Any]]=[]
+        for pair in spec["comparisons"] as! [[String:Any]] {
+            let a=pair["a"] as! String,b=pair["b"] as! String
+            guard let score=VoiceMatcher.cosine(prints[a]!,prints[b]!), abs(Double(score)-(pair["cosine"] as! Double)) <= 0.02 else { throw SavedVoicesError.invalidPrint }
+            comparisons.append(["a":a,"b":b,"cosine":Double(score)])
+        }
+        // The full and second-window matches are verified by the production matcher.
+        var matchReport:[String:Any]=[:]
+        for scenario in spec["matches"] as! [[String:Any]] {
+            let root=FileManager.default.temporaryDirectory.appendingPathComponent("golden-voices-"+UUID().uuidString)
+            defer {try? FileManager.default.removeItem(at:root)}
+            let store=SavedVoicesStore(directory:root), g=try await store.snapshot().generation
+            var aliases:[String:String]=[:]
+            for (id,printID) in scenario["voices"] as! [String:String] {
+                let actualID=try await store.enroll(name:id,embedding:prints[printID]!,seconds:5,generation:g)
+                aliases[actualID]=id
+            }
+            let speakers=(scenario["speakers"] as! [String:String]).sorted { $0.key < $1.key }.map { VoiceMatcher.Print(speaker:$0.key,embedding:prints[$0.value]!) }
+            var actual:[String:[String:String]]=[:]
+            for match in VoiceMatcher.assign(speakers,voices:try await store.snapshot().voices) {
+                actual[match.speaker]=["voiceId":aliases[match.voiceID]!,"state":match.automatic ? "auto":"suggested"]
+            }
+            guard actual == scenario["expected"] as! [String:[String:String]] else { throw SavedVoicesError.invalidPrint }
+            matchReport[scenario["id"] as! String]=actual
+        }
+        return ["dimension":512,"prints":prints.count,"comparisons":comparisons,"matches":matchReport]
+    }
+
 }
 #endif
 

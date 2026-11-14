@@ -13,7 +13,7 @@ public enum VoiceEnrollmentAudio {
         guard meeting.state.origin == .own, speaker != "me", speaker != "others" else { return nil }
         let tracks=TranscriptSpeaker.assign(meeting.audioTracks,received:false).filter {
             (meeting.mergedInto[$0.speaker.id] ?? $0.speaker.id) == speaker &&
-                !["microphone","local","system"].contains($0.track.sourceKind ?? "system")
+                $0.track.sourceKind == "remote"
         }.map(\.track).sorted { ($0.startOffsetMs ?? 0) < ($1.startOffsetMs ?? 0) }
         guard !tracks.isEmpty, tracks.allSatisfy({ $0.startOffsetMs != nil && $0.endOffsetMs != nil }),
               zip(tracks,tracks.dropFirst()).allSatisfy({ $0.endOffsetMs! <= $1.startOffsetMs! }) else { return nil }
