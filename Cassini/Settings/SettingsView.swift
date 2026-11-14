@@ -12,9 +12,18 @@ enum SettingsTab: String, CaseIterable { case recording, transcription, library,
 }
 @MainActor @Observable final class SettingsNavigation {
     static let shared = SettingsNavigation()
-    var tab = SettingsTab.recording
+    var tab = SettingsTab.recording {
+        didSet { if tab != .transcription { savedVoices = false } }
+    }
+    var savedVoices = false
     var capturingShortcut = false
     @ObservationIgnored var open: (() -> Void)? = { ApplicationWindows.preferences(); NSApp.activate(ignoringOtherApps:true) }
+
+    func openSavedVoices() {
+        tab = .transcription
+        savedVoices = true
+        open?()
+    }
 }
 struct CassiniSettingsView: View {
     @State private var navigation = SettingsNavigation.shared
@@ -166,12 +175,20 @@ private struct SettingsBrowserView: View {
 private struct SettingsTranscriptionView: View {
     @State private var models = SpeechModelController.shared
     @State private var updates = ApplicationUpdates.shared
+    @State private var navigation = SettingsNavigation.shared
     private var weightSize: String {
         let url = Bundle.main.url(forResource:"whistle",withExtension:"cact",subdirectory:"Whistle")
         let count = url.flatMap { try? $0.resourceValues(forKeys:[.fileSizeKey]).fileSize } ?? 16_919_407
         return LibraryFormat.size(bytes:Int64(count))
     }
     var body: some View {
+        if navigation.savedVoices {
+            SettingsSavedVoicesView { navigation.savedVoices = false }
+        } else {
+            transcriptionPage
+        }
+    }
+    private var transcriptionPage: some View {
         SettingsPage {
             HStack(alignment:.top,spacing:10) {
                 Image(systemName:"checkmark.shield").font(.system(size:19)).foregroundStyle(CassiniTheme.success).accessibilityHidden(true)
@@ -239,6 +256,27 @@ private struct SettingsTranscriptionView: View {
                 }
             }.accessibilityElement(children:.contain).accessibilityLabel(UXText.text("settings.transcription.speech.a11y"))
                 .accessibilityIdentifier(models.recommendationReady ? "settings-speech-models-ready" : "settings-speech-models-loading")
+            Button {
+                navigation.savedVoices = true
+            } label: {
+                HStack(spacing:12) {
+                    Text(UXText.text("common.savedVoices"))
+                        .fontWeight(.semibold)
+                        .foregroundStyle(CassiniTheme.ink)
+                    Spacer()
+                    Image(systemName:"chevron.right")
+                        .font(.system(size:12,weight:.semibold))
+                        .foregroundStyle(CassiniTheme.ink2)
+                        .accessibilityHidden(true)
+                }
+                .padding(16)
+                .frame(maxWidth:.infinity,alignment:.leading)
+                .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
+                .overlay(RoundedRectangle(cornerRadius:8).stroke(CassiniTheme.modelCardStroke))
+                .contentShape(RoundedRectangle(cornerRadius:8))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("settings-saved-voices")
             VStack(alignment:.leading,spacing:12) {
                 Text(UXText.text("settings.transcription.network.heading")).fontWeight(.bold)
                 HStack(alignment:.top,spacing:10) {
@@ -254,6 +292,61 @@ private struct SettingsTranscriptionView: View {
                 }
             }
         }.task { await models.refresh() }
+    }
+}
+private struct SettingsSavedVoicesView: View {
+    let back: () -> Void
+    var body: some View {
+        SettingsPage {
+            HStack(spacing:10) {
+                Button(action: back) {
+                    Image(systemName:"chevron.left")
+                        .font(.system(size:13,weight:.semibold))
+                        .frame(width:26,height:26)
+                        .background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:6))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(UXText.text("savedVoices.back"))
+                .accessibilityIdentifier("saved-voices-back")
+
+                Text(UXText.text("common.savedVoices"))
+                    .font(.system(size:15,weight:.bold))
+                    .foregroundStyle(CassiniTheme.ink)
+            }
+            HStack(alignment:.top,spacing:10) {
+                Image(systemName:"checkmark.shield")
+                    .font(.system(size:18))
+                    .foregroundStyle(CassiniTheme.success)
+                    .accessibilityHidden(true)
+                Text(UXText.text("savedVoices.privacy.mac"))
+                    .foregroundStyle(CassiniTheme.ink2)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal:false,vertical:true)
+            }
+            VStack(spacing:10) {
+                Image(systemName:"person.wave.2")
+                    .font(.system(size:28))
+                    .foregroundStyle(CassiniTheme.ink3)
+                    .accessibilityHidden(true)
+                Text(UXText.text("savedVoices.empty"))
+                    .font(.system(size:14,weight:.semibold))
+                    .foregroundStyle(CassiniTheme.ink)
+                Text(UXText.text("savedVoices.howToAdd"))
+                    .font(.system(size:12.5))
+                    .foregroundStyle(CassiniTheme.ink2)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal:false,vertical:true)
+                    .frame(maxWidth:460)
+            }
+            .padding(28)
+            .frame(maxWidth:.infinity)
+            .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
+            .overlay(RoundedRectangle(cornerRadius:8).stroke(CassiniTheme.cardStroke))
+            .accessibilityElement(children:.combine)
+            .accessibilityIdentifier("saved-voices-empty")
+        }
+        .accessibilityIdentifier("settings-saved-voices-page")
     }
 }
 private struct SettingsPage<Content: View>: View {
