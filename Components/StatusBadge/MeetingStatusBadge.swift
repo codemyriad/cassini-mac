@@ -50,7 +50,6 @@ struct MeetingStatusBadge: View {
     var isAnimating = true
     var onAccent = false
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     enum Metrics {
         static let height = 22.0
@@ -113,18 +112,31 @@ struct MeetingStatusBadge: View {
         case .dot:
             Circle().fill(resolvedGlyphInk).frame(width: Metrics.dotSize, height: Metrics.dotSize)
         case .spinner:
-            if isAnimating && !reduceMotion {
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
-                    let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1)
-                    BadgeGlyph(glyph: .spinner, ink: resolvedGlyphInk)
-                        .rotationEffect(.degrees(phase * 360))
-                }.frame(width: Metrics.spinnerSize, height: Metrics.spinnerSize)
-            } else {
-                BadgeGlyph(glyph: .spinner, ink: resolvedGlyphInk).frame(width: Metrics.spinnerSize, height: Metrics.spinnerSize)
-            }
+            StatusSpinner(ink:resolvedGlyphInk,isAnimating:isAnimating,size:Metrics.spinnerSize)
         case .alert, .incoming:
             BadgeGlyph(glyph: kind.glyph, ink: resolvedGlyphInk).frame(width: Metrics.symbolSize, height: Metrics.symbolSize)
         }
+    }
+}
+
+/// The same accent-capable spinner in row badges and the transcribing status.
+/// Reduced motion keeps its glyph and stops rotation.
+struct StatusSpinner: View {
+    let ink: Color
+    var isAnimating = true
+    var size = 10.0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var body: some View {
+        Group {
+            if isAnimating && !reduceMotion {
+                TimelineView(.animation(minimumInterval:1.0 / 30.0)) { context in
+                    let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy:1)
+                    BadgeGlyph(glyph:.spinner,ink:ink).rotationEffect(.degrees(phase * 360))
+                }
+            } else {
+                BadgeGlyph(glyph:.spinner,ink:ink)
+            }
+        }.frame(width:size,height:size)
     }
 }
 

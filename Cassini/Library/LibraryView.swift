@@ -666,10 +666,6 @@ struct LibraryView: View {
             let title = UXText.text("common.writeDown")
             return .init(title:title,identifier:"meeting-write-down",enabled:!busy) { TranscriptionQueue.shared.writeDown(detail) }
         }
-        if [.queued,.running].contains(detail.meeting.state.transcript) && !detail.meeting.metadataReadOnly {
-            let title = UXText.text("transcribing.stopAndKeepProgress")
-            return .init(title:title,identifier:"meeting-stop-transcription",enabled:!busy) { TranscriptionQueue.shared.stop(detail.meeting) }
-        }
         return nil
     }
     @ViewBuilder
@@ -679,7 +675,7 @@ struct LibraryView: View {
             Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
                 .buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("preview-write-down")
         } else if [.queued,.running].contains(meeting.state.transcript) && !meeting.metadataReadOnly {
-            Button(UXText.text("transcribing.stopAndKeepProgress")) { TranscriptionQueue.shared.stop(meeting) }
+            Button(UXText.text("common.stop")) { TranscriptionQueue.shared.stop(meeting) }
                 .buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("preview-stop-transcription")
         }
     }

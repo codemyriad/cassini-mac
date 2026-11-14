@@ -14,6 +14,7 @@ struct MeetingView: View {
     @State private var controlsHeight: CGFloat = 40
     var showsCompanionSuggestion: Bool { !suggestionDismissed && !CaptureCollection.shared.connected }
     private var meeting: LibraryMeeting { model.meeting }
+    private var isTranscribing: Bool { TranscribingPresentation.isActive(meeting.state) }
     /// M11: paragraphs only; an aside is shown inside its host.
     private var visibleTurns: [MeetingPresentation.Turn] { MeetingPresentation.visibleTurns(model.turns) }
     private func name(_ speaker: String) -> String { model.speakerName(speaker) }
@@ -128,11 +129,8 @@ struct MeetingView: View {
     private var meetingNotices: some View {
         VStack(alignment: .leading, spacing: 22) {
             if let line = RecordingOverview.libraryDiskLine { Text(line).foregroundStyle(CassiniTheme.warningNotice) }
-            if [.queued, .running].contains(meeting.state.transcript), let badge = meeting.state.badge {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text(badge.text).foregroundStyle(CassiniTheme.ink2)
-                }.accessibilityIdentifier("meeting-transcribing")
+            if isTranscribing {
+                TranscribingStatusView(meeting:meeting,horizontalPadding:0).accessibilityIdentifier("meeting-transcribing")
             }
             if let line = issueLine { InlineMeetingLine(id: line, actionID: meeting.state.transcript == .failed ? "common.tryAgain" : nil, action: meeting.state.transcript == .failed ? { TranscriptionQueue.shared.writeDown(model) } : nil).disabled(LibraryMoveCoordinator.shared.busy) }
         }
@@ -144,7 +142,7 @@ struct MeetingView: View {
                 // permission hint's Open System Settings stays available, as in Recording details.
                 NoSpeechTranscriptLine(action:meeting.canWriteDown ? { TranscriptionQueue.shared.writeDown(model) } : nil,meeting:meeting)
             }
-            if showsCompanionSuggestion { companionCard }
+            if !isTranscribing, showsCompanionSuggestion { companionCard }
             ForEach(visibleTurns) { turn in turnRow(turn) }
         }
     }
@@ -214,7 +212,7 @@ struct MeetingView: View {
                     }
             }
             VStack(spacing: 8) {
-                if let presentation = model.listeningPresentation {
+                if !isTranscribing, let presentation = model.listeningPresentation {
                     ListeningBar(model:model,presentation:presentation,colour:colour(model.listen.speaker.flatMap { meeting.speaker(for:$0) }))
                 }
                 playerBar
@@ -302,7 +300,9 @@ struct MeetingView: View {
             Text(LibraryFormat.position(Int64(model.positionMs))).monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk)
                 .font(.system(size: 11.5)).accessibilityIdentifier("meeting-elapsed").fixedSize()
             MeetingPositionSlider(position:Binding(get:{ Double(model.positionMs) },set:{ model.seek(Int($0)) }),duration:Double(max(1,model.durationMs)),
-                                  readout:model.timelineReadout,names:meeting.speakerDisplayNames,timeline:model.listen.timeline)
+                                  readout:isTranscribing ? TimelineReadout() : model.timelineReadout,
+                                  names:isTranscribing ? [:] : meeting.speakerDisplayNames,
+                                  timeline:isTranscribing ? ListeningTimeline() : model.listen.timeline)
                 .frame(minWidth:80,maxWidth:.infinity).frame(height:22)
             Text(LibraryFormat.position(Int64(model.durationMs))).monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk)
                 .font(.system(size: 11.5)).fixedSize()

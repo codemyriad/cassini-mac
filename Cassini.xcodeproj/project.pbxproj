@@ -68,6 +68,7 @@
 		5C9F95FD374B615DF23666C1 /* MeetingRenameCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A85AD4C9B8EEFC8765DCF5B /* MeetingRenameCoordinator.swift */; };
 		5D26A6DAC57B4DEE28E6A371 /* ParakeetRecommendationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D211868ADA557EE5CEEAD15B /* ParakeetRecommendationView.swift */; };
 		5E1841D1613AAED7F30A1514 /* CassiniExport in Frameworks */ = {isa = PBXBuildFile; productRef = E2F0EABE703FEB5B21F3AA3E /* CassiniExport */; };
+		5E86EA8ECF79614FC2CE15EB /* TranscribingStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6BB999B2E42CC20BFAA36A6 /* TranscribingStatusView.swift */; };
 		5F28E1C9F291EA53E2515B24 /* ApplicationWindows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 506E918B34C0727F130585B5 /* ApplicationWindows.swift */; };
 		632D3A78813971C44A184A9C /* PlayerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0885E2CAB1DA1A45AD4C3EAD /* PlayerBar.swift */; };
 		639A8A35443010C4D3776217 /* AudioProcessTap.swift in Sources */ = {isa = PBXBuildFile; fileRef = D295CC7B2C3B5C3830DE45C0 /* AudioProcessTap.swift */; };
@@ -371,6 +372,7 @@
 		D4243D71191CB5031B1766BF /* pt-PT */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt-PT"; path = "pt-PT.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		D5DA66A372B10969E76428C3 /* ModelDownloadClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloadClient.swift; sourceTree = "<group>"; };
 		D666ED6908642C435C16A217 /* BrowserConnectionStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserConnectionStateView.swift; sourceTree = "<group>"; };
+		D6BB999B2E42CC20BFAA36A6 /* TranscribingStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscribingStatusView.swift; sourceTree = "<group>"; };
 		D7C126544A829D6E9C14235B /* ModelNetworkSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelNetworkSelfTest.swift; sourceTree = "<group>"; };
 		D8A6F2297FE37D3DA4DEC5C7 /* LibrarySearchModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySearchModel.swift; sourceTree = "<group>"; };
 		D9F22F540895E669D17F8ED7 /* CassiniModelDownloads.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = CassiniModelDownloads.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -765,6 +767,7 @@
 		937002C1FBFE88E2BDF8A0AF /* Transcription */ = {
 			isa = PBXGroup;
 			children = (
+				D6BB999B2E42CC20BFAA36A6 /* TranscribingStatusView.swift */,
 				84F9E1CAC4B07C1D07ADD0CE /* TranscriptionQueue.swift */,
 			);
 			path = Transcription;
@@ -1470,6 +1473,7 @@
 				3404B180174C1199AE014DAA /* SpeakerEditorView.swift in Sources */,
 				2021B3CC935BCBD8E60B1F06 /* SpeechModelController.swift in Sources */,
 				75CD3E441B477E26E2D33504 /* SummaryView.swift in Sources */,
+				5E86EA8ECF79614FC2CE15EB /* TranscribingStatusView.swift in Sources */,
 				CDBCA4DEC8524A0332D55FE1 /* TranscriptBuilder.swift in Sources */,
 				137937AE2E3240A6B5CB141C /* TranscriptTextView.swift in Sources */,
 				5A50888A70EF3FF62908C1B5 /* TranscriptView.swift in Sources */,

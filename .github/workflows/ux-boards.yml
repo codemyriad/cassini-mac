@@ -64,6 +64,7 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSummaryTimestampRevealsOffscreenTranscriptWhilePaused \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingEditedTitleSurvivesSavedSelection \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testActiveTranscribingStatusDetailsAndStopKeepsProgress \
           -resultBundlePath build/UXSpeakers.xcresult \
           2>&1 | tee build/ux-speakers.log
     - name: Render Library boards
@@ -116,6 +117,7 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingNonSilentBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordFirstBoard \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testActiveTranscribingStatusDetailsAndStopKeepsProgress \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingSummaryIsFirstAndFindOpensTranscript \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSummaryTimestampRevealsOffscreenTranscriptWhilePaused \
@@ -123,7 +125,7 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingScrolledHeaderKeepsFindAndFloatingPlayerReachable \
           -resultBundlePath build/UXBoardsDark.xcresult \
           2>&1 | tee build/ux-boards-dark.log
-        echo "Dark Library boards: 25 tests (32 boards), $((SECONDS - dark_start)) s wall" >> "$GITHUB_STEP_SUMMARY"
+        echo "Dark Library boards: $((SECONDS - dark_start)) s wall" >> "$GITHUB_STEP_SUMMARY"
     - name: Library boards test durations
       if: always()
       run: |

@@ -209,6 +209,15 @@ final class LibraryStore {
                 let retained = Set(LibraryLocationModel.shared.location.pendingMoves.map { LibraryLocation.canonical(URL(fileURLWithPath:$0.id)) })
                 var result = LibraryScan.merging(([context.root] + context.previousRoots).compactMap { rootSnapshots[$0] },retaining:retained)
                 #if DEBUG
+                // Reading boards use the completed fixture; active status has its
+                // own launch flag. Normalize snapshots, never vendored bytes.
+                if context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "meeting",
+                   LibraryLaunchContext.argument("-CassiniTranscribingPreview") != "YES" {
+                    for index in result.meetings.indices where result.meetings[index].title == "Client call, Rossi & Partners" {
+                        result.meetings[index].state.transcript = .done
+                        result.meetings[index].state.etaMinutes = nil
+                    }
+                }
                 // Keep the summary fixture in every snapshot, so navigation refresh
                 // exercises the same summary-bearing model as initial selection.
                 if context.screenshot, ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
