@@ -207,6 +207,9 @@ struct LibraryView: View {
         .onChange(of: search.visible) { _, visible in
             if !visible, navigation.detail == nil { openSelection() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: MeetingNavigation.returnToLibrarySelection)) { _ in
+            openSelection(userInitiated: true)
+        }
         .onChange(of: store.selectedKeys) { _, _ in
             sessionPlayback.stop()
             openSelection()
@@ -289,9 +292,12 @@ struct LibraryView: View {
             VStack(spacing: 0) {
                 ZStack {
                     List(selection: Binding(get: { store.selectedKeys }, set: {
-                        // List writes selection while remounting after Back as well as on input.
-                        // Explicit row clicks and Return have their own open actions.
+                        let changed = $0 != store.selectedKeys
                         store.selectedKeys = $0
+                        if changed, let window = NSApp.keyWindow,
+                           LibraryKeyboardMenu.hasListFocus(in: window) {
+                            openSelection(userInitiated: true)
+                        }
                     })) {
                         if !importer.transientItems.isEmpty && !firstGroupIsToday {
                             Section {
@@ -621,12 +627,14 @@ struct LibraryView: View {
         guard !search.visible, store.loaded, !LibraryMoveCoordinator.shared.busy, !trash.busy else { return }
         if navigation.detail?.fileURL != nil && !userInitiated { return }
         if let meeting = store.selected {
-            guard userInitiated || meeting.state.lifecycle == .saved else { return }
             #if DEBUG
             if store.context.screenshot, navigation.detail == nil,
                ["meeting", "export", "recording"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? "") { return }
             #endif
-            if navigation.detail?.meeting.libraryKey != meeting.libraryKey {
+            if meeting.state.lifecycle == .saving {
+                sessionPlayback.stop()
+                navigation.back()
+            } else if navigation.detail?.meeting.libraryKey != meeting.libraryKey {
                 sessionPlayback.stop()
                 navigation.open(meeting, frozen: store.context.screenshot, activate: false)
             }

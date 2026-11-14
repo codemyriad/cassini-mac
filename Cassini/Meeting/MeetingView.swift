@@ -10,6 +10,7 @@ struct MeetingView: View {
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var handScrolling = false
+    @State private var pinnedHeaderHeight: CGFloat = 44
     @State private var headingHeight: CGFloat = 110
     @State private var controlsHeight: CGFloat = 40
     var showsCompanionSuggestion: Bool { !suggestionDismissed && !CaptureCollection.shared.connected }
@@ -170,9 +171,10 @@ struct MeetingView: View {
                                 }
                                 MeetingFindBar(model: model.find) { model.tab = .transcript }
                             }.padding(.vertical, 8).background(CassiniTheme.surface)
+                                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pinnedHeaderHeight = $0 }
                         }
                     }.padding(.horizontal, 44).padding(.top, 12).padding(.bottom, controlsHeight + 36)
-                }.cassiniTopScrollEdge().accessibilityIdentifier("meeting-transcript")
+                }.cassiniTopScrollEdge(pinnedHeaderActive: model.compactHeader, pinnedHeaderHeight: pinnedHeaderHeight).accessibilityIdentifier("meeting-transcript")
                     .onScrollPhaseChange { _,phase in
                         handScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
                     }

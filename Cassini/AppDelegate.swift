@@ -377,7 +377,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            let window = event.window ?? NSApp.keyWindow,
            window.accessibilityIdentifier() == "cassini-library-window",
            window.attachedSheet == nil, NSApp.modalWindow == nil,
-           !(window.firstResponder is NSText), MeetingNavigation.shared.savedDetail == nil,
+           !(window.firstResponder is NSText),
+           (MeetingNavigation.shared.savedDetail == nil || LibraryKeyboardMenu.hasListFocus(in: window)),
            !MeetingNavigation.shared.loading, !LibrarySearchModel.shared.visible,
            !LibraryMoveCoordinator.shared.busy, let meeting = LibraryStore.shared.selected {
             SessionPlaybackController.stopAll(); MeetingNavigation.shared.open(meeting)

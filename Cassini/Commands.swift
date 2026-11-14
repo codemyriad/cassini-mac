@@ -54,9 +54,12 @@ struct AppCommands: Commands {
         }
         CommandGroup(after: .sidebar) {
             Button(UXText.text("common.backToLibrary")) {
-                if LibrarySearchModel.shared.visible { LibrarySearchModel.shared.close() } else { MeetingNavigation.shared.back() }
+                if LibrarySearchModel.shared.visible { LibrarySearchModel.shared.close() } else {
+                    MeetingNavigation.shared.back()
+                    NotificationCenter.default.post(name: MeetingNavigation.returnToLibrarySelection, object: nil)
+                }
             }
-                .keyboardShortcut("[", modifiers: .command).disabled(speakerDialog || detail == nil && !LibrarySearchModel.shared.visible)
+                .keyboardShortcut("[", modifiers: .command).disabled(speakerDialog || !LibrarySearchModel.shared.visible && MeetingNavigation.shared.detail?.fileURL == nil)
         }
         CommandGroup(replacing:.textEditing) {
             Button(UXText.text(detail?.meeting.state.lifecycle == .saved ? "meeting.find.placeholder" : "search.field.a11y")) {

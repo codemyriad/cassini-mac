@@ -1135,6 +1135,24 @@ final class LibraryBoards: XCTestCase {
         app.typeKey("[",modifierFlags:.command)
         XCTAssertTrue(title.exists,"Back preserves the selected live pane")
     }
+    @MainActor func testKeyboardSelectionOfRecordingRetiresSavedCommands() throws {
+        let app = try launch("recording", fixture: "main"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.textFields["recording-title"].waitForExistence(timeout: 20))
+        let saved = window.outlines.staticTexts.matching(identifier: "meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch
+        saved.click()
+        XCTAssertTrue(window.buttons["meeting-export"].waitForExistence(timeout: 5))
+        app.typeKey(.upArrow, modifierFlags: [])
+        XCTAssertTrue(window.textFields["recording-title"].waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(window.buttons["meeting-export"].exists)
+        app.menuBars.menuBarItems["File"].click()
+        XCTAssertFalse(app.menuItems["Move to Trash"].isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
+        app.typeKey(.delete, modifierFlags: .command)
+        XCTAssertTrue(window.textFields["recording-title"].exists)
+        XCTAssertTrue(saved.exists, "The previously open saved meeting survives Command-Delete")
+    }
+
     @MainActor func testRecordingNonSilentBoard() throws {
         let app = try launch("recording",fixture:"main",extra:["-CassiniSilentMicrophone","NO"])
         defer { app.terminate() }

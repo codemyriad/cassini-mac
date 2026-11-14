@@ -6,6 +6,7 @@ import Observation
 
 @MainActor @Observable final class MeetingNavigation {
     static let shared = MeetingNavigation()
+    static let returnToLibrarySelection = Notification.Name("CassiniReturnToLibrarySelection")
     var detail: MeetingDetailModel?
     /// Only saved meetings own full-window navigation and playback shortcuts.
     var savedDetail: MeetingDetailModel? { detail?.meeting.state.lifecycle == .saved ? detail : nil }

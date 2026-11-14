@@ -38,6 +38,8 @@ private struct CassiniTopScrollEdgeState: Equatable {
 #endif
 
 private struct CassiniTopScrollEdgeModifier: ViewModifier {
+    var pinnedHeaderActive = false
+    var pinnedHeaderHeight: CGFloat = 44
     #if compiler(>=6.2)
     @State private var edgeState = CassiniTopScrollEdgeState()
     #if DEBUG
@@ -58,6 +60,7 @@ private struct CassiniTopScrollEdgeModifier: ViewModifier {
         if #available(macOS 26.0, *), !usesLegacyFallback {
             content
                 .scrollEdgeEffectStyle(.soft, for: .top)
+                .scrollEdgeEffectHidden(pinnedHeaderActive, for: .top)
                 .onScrollGeometryChange(for: CassiniTopScrollEdgeState.self) { geometry in
                     CassiniTopScrollEdgeState(
                         scrolled: geometry.contentOffset.y + geometry.contentInsets.top > 0.5,
@@ -70,18 +73,29 @@ private struct CassiniTopScrollEdgeModifier: ViewModifier {
                     GeometryReader { proxy in
                         let height = max(1, proxy.size.height)
                         if edgeState.scrolled {
-                            let clearEnd = max(0, edgeState.topInset - 8)
-                            let fadeEnd = min(height, edgeState.topInset + 20)
-                            LinearGradient(
-                                stops: [
-                                    .init(color: CassiniTheme.ink.opacity(0), location: 0),
-                                    .init(color: CassiniTheme.ink.opacity(0), location: clearEnd / height),
-                                    .init(color: CassiniTheme.ink, location: fadeEnd / height),
-                                    .init(color: CassiniTheme.ink, location: 1),
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
+                            let headerEnd = min(height, edgeState.topInset + pinnedHeaderHeight)
+                            let clearEnd = pinnedHeaderActive ? headerEnd : max(0, edgeState.topInset - 8)
+                            let fadeEnd = min(height, pinnedHeaderActive ? headerEnd + 20 : edgeState.topInset + 20)
+                            if pinnedHeaderActive {
+                                // The controls stay opaque; only the transcript beneath them fades.
+                                VStack(spacing: 0) {
+                                    Rectangle().frame(height: headerEnd)
+                                    LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                                        .frame(height: max(0, fadeEnd - headerEnd))
+                                    Rectangle()
+                                }
+                            } else {
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: CassiniTheme.ink.opacity(0), location: 0),
+                                        .init(color: CassiniTheme.ink.opacity(0), location: clearEnd / height),
+                                        .init(color: CassiniTheme.ink, location: fadeEnd / height),
+                                        .init(color: CassiniTheme.ink, location: 1),
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            }
                         } else {
                             Rectangle()
                         }
@@ -247,8 +261,8 @@ private struct CassiniPinnedTopBarModifier<Bar: View>: ViewModifier {
 
 extension View {
     /// Applies the macOS 26 soft top scroll-edge effect when available; no-op on macOS <26.
-    func cassiniTopScrollEdge() -> some View {
-        modifier(CassiniTopScrollEdgeModifier())
+    func cassiniTopScrollEdge(pinnedHeaderActive: Bool = false, pinnedHeaderHeight: CGFloat = 44) -> some View {
+        modifier(CassiniTopScrollEdgeModifier(pinnedHeaderActive: pinnedHeaderActive, pinnedHeaderHeight: pinnedHeaderHeight))
     }
 
     /// Suppresses the unified window toolbar's permanent thin-film separator on macOS 26+ while
@@ -387,6 +401,40 @@ private struct SelfTestUnifiedToolbarModifier: ViewModifier {
             Text(UXText.text(isSearch ? "search.title" : "library.title"))
                 .font(.system(size: 15, weight: .bold))
         }
+    }
+}
+
+/// Mirrors MeetingView's single scroll, heading, and sticky Summary/Find row.
+private struct StickyMeetingScrollFixture: View {
+    @State private var pinned = false
+    @State private var query = ""
+    @State private var tab = 0
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                Text("Meeting heading").frame(height: 96)
+                Section {
+                    ForEach(0..<40, id: \.self) { _ in
+                        CassiniTheme.ink.opacity(0.22).frame(height: 30)
+                    }
+                } header: {
+                    HStack(spacing: 10) {
+                        Picker("", selection: $tab) {
+                            Text("Summary").tag(0)
+                            Text("Transcript").tag(1)
+                        }.pickerStyle(.segmented).labelsHidden().fixedSize()
+                        TextField("Find in this meeting", text: $query).frame(width: 200)
+                        Spacer()
+                    }.frame(height: 28).padding(.vertical, 8)
+                        .background(CassiniTheme.paneGround)
+                }
+            }
+        }
+        .cassiniTopScrollEdge(pinnedHeaderActive: pinned)
+        .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top > 96 } action: { _, value in
+            pinned = value
+        }
+        .background(CassiniTheme.paneGround)
     }
 }
 
@@ -930,45 +978,15 @@ extension ScrollEdgeChrome {
             return false
         }
 
-        // 3. Meeting split surface (populated Meeting unified toolbar + speakers ScrollView + transcript ScrollView)
-        let meetingSplit = VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 0) {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(0..<40, id: \.self) { index in
-                                Text("Speaker \(index)")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.vertical, 6)
-                            }
-                        }
-                    }
-                    .cassiniTopScrollEdge()
-                    .cassiniPinnedTopBar(alignment: .leading) {
-                        Text(UXText.text("common.speakers"))
-                            .font(.system(size: 11.5, weight: .bold))
-                            .foregroundStyle(CassiniTheme.secondaryInk)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 19)
-                            .padding(.top, 14)
-                            .padding(.bottom, 18)
-                    }
-
-                    Button(UXText.text("meeting.nameSpeakers")) {}
-                        .buttonStyle(.borderless)
-                        .padding(.horizontal, 19)
-                        .padding(.vertical, 18)
+        // 3. Current Library + single-scroll Meeting with a sticky Summary/Find header.
+        let meetingSplit = HStack(spacing: 0) {
+            ScrollView {
+                ForEach(0..<40, id: \.self) { index in
+                    Text("Meeting \(index)").frame(height: 32)
                 }
-                .frame(width: 260)
-                .frame(maxHeight: .infinity)
-                .cassiniSidebarBackground()
-
-                CassiniColumnDivider()
-
-                makeScrollableDetailPane()
-            }
-            Divider()
-            CassiniTheme.windowGround.frame(height: 64)
+            }.frame(width: 400).cassiniTopScrollEdge().cassiniSidebarBackground()
+            CassiniColumnDivider()
+            StickyMeetingScrollFixture()
         }
         .background(CassiniTheme.paneGround)
 
@@ -980,11 +998,13 @@ extension ScrollEdgeChrome {
             forceLegacy: forceLegacy,
             rootView: meetingSplit,
             expectsSearchFieldMinWidth: nil,
-            checkHeaderHairlineSpike: true,
+            checkHeaderHairlineSpike: false,
             expectNativeScrollFadeOnMacOS26: !forceLegacy,
-            leftPaneWidth: 260,
-            rightSampleX: 550,
-            verifyToolbarActionHitTesting: true
+            leftPaneWidth: 400,
+            rightSampleX: 1050,
+            hasPinnedLeftHeader: false,
+            verifyToolbarActionHitTesting: true,
+            hasStickyMeetingHeader: true
         ) else {
             return false
         }
@@ -1031,7 +1051,8 @@ extension ScrollEdgeChrome {
         rightSampleX: Int,
         hasPinnedLeftHeader: Bool = true,
         verifyNavigationSidebarSoftPocket: Bool = false,
-        verifyToolbarActionHitTesting: Bool = false
+        verifyToolbarActionHitTesting: Bool = false,
+        hasStickyMeetingHeader: Bool = false
     ) -> Bool {
         let colorScheme: ColorScheme = appearance.name == .darkAqua ? .dark : .light
         let hostedRoot = rootView
@@ -1241,8 +1262,27 @@ extension ScrollEdgeChrome {
                 return false
             }
             let rightRect = rightScroll.convert(rightScroll.bounds, to: nil)
-            let topEdgeY = Int((windowHeight - rightRect.maxY).rounded()) + Int(rightScroll.contentInsets.top.rounded())
-            let aboveToolbarLuma = luminance(in: scrolledBitmap, x: rightSampleX, y: max(1, toolbarBoundaryY - 4))
+            let scrollTopY = Int((windowHeight - rightRect.maxY).rounded()) + Int(rightScroll.contentInsets.top.rounded())
+            let topEdgeY = scrollTopY + (hasStickyMeetingHeader ? 44 : 0)
+            if hasStickyMeetingHeader {
+                // Sample the empty trailing header band: masking the controls changes its fill.
+                let expected = luminance(in: restBitmap, x: rightSampleX, y: scrollTopY + 98)
+                for offset in [2, 8, 18, 30, 42] {
+                    let actual = luminance(in: scrolledBitmap, x: rightSampleX, y: scrollTopY + offset)
+                    if abs(actual - expected) > 0.01 {
+                        logFailure("\(label): sticky header faded at y=\(offset): \(actual), expected \(expected)")
+                        return false
+                    }
+                }
+                guard let field = collectViews(themeFrame).compactMap({ $0 as? NSTextField }).first(where: { $0.isEditable }),
+                      window.makeFirstResponder(field) else {
+                    logFailure("\(label): sticky Find cannot receive focus")
+                    return false
+                }
+            }
+            let aboveToolbarLuma = hasStickyMeetingHeader
+                ? luminance(in: restBitmap, x: rightSampleX, y: scrollTopY + 98)
+                : luminance(in: scrolledBitmap, x: rightSampleX, y: max(1, toolbarBoundaryY - 4))
             let nearTopLuma = luminance(in: scrolledBitmap, x: rightSampleX, y: max(1, topEdgeY + 2))
             let midFadeLuma = luminance(in: scrolledBitmap, x: rightSampleX, y: min(Int(windowHeight) - 2, topEdgeY + 10))
             let midPaneLuma = luminance(in: scrolledBitmap, x: rightSampleX, y: min(Int(windowHeight) - 2, topEdgeY + 45))
