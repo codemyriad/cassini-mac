@@ -19,6 +19,7 @@
 		16E8B13A764F3F04D0F27EE1 /* CaptureDiskWatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127092BBB0CAF57C83F84D65 /* CaptureDiskWatch.swift */; };
 		184B39919EE900669A4FD01E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52CCD520AEB3FB56F74F1B43 /* AppDelegate.swift */; };
 		1D01F0FC29FED44F688C1508 /* CassiniWhistle in Frameworks */ = {isa = PBXBuildFile; productRef = 6DC84AF01711048FD74E3E5D /* CassiniWhistle */; };
+		1DD201913F05E4F9B99EB3FE /* SavedVoicesController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4888227EC3BD2F85C8FFEBD /* SavedVoicesController.swift */; };
 		1EEAD6E0D3422512F62D7200 /* TrashSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18471E0D1FE5E9C8D968ECB5 /* TrashSelfTest.swift */; };
 		1EF5EE8DD217C7B2C937D7A2 /* DocumentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0E7443641B578BD53031A57 /* DocumentView.swift */; };
 		1F5029B7E3EA531CA10D2756 /* CassiniTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 939FFE6582BA0ADDF5FEFBFE /* CassiniTheme.swift */; };
@@ -79,6 +80,7 @@
 		6783F576899FEBDAFA27D7EC /* MeetingCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14D797660C8DCEB7D4A23580 /* MeetingCard.swift */; };
 		68278762F3B55EA7F2FB4B42 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC01E1B7B594D265434100B /* SidebarView.swift */; };
 		6B9B7E092AFFFFEB1C3869BA /* WindowScreenshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E46C3F38B578B6D1B0DADA /* WindowScreenshots.swift */; };
+		6C77F53004DE2C3A6595832F /* SavedVoicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8D7D17B00184F229FCCC30B /* SavedVoicesView.swift */; };
 		6D2A5DC34D78E97BC4DC039C /* CaptureActivityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CD8CFA53B579FA8BAEF8DC9 /* CaptureActivityStore.swift */; };
 		6D57DA2EFFCE7EDA4F10CB65 /* LocalCompanionGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3B03C13929645F7CB3E9829 /* LocalCompanionGuide.swift */; };
 		73356EFFDF01D974F26825A6 /* RecordFirstView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EE191DCB541B08F4D08855 /* RecordFirstView.swift */; };
@@ -345,8 +347,9 @@
 		9FD1CB695C71500E69641ABD /* ListeningBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningBar.swift; sourceTree = "<group>"; };
 		A251AA6D1A631420C5CC6EDF /* RecordingRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRuntime.swift; sourceTree = "<group>"; };
 		A2BD17D5179958CB9DAD7A4C /* LibraryDropZone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDropZone.swift; sourceTree = "<group>"; };
-		A45990EC4525753CFF61D0D6 /* cassini-mac-d-1011 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac-d-1011"; path = .; sourceTree = SOURCE_ROOT; };
 		A6C12D84FB78BFC6CC8C985F /* UXText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UXText.swift; sourceTree = "<group>"; };
+		A8D7D17B00184F229FCCC30B /* SavedVoicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedVoicesView.swift; sourceTree = "<group>"; };
+		A45990EC4525753CFF61D0D6 /* cassini-mac-d-1011 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac-d-1011"; path = .; sourceTree = SOURCE_ROOT; };
 		AE1EF30C6B5383E3FF70F120 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		AE3EF9C87501A9AA7ECF2828 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		AE55575B68548E992AE03E83 /* CassiniBrowserHost */ = {isa = PBXFileReference; includeInIndex = 0; path = CassiniBrowserHost; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -361,6 +364,7 @@
 		BF5D549FD4380E26CB5FD852 /* SpectrogramMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpectrogramMotion.swift; sourceTree = "<group>"; };
 		C00B7DC9DDF9C68ED4B73C48 /* MeetingFindBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingFindBar.swift; sourceTree = "<group>"; };
 		C2AF16181F491E3932E02CCA /* CassiniWhistleWorker */ = {isa = PBXFileReference; includeInIndex = 0; path = CassiniWhistleWorker; sourceTree = BUILT_PRODUCTS_DIR; };
+		C4888227EC3BD2F85C8FFEBD /* SavedVoicesController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedVoicesController.swift; sourceTree = "<group>"; };
 		C66314F1ADDF8D8554337717 /* LibraryBoards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryBoards.swift; sourceTree = "<group>"; };
 		C6F47C104E5AB6E114B1AB81 /* BrowserReturnSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserReturnSelfTest.swift; sourceTree = "<group>"; };
 		C79EA1C1907B4B2BDF29DBF6 /* BrowserCompanionHealthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserCompanionHealthView.swift; sourceTree = "<group>"; };
@@ -759,6 +763,8 @@
 				D211868ADA557EE5CEEAD15B /* ParakeetRecommendationView.swift */,
 				E3642D8E0899EF402629B208 /* ParakeetSelfTest.swift */,
 				5B20A9D6688D36A9354AA691 /* RecordingHotKey.swift */,
+				C4888227EC3BD2F85C8FFEBD /* SavedVoicesController.swift */,
+				A8D7D17B00184F229FCCC30B /* SavedVoicesView.swift */,
 				1D368DF652664BF931A5F050 /* SettingsFixture.swift */,
 				0E31D8C73A37ABF71375ADEB /* SettingsSelfTest.swift */,
 				642BF5E60FF9A1A28395F1C6 /* SettingsView.swift */,
@@ -1466,6 +1472,8 @@
 				39E0B15ED7A1BC02093C216F /* RecordingSelfTest.swift in Sources */,
 				79B4C94661D09C30ACA76087 /* RecordingSpectrogram.swift in Sources */,
 				7415B9957147C67914ABA6A7 /* RecordingStatusMenu.swift in Sources */,
+				1DD201913F05E4F9B99EB3FE /* SavedVoicesController.swift in Sources */,
+				6C77F53004DE2C3A6595832F /* SavedVoicesView.swift in Sources */,
 				3A376D5042C616DB3FDC923F /* ScreenshotFixture.swift in Sources */,
 				3875C6AE4043440976D7EB41 /* ScrollEdgeChrome.swift in Sources */,
 				AAF4AC43DEC388D60EF5F6FF /* SearchSelfTest.swift in Sources */,

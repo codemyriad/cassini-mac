@@ -2,8 +2,7 @@
 import SwiftUI
 import CassiniLibrary
 
-/// WP6: a single column dialog. Voice profiles are not yet prepared on Mac;
-/// naming stays available without pretending that a voiceprint has been saved.
+/// Local voice enrollment is offered only for a prepared, separated source.
 struct SpeakerEditorView:View {
     @State private var edit=MeetingRenameCoordinator.shared
     @State private var nameFocused=false
@@ -27,6 +26,10 @@ struct SpeakerEditorView:View {
             .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("speakers.dialog.a11y"))
             .accessibilityAddTraits(.isModal).accessibilityIdentifier("speaker-editor")
             .onAppear {SpeakerEditorChrome.focusName()}
+            .onChange(of:edit.name) { _,new in
+                if let id=edit.savedVoiceID,
+                   SavedVoicesController.shared.voices.first(where:{$0.id == id})?.name != new { edit.savedVoiceID=nil }
+            }
             .onDisappear {SpeakerEditorChrome.dismiss();detail?.speakerSample.cancel()}
     }
     private func header(_ speaker:MeetingSpeaker)->some View {
@@ -76,25 +79,42 @@ struct SpeakerEditorView:View {
     private var savedVoices:some View {
         VStack(alignment:.leading,spacing:8) {
             Text(UXText.text("common.savedVoices")).fontWeight(.semibold)
-            Text(UXText.text("savedVoices.empty")).foregroundStyle(CassiniTheme.ink2)
-                .frame(maxWidth:.infinity,alignment:.leading).padding(12)
-                .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
-                .overlay(RoundedRectangle(cornerRadius:12).stroke(CassiniTheme.lineSoft,lineWidth:1))
-        }
+            if SavedVoicesController.shared.voices.isEmpty {
+                Text(UXText.text("savedVoices.empty")).foregroundStyle(CassiniTheme.ink2)
+            } else {
+                ScrollView {
+                    VStack(alignment:.leading,spacing:8) {
+                        ForEach(SavedVoicesController.shared.voices) { voice in
+                            Button(voice.name) { edit.name=voice.name; edit.savedVoiceID=voice.id }
+                                .buttonStyle(.plain).disabled(edit.working)
+                        }
+                    }.frame(maxWidth:.infinity,alignment:.leading)
+                }.frame(maxHeight:100)
+            }
+            if let duplicate=VoiceSelection.matchingName(edit.name,voices:SavedVoicesController.shared.voices).first,
+               edit.savedVoiceID == nil {
+                Text(UXText.text("speakers.duplicate.notice",["name":duplicate.name]))
+                HStack {
+                    Button(UXText.text("speakers.duplicate.samePerson")) { edit.savedVoiceID=duplicate.id }
+                    Button(UXText.text("speakers.duplicate.someoneElse")) { edit.savedVoiceID=nil }
+                }
+            }
+        }.padding(12).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
     }
     private var rememberVoice:some View {
         VStack(alignment:.leading,spacing:8) {
             HStack(alignment:.top,spacing:12) {
                 VStack(alignment:.leading,spacing:5) {
                     Text(UXText.text("speakers.rememberVoice.title"))
-                    Text(UXText.text("speakers.rememberVoice.notPrepared"))
+                    Text(UXText.text(edit.voiceEnrollment == nil ? "speakers.rememberVoice.notPrepared":"speakers.rememberVoice.cardBody.computer.unnamed"))
                         .accessibilityIdentifier("speaker-remember-explanation")
                         .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
                         .fixedSize(horizontal:false,vertical:true)
                 }
                 Spacer(minLength:0)
-                Toggle(UXText.text("speakers.rememberVoice.title"),isOn:.constant(false))
-                    .labelsHidden().toggleStyle(.switch).controlSize(.small).disabled(true)
+                Toggle(UXText.text("speakers.rememberVoice.title"),isOn:$edit.rememberVoice)
+                    .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    .disabled(edit.working || edit.voiceEnrollment == nil)
                     .accessibilityIdentifier("speaker-remember-voice")
             }
         }.padding(14).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))

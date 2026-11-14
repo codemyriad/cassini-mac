@@ -45,6 +45,14 @@ public struct ParakeetAssets {
         guard arguments.count == 4, arguments[0] == "--runtime", arguments[2] == "--model" else { throw ParakeetFailure.invalidRuntime }
         return try pinned(runtime:URL(fileURLWithPath:arguments[1]),model:URL(fileURLWithPath:arguments[3]))
     }
+    public static func voiceWorker(model: URL) throws -> Self {
+        let seal = try SignedSpeechBundle.currentWorker()
+        for name in ParakeetPin.runtimes.keys { _ = try seal.framework(name,manifest:"Parakeet") }
+        let file = try contained("3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx",in:model)
+        guard try digest(file,size:29_596_978) == "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b" else { throw ParakeetFailure.invalidModel }
+        let runtime=seal.app.appendingPathComponent("Contents/Frameworks")
+        return .init(library:try contained("libsherpa-onnx-c-api.dylib",in:runtime),ort:try contained("libonnxruntime.dylib",in:runtime),model:file,signedBundle:seal)
+    }
     public static func pinned(runtime: URL, model: URL) throws -> Self {
         let root = runtime.resolvingSymlinksInPath()
         for (name,pins) in ParakeetPin.runtimes {

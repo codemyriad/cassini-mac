@@ -16,4 +16,5 @@ int32_t cassini_sherpa_count(const CassiniSherpaResult *result);
 const char *cassini_sherpa_token(const CassiniSherpaResult *result, int32_t index);
 float cassini_sherpa_timestamp(const CassiniSherpaResult *result, int32_t index);
 float cassini_sherpa_duration(const CassiniSherpaResult *result, int32_t index);
+int cassini_voice_embedding(const char *library, const char *ort, const char *model, const float *samples, int32_t count, float *output);
 #endif

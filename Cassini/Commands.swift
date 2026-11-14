@@ -23,6 +23,7 @@ struct AppCommands: Commands {
     var body: some Commands {
         let _ = ApplicationWindows.install(window:openWindow,settings:openSettings)
         CommandGroup(after: .appInfo) {
+            Button(UXText.text("savedVoices.menuItem")) { SavedVoicesController.shared.open() }.disabled(speakerDialog)
             Button(UXText.text("app.checkForUpdates")) { ApplicationUpdates.shared.checkForUpdates() }
                 .disabled(speakerDialog || !ApplicationUpdates.shared.canCheckForUpdates)
         }

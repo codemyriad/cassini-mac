@@ -5,11 +5,13 @@ import Darwin
 
 // Build/test utility; never bundled in Cassini.app. Uses the same pinned D4
 // installer as the Download button, with no latest-model selection.
-let arguments = Array(CommandLine.arguments.dropFirst())
+var arguments = Array(CommandLine.arguments.dropFirst())
+let voices = arguments.last == "--voices"
+if voices { arguments.removeLast() }
 guard arguments.count == 2, arguments[0] == "--output" else {
-    fputs("Usage: cassini-model-fetch --output APP_DATA_DIRECTORY\n",stderr); exit(64)
+    fputs("Usage: cassini-model-fetch --output APP_DATA_DIRECTORY [--voices]\n",stderr); exit(64)
 }
-let pin = ModelPin.parakeetUltra
+let pin: ModelPin = voices ? .savedVoices : .parakeetUltra
 do {
     let output = URL(fileURLWithPath:arguments[1],isDirectory:true)
     try FileManager.default.createDirectory(at:output,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])

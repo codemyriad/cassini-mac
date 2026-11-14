@@ -39,6 +39,38 @@ do {
     if arguments.count == 6, arguments[4] == "--vad" {
         standaloneVAD = URL(fileURLWithPath:arguments[5]); arguments.removeLast(2)
     }
+    if arguments.count == 3, ["--voice","--voice-guided"].contains(arguments[0]), arguments[1] == "--model" {
+        let assets=try ParakeetAssets.voiceWorker(model:URL(fileURLWithPath:arguments[2]))
+        // Raw little-endian float32 PCM from the parent, bounded to 45 seconds.
+        var data=Data()
+        while let part=try FileHandle.standardInput.read(upToCount:65536), !part.isEmpty {
+            guard data.count + part.count <= 720000 * 4 else { throw ParakeetFailure.invalidAudio }
+            data.append(part)
+        }
+        guard data.count % 4 == 0 else { throw ParakeetFailure.invalidAudio }
+        var samples=data.withUnsafeBytes { bytes in stride(from:0,to:data.count,by:4).map { Float(bitPattern:UInt32(littleEndian:bytes.loadUnaligned(fromByteOffset:$0,as:UInt32.self))) } }
+        if arguments[0] == "--voice-guided" {
+            let detector=try SpeechDetector(assets:VADAssets.bundled(assets.signedBundle!))
+            var gate=SpeechGate(), voiced=0
+            var segments=try gate.feed(samples) { frame in
+                let probability=try detector.probability(frame)
+                if probability >= 0.5 { voiced += 512 }
+                return probability
+            }
+            segments += gate.flush()
+            guard voiced >= 64000 else { throw ParakeetFailure.invalidAudio }
+            var selected:[Float]=[]
+            for segment in segments {
+                let a=segment.startSample+3200, b=min(samples.count,segment.endSample-3200)
+                if b-a >= 24000 { selected.append(contentsOf:samples[a..<b]) }
+            }
+            samples=Array(selected.prefix(720000))
+        }
+        let embedding=try VoiceEmbeddingEngine.compute(assets:assets,samples:samples)
+        struct VoiceResult: Encodable { let embedding:[Float]; let seconds:Double }
+        try WhistleIO.write(JSONEncoder().encode(VoiceResult(embedding:embedding,seconds:Double(samples.count)/16000)),to:STDOUT_FILENO)
+        exit(0)
+    }
     let assets = try ParakeetAssets.forWorker(arguments:arguments)
     let vad: VADAssets
     if let bundle = assets.signedBundle {

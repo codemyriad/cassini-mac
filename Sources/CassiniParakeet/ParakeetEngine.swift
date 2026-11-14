@@ -75,3 +75,15 @@ public final class ParakeetEngine {
         return .init(text:text.trimmingCharacters(in:.whitespacesAndNewlines),language:"und",words:try ParakeetWords.decode(tokens))
     }
 }
+
+public enum VoiceEmbeddingEngine {
+    public static func compute(assets: ParakeetAssets, samples: [Float]) throws -> [Float] {
+        guard samples.count >= 64000, samples.count <= 720000, samples.allSatisfy(\.isFinite) else { throw ParakeetFailure.invalidAudio }
+        var output=[Float](repeating:0,count:512)
+        let ok=assets.library.path.withCString { library in assets.ort.path.withCString { ort in assets.model.path.withCString { model in
+            samples.withUnsafeBufferPointer { cassini_voice_embedding(library,ort,model,$0.baseAddress,Int32($0.count),&output) }
+        } } }
+        guard ok == 1, output.allSatisfy(\.isFinite) else { throw ParakeetFailure.invalidAudio }
+        return output
+    }
+}

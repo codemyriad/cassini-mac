@@ -15,7 +15,7 @@ struct CassiniApp: App {
         #if DEBUG
         let suppressWindow = CommandLine.arguments.contains("--browser-return-self-test") || CommandLine.arguments.contains("--live-folder-self-test") || CommandLine.arguments.contains("--browser-background-self-test") || CommandLine.arguments.contains("--recording-saving-self-test") ||
             CommandLine.arguments.contains("--browser-capture-self-test") ||
-            CommandLine.arguments.contains("--models-network-self-test") || CommandLine.arguments.contains("--parakeet-self-test") ||
+            CommandLine.arguments.contains("--voices-self-test") || CommandLine.arguments.contains("--models-network-self-test") || CommandLine.arguments.contains("--parakeet-self-test") ||
             (RecordingFixture.enabled && CommandLine.arguments.contains("--fixture-windowless-launch"))
         #else
         let suppressWindow = false

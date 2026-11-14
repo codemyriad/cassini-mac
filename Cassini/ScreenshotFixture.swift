@@ -35,7 +35,7 @@ enum ScreenshotFixture {
         let scheme = value("-CassiniScreenshotScheme", in: arguments) ?? "light"
         guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               let name = value("-CassiniScreenshot", in: arguments),
-              ["window", "sheet", "library", "first-run", "meeting", "record-first", "recording", "received", "export", "search", "settings-recording", "settings-transcription", "settings-library", "settings-browser"].contains(name),
+              ["window", "sheet", "library", "first-run", "meeting", "record-first", "recording", "received", "export", "search", "settings-recording", "settings-transcription", "settings-voices", "settings-library", "settings-browser"].contains(name),
               ["light", "dark"].contains(scheme),
               let directory = value("-CassiniFixture", in: arguments),
               let clock = value("-CassiniNow", in: arguments),
@@ -63,6 +63,10 @@ enum ScreenshotFixture {
         if name.hasPrefix("settings-") {
             Task { @MainActor in
                 SettingsNavigation.shared.tab = SettingsTab(rawValue:String(name.dropFirst("settings-".count))) ?? .recording
+                if name == "settings-voices" {
+                    SettingsNavigation.shared.tab = .transcription; SettingsNavigation.shared.savedVoices=true
+                    RecordingPreferences.defaults.set(true,forKey:"CassiniVoicesSetupSeen")
+                }
                 ApplicationWindows.preferences()
                 NSApp.activate(ignoringOtherApps: true)
             }

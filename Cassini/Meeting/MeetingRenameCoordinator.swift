@@ -8,6 +8,10 @@ import CassiniLibrary
     static let shared = MeetingRenameCoordinator()
     var presentation: Presentation?
     var name = ""
+    var rememberVoice=false
+    var savedVoiceID:String?
+    private(set) var voiceEnrollment:SavedVoicesController.TranscriptEnrollment?
+    private(set) var voicePreparationFailed=false
     private(set) var speakerID:String?
     private(set) var speakerChangeFailed=false
     private(set) var speakerTalkTime:Int64=0
@@ -26,7 +30,7 @@ import CassiniLibrary
         guard let meeting else { return false }
         if presentation == .speakers {
             guard let speaker=selectedSpeaker else {return false}
-            return canEditSpeakers(meeting) && SpeakerEdits.validName(name) && SpeakerEdits.normalizedName(name) != speaker.name
+            return canEditSpeakers(meeting) && SpeakerEdits.validName(name) && (SpeakerEdits.normalizedName(name) != speaker.name || rememberVoice && voiceEnrollment != nil)
         }
         let original = meeting.title ?? UXText.text("library.untitled")
         return !working && name != original && (normalized == nil || normalized != original) && canRename(meeting)
@@ -85,14 +89,22 @@ import CassiniLibrary
         self.meeting=meeting;speakerID=speaker.id;name=speaker.name ?? ""
         if let detail=MeetingNavigation.shared.detail,detail.meeting.folder==meeting.folder {detail.namingSpeakerID=speaker.id}
         speakerChangeFailed=false;speakerRetry=nil;presentation = .speakers
+        rememberVoice=false;voiceEnrollment=nil;voicePreparationFailed=false;savedVoiceID=nil
         stopSpeakerPreparation();speakerPreparing=true;speakerSampleRange=nil;speakerQuote=nil
         let id=speaker.id
         speakerPreparation=Task {
+            defer { if speakerID == id { speakerPreparation=nil } }
             let facts=await Task.detached(priority:.userInitiated) {
                 (SpeakerEdits.talkTime(meeting,speaker:id),SpeakerEdits.sample(meeting,speaker:id),SpeakerEdits.quote(meeting,speaker:id))
             }.value
             guard !Task.isCancelled,!closing,presentation == .speakers,speakerID==id else {return}
-            speakerTalkTime=facts.0;speakerSampleRange=facts.1;speakerQuote=facts.2;speakerPreparing=false;speakerPreparation=nil
+            speakerTalkTime=facts.0;speakerSampleRange=facts.1;speakerQuote=facts.2;speakerPreparing=false
+            await SavedVoicesController.shared.refresh()
+            do {
+                let prepared=try await SavedVoicesController.shared.prepare(meeting,speaker:id)
+                guard !Task.isCancelled, presentation == .speakers, speakerID == id else { return }
+                voiceEnrollment=prepared; rememberVoice=prepared != nil && SavedVoicesController.shared.enabled
+            } catch { if !Task.isCancelled { voicePreparationFailed=true } }
         }
     }
     private func stopSpeakerPreparation() {speakerPreparation?.cancel();speakerPreparation=nil;speakerPreparing=false}
@@ -124,6 +136,7 @@ import CassiniLibrary
         working=true;speakerChangeFailed=false;speakerRetry=edit
         let location=LibraryLocationModel.shared.location
         let scanner=LibraryStore.shared.scannerForRename(meeting) ?? LibraryScanner(root:meeting.folder.deletingLastPathComponent())
+        let enrollment=rememberVoice ? voiceEnrollment:nil, enrollmentName=name, voiceID=savedVoiceID
         task=Task {
             do {
                 let updated=try await Task.detached(priority:.userInitiated) {
@@ -135,6 +148,10 @@ import CassiniLibrary
                 }.value
                 if let detail=MeetingNavigation.shared.detail,detail.meeting.folder==meeting.folder,detail.fileURL==nil {detail.meeting=updated}
                 LibraryStore.shared.refresh(affected:meeting.folder)
+                if case .name = edit, let enrollment {
+                    do { try await SavedVoicesController.shared.enroll(enrollment,name:enrollmentName,into:voiceID) }
+                    catch { speakerChangeFailed=true; working=false;task=nil;return }
+                }
                 presentation=nil;self.meeting=nil;speakerID=nil;speakerRetry=nil
             } catch {if !closing {speakerChangeFailed=true}}
             working=false;task=nil;LibraryMoveCoordinator.shared.maybeRetryDeferred()
