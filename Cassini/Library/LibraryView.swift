@@ -292,8 +292,9 @@ struct LibraryView: View {
 
                 ZStack {
                     List(selection: Binding(get: { store.selectedKeys }, set: {
+                        // List writes selection while remounting after Back as well as on input.
+                        // Explicit row clicks and Return have their own open actions.
                         store.selectedKeys = $0
-                        openSelection(userInitiated: true)
                     })) {
                         if !importer.transientItems.isEmpty && !firstGroupIsToday {
                             Section {

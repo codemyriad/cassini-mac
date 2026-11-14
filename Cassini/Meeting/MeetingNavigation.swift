@@ -121,14 +121,6 @@ import Observation
     private var fixturePosition = 192_000
     private var fixturePlaying = true
     init(meeting: LibraryMeeting, fileURL: URL? = nil, lease: AnyObject? = nil, frozen: Bool = false) {
-        var meeting = meeting
-        #if DEBUG
-        if frozen, ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
-           LibraryLaunchContext.argument("-CassiniSummaryFixture") == "YES" {
-            let timestamp = LibraryLaunchContext.argument("-CassiniLongMeetingFixture") == "YES" ? "00:31:10" : "00:03:12"
-            meeting.summaryMarkdown = "# Meeting summary\n\nReview the budget and agree on the next steps.\n\n- [ ] Share the updated figures.\n- Review the decision at \(timestamp)."
-        }
-        #endif
         self.meeting = meeting; self.fileURL = fileURL?.standardizedFileURL; self.frozen = frozen
         tab = meeting.summaryMarkdown == nil ? .transcript : .summary
         let audio = SessionPlayback(); self.audio = audio; listen = ListenController(playback:audio); speakerSample=SpeakerSample(playback:audio)

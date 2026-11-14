@@ -207,7 +207,20 @@ final class LibraryStore {
                 }
                 guard started, generation == epoch else { return }
                 let retained = Set(LibraryLocationModel.shared.location.pendingMoves.map { LibraryLocation.canonical(URL(fileURLWithPath:$0.id)) })
-                let result = LibraryScan.merging(([context.root] + context.previousRoots).compactMap { rootSnapshots[$0] },retaining:retained)
+                var result = LibraryScan.merging(([context.root] + context.previousRoots).compactMap { rootSnapshots[$0] },retaining:retained)
+                #if DEBUG
+                // Keep the summary fixture in every snapshot, so navigation refresh
+                // exercises the same summary-bearing model as initial selection.
+                if context.screenshot, ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
+                   LibraryLaunchContext.argument("-CassiniSummaryFixture") == "YES" {
+                    let timestamp = LibraryLaunchContext.argument("-CassiniLongMeetingFixture") == "YES" ? "00:31:10" : "00:03:12"
+                    result.meetings = result.meetings.map { meeting in
+                        var meeting = meeting
+                        meeting.summaryMarkdown = "# Meeting summary\n\nReview the budget and agree on the next steps.\n\n- [ ] Share the updated figures.\n- Review the decision at \(timestamp)."
+                        return meeting
+                    }
+                }
+                #endif
                 snapshot = result; offline = primaryFailed
                 if let folder = selectionFolderWhenAvailable,
                    let selected = result.meetings.first(where:{ LibraryLocation.canonical($0.folder) == folder }) {

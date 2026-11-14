@@ -48,6 +48,18 @@ jobs:
     - name: Prepare hosted display (fixtures are in the shared app)
       run: |
         python3 scripts/hosted-display.py
+    - name: Meeting navigation and summary regressions
+      timeout-minutes: 5
+      env:
+        TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
+        TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'
+      run: |
+        xcodebuild test-without-building -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" \
+          -destination 'platform=macOS' -parallel-testing-enabled NO \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingTitleAndHiddenControls \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingSummaryIsFirstAndFindOpensTranscript \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testSummaryTimestampRevealsOffscreenTranscriptWhilePaused \
+          -resultBundlePath build/MeetingRegressions.xcresult
     - name: Render Library boards
       # D66: run43118098593 reached41 passing tests/18.46 min, then the old19 min
       # guard killed a progressing suite. These are outer hang guards,
