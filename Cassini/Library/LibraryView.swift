@@ -30,11 +30,14 @@ struct LibraryView: View {
     private var showsFirstRun: Bool {
         store.loaded && store.meetings.isEmpty && importer.transientItems.isEmpty && !store.offline
     }
-    private var showsSplit: Bool { navigation.detail == nil || navigation.detail?.meeting.state.lifecycle != .saved }
+    private var showsSplit: Bool { navigation.savedDetail == nil }
+    private var recordingSelected: Bool {
+        store.selected.map { $0.state.lifecycle != .saved } == true && !search.visible && !showsFirstRun
+    }
     var body: some View {
         GeometryReader { geometry in
             Group {
-                if let detail = navigation.detail, detail.meeting.state.lifecycle == .saved {
+                if let detail = navigation.savedDetail {
                     MeetingView(model:detail,format:store.format)
                 }
                 else if navigation.loading { ProgressView() }
@@ -70,7 +73,7 @@ struct LibraryView: View {
         .navigationTitle(navigation.detail?.meeting.title ?? UXText.text("app.name"))
         .toolbar(removing: .title)
         .toolbar {
-            if let detail = navigation.detail, detail.meeting.state.lifecycle == .saved {
+            if let detail = navigation.savedDetail {
                 ToolbarItem(placement:.navigation) {
                     LibraryToolbarAction(title:"",label:UXText.text("common.backToLibrary"),identifier:"meeting-back",style:.back) { navigation.back() }
                 }
@@ -117,10 +120,11 @@ struct LibraryView: View {
                     toolbarControl
                         .padding(.trailing, emptyToolbar ? 0 : 10)
                         .frame(width: search.visible ? 388 : emptyToolbar ? nil : 328, alignment: emptyToolbar ? .leading : .trailing)
-                    if search.visible || !emptyToolbar { toolbarTitle }
+                    if search.visible || (!emptyToolbar && !recordingSelected) { toolbarTitle }
                 }
             }
-            if let meeting = store.selected, meeting.state.lifecycle != .saved, !search.visible {
+            if recordingSelected, let meeting = store.selected {
+                ToolbarItem(placement:.principal) { Color.clear.frame(width:1) }
                 ToolbarItem(placement:.primaryAction) {
                     LibraryToolbarAction(title:"",label:UXText.text("meeting.moreActions"),identifier:"recording-more-actions",style:.more,menu:{
                         LibraryToolbarAction.menu([.init(title:UXText.text("details.menu"),identifier:"recording-details") { recordingDetails.show(meeting) }])
@@ -170,7 +174,7 @@ struct LibraryView: View {
         }
         .onChange(of: store.selectedKeys) { _, _ in
             sessionPlayback.stop()
-            if let meeting = store.selected, meeting.state.lifecycle != .saved {
+            if let meeting = store.selected, meeting.state.lifecycle == .recording {
                 navigation.open(meeting, frozen:store.context.screenshot)
             } else if let detail = navigation.detail, detail.meeting.state.lifecycle != .saved {
                 navigation.back()
@@ -292,7 +296,7 @@ struct LibraryView: View {
                                         .simultaneousGesture(TapGesture().onEnded {
                                             if NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
                                                 store.selectedKey = meeting.libraryKey
-                                                if meeting.state.lifecycle != .saved {
+                                                if meeting.state.lifecycle == .recording {
                                                     navigation.open(meeting, frozen:store.context.screenshot)
                                                 }
                                             }

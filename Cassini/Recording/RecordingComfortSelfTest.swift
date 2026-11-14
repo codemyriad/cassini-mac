@@ -168,6 +168,26 @@ import SwiftUI
             try require(editor.voiceCount == 2,"browser source count updates")
             let saving = try LibraryScanner(root:root,activity:CaptureActivitySnapshot([browser.manifest.id:.saving]))
                 .scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("saving browser meeting")
+            let navigation = MeetingNavigation.shared
+            let openLibrary = navigation.openLibrary
+            navigation.openLibrary = nil
+            defer { navigation.back(); navigation.openLibrary = openLibrary }
+            let keyboardWindow = NSWindow(contentRect:.init(x:0,y:0,width:400,height:200),styleMask:[.titled],backing:.buffered,defer:false)
+            keyboardWindow.setAccessibilityIdentifier("cassini-library-window")
+            keyboardWindow.contentView = NSHostingView(rootView:Button("Stop") {}.buttonStyle(.plain))
+            keyboardWindow.makeFirstResponder(keyboardWindow.contentView)
+            func requireLibraryKeys() throws {
+                for code: UInt16 in [49,123,124] {
+                    let event = NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:[],timestamp:ProcessInfo.processInfo.systemUptime,windowNumber:keyboardWindow.windowNumber,context:nil,characters:"",charactersIgnoringModifiers:"",isARepeat:false,keyCode:code)!
+                    try require(AppDelegate.handleListeningSelfTest(event) != nil,"live and Saving panes pass Space and arrows to the focused Library control")
+                }
+            }
+            navigation.open(browserMeeting)
+            try require(navigation.detail != nil && navigation.savedDetail == nil,"live selection leaves Library keyboard routing active")
+            try requireLibraryKeys()
+            navigation.update([saving],offline:false)
+            try require(navigation.detail?.meeting.state.lifecycle == .saving && navigation.savedDetail == nil,"Saving leaves Library keyboard routing active")
+            try requireLibraryKeys()
             editor.update(saving)
             let savingTime = editor.elapsedMs
             try require(editor.saving,"browser Saving remains explicit after capture ownership ends")
@@ -178,9 +198,17 @@ import SwiftUI
             browserUptime += 1000
             try require(editor.elapsedMs == savingTime,"lifecycle-only Saving holds the producer end with no start timestamp")
             try browser.finish()
+            let finished = try LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("finished browser meeting")
+            try require(finished.state.lifecycle == .saved,"browser finalization is saved")
+            navigation.update([finished],offline:false)
+            try require(navigation.detail == nil,"Saving completion returns to the Library preview without pushing MeetingView")
+            navigation.open(finished)
+            try require(navigation.savedDetail === navigation.detail && navigation.savedDetail != nil,"explicit saved opens retain full-window playback routing")
+            navigation.update([finished],offline:false)
+            try require(navigation.savedDetail != nil,"saved refresh preserves explicit navigation")
             try? FileManager.default.removeItem(at:root.deletingLastPathComponent())
             let menu = try JSONSerialization.jsonObject(with:JSONEncoder().encode(payload))
-            let report: [String:Any] = ["recordingComfort":true,"sameNameCaptureIsolation":true,"shortcutRegistered":true,"existingNotesPreserved":true,"titleReset":true,"browserClockAndSources":true,"savingUsesProducerEnd":true,"diskWarningLifecycle":true,"silentMicAfter20Seconds":true,"assertionReleasedAfterStop":true,"menu":menu]
+            let report: [String:Any] = ["recordingComfort":true,"sameNameCaptureIsolation":true,"shortcutRegistered":true,"existingNotesPreserved":true,"titleReset":true,"browserClockAndSources":true,"savingUsesProducerEnd":true,"libraryKeyboardRouting":true,"savingCompletionStaysInLibrary":true,"diskWarningLifecycle":true,"silentMicAfter20Seconds":true,"assertionReleasedAfterStop":true,"menu":menu]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10]))
             exit(0)
         } catch {

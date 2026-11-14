@@ -930,6 +930,8 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(window.textViews["recording-notes"].exists)
         XCTAssertFalse(text("Pinned to the moment you type it.",in:window))
         capture(window,name:"recording")
+        XCTAssertFalse(window.staticTexts["library-toolbar-title"].exists)
+        XCTAssertGreaterThanOrEqual(window.buttons["recording-more-actions"].frame.maxX,window.frame.maxX - 48)
         XCTAssertFalse(window.staticTexts["recording-header-title"].exists)
         XCTAssertFalse(window.buttons["recording-back"].exists)
         XCTAssertTrue(window.buttons["toolbar-import"].exists)
@@ -943,6 +945,9 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.buttons["preview-read-transcript"].waitForExistence(timeout:5))
         liveRow.click()
         XCTAssertTrue(title.waitForExistence(timeout:5))
+        app.typeKey(XCUIKeyboardKey(rawValue:"\u{F70D}"),modifierFlags:.shift)
+        XCTAssertTrue(app.menuItems["library-keyboard-rename"].waitForExistence(timeout:5),"Live selection retains the Library keyboard menu")
+        app.typeKey(.escape,modifierFlags:[])
         app.typeKey("f",modifierFlags:.command)
         app.typeKey(.escape,modifierFlags:[])
         XCTAssertTrue(title.waitForExistence(timeout:5),"Search cancellation preserves the live pane")
@@ -955,6 +960,8 @@ final class LibraryBoards: XCTestCase {
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.textFields["recording-title"].waitForExistence(timeout:20))
         XCTAssertFalse(window.buttons["recording-check-microphone"].exists)
+        XCTAssertFalse(window.staticTexts["library-toolbar-title"].exists)
+        XCTAssertGreaterThanOrEqual(window.buttons["recording-more-actions"].frame.maxX,window.frame.maxX - 48)
         for id in ["recording-microphone-meter","recording-others-meter"] {
             XCTAssertGreaterThanOrEqual(window.progressIndicators[id].frame.width,96)
         }
@@ -988,6 +995,11 @@ final class LibraryBoards: XCTestCase {
         window.buttons["recording-page-stop"].click()
         XCTAssertTrue(title.exists,"Stop retains the live pane while Saving starts")
         XCTAssertTrue(window.staticTexts["Saving…"].waitForExistence(timeout:5))
+        // Re-select while the producer is flushing; completion must stay in split.
+        window.outlines.staticTexts["Saved meeting for switch"].click()
+        liveRow.click()
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:saved,object:nil)],timeout:10),.completed)
+        XCTAssertFalse(window.buttons["meeting-back"].exists)
     }
     @MainActor func testRecordingTitleAndHiddenControls() throws {
         let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])

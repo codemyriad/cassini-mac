@@ -324,7 +324,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            event.modifierFlags.intersection([.command,.option,.control,.shift]).isEmpty,
            trackingMenus.isEmpty,
            let window = event.window ?? NSApp.keyWindow,
-           let detail = MeetingNavigation.shared.detail,
+           let detail = MeetingNavigation.shared.savedDetail,
            detail.canUseListeningShortcuts(in:window) {
             detail.stopListening()
             return nil
@@ -334,7 +334,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            modifiers == [.command,.option] || modifiers == [.command,.option,.shift],
            trackingMenus.isEmpty,
            let window = event.window ?? NSApp.keyWindow,
-           let detail = MeetingNavigation.shared.detail,
+           let detail = MeetingNavigation.shared.savedDetail,
            detail.canUseListeningShortcuts(in:window) {
             let direction = event.keyCode == 125 ? 1 : -1
             if modifiers.contains(.shift) { detail.stepListeningSpeaker(direction) }
@@ -348,7 +348,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            window.accessibilityIdentifier() == "cassini-library-window",
            window.attachedSheet == nil, NSApp.modalWindow == nil,
            !(window.firstResponder is NSText), !(window.firstResponder is NSTableView),
-           MeetingNavigation.shared.detail == nil,
+           MeetingNavigation.shared.savedDetail == nil,
            !MeetingNavigation.shared.loading, !LibrarySearchModel.shared.visible,
            !LibraryMoveCoordinator.shared.busy,
            LibraryStore.shared.stepSelection(event.keyCode == 125 ? 1 : -1) {
@@ -363,7 +363,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            let window = event.window ?? NSApp.keyWindow,
            window.accessibilityIdentifier() == "cassini-library-window",
            window.attachedSheet == nil, NSApp.modalWindow == nil,
-           !(window.firstResponder is NSText), MeetingNavigation.shared.detail == nil,
+           !(window.firstResponder is NSText), MeetingNavigation.shared.savedDetail == nil,
            !MeetingNavigation.shared.loading, !LibrarySearchModel.shared.visible,
            !LibraryMoveCoordinator.shared.busy, let meeting = LibraryStore.shared.selected {
             SessionPlaybackController.stopAll(); MeetingNavigation.shared.open(meeting)
@@ -372,7 +372,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let window = event.window ?? NSApp.keyWindow,
            window.accessibilityIdentifier() == "cassini-library-window",
            window.attachedSheet == nil, NSApp.modalWindow == nil,
-           !(window.firstResponder is NSText), MeetingNavigation.shared.detail == nil,
+           !(window.firstResponder is NSText), MeetingNavigation.shared.savedDetail == nil,
            !MeetingNavigation.shared.loading, !LibrarySearchModel.shared.visible,
            event.modifierFlags.intersection([.command,.option,.control]).isEmpty,
            ((event.keyCode == 109 && event.modifierFlags.contains(.shift)) || event.charactersIgnoringModifiers == "\u{F735}"),
@@ -386,7 +386,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             editor.keyDown(with: event)
             return nil
         }
-        if window.accessibilityIdentifier() == "cassini-library-window", let detail = MeetingNavigation.shared.detail {
+        if window.accessibilityIdentifier() == "cassini-library-window", let detail = MeetingNavigation.shared.savedDetail {
             if event.keyCode == 49, event.modifierFlags.intersection([.shift,.command,.option,.control]).isEmpty {
                 if let button = window.firstResponder as? NSButton, button.isEnabled {
                     button.performClick(nil); return nil

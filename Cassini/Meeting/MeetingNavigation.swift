@@ -7,6 +7,8 @@ import Observation
 @MainActor @Observable final class MeetingNavigation {
     static let shared = MeetingNavigation()
     var detail: MeetingDetailModel?
+    /// Only saved meetings own full-window navigation and playback shortcuts.
+    var savedDetail: MeetingDetailModel? { detail?.meeting.state.lifecycle == .saved ? detail : nil }
     private(set) var loading = false
     @ObservationIgnored private var readTask: Task<Void, Never>?
     @ObservationIgnored var openLibrary: (() -> Void)? = { ApplicationWindows.library() }
@@ -57,6 +59,10 @@ import Observation
         guard let detail, detail.fileURL == nil else { return }
         // An outage only stops playback: the page stays, and so does its transcript (#118 r2).
         guard !offline, let meeting = meetings.first(where: { $0.libraryKey == detail.meeting.libraryKey }) else { detail.suspend(); return }
+        // A live pane becoming saved returns to the selected Library preview.
+        if detail.meeting.state.lifecycle != .saved && meeting.state.lifecycle == .saved {
+            back(); return
+        }
         if meeting.audioFiles != detail.meeting.audioFiles {
             detail.close(); self.detail = MeetingDetailModel(meeting: meeting); return
         }

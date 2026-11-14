@@ -18,7 +18,7 @@ struct AppCommands: Commands {
         if search.visible { return search.searching ? nil : search.selected.flatMap { search.meeting($0) } }
         return detail?.meeting ?? LibraryStore.shared.selected
     }
-    private var detail: MeetingDetailModel? { MeetingNavigation.shared.detail }
+    private var detail: MeetingDetailModel? { MeetingNavigation.shared.savedDetail }
     var body: some Commands {
         let _ = ApplicationWindows.install(window:openWindow,settings:openSettings)
         CommandGroup(after: .appInfo) {
