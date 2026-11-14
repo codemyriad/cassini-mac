@@ -51,7 +51,14 @@ import CassiniModels
     }
     @MainActor private final class Action: NSObject {
         static let shared = Action()
-        @objc func show(_ sender: Any?) { NSApp.orderFrontStandardAboutPanel(options:[.credits:ModelNotices.credits]) }
+        @objc func show(_ sender: Any?) {
+            var options: [NSApplication.AboutPanelOptionKey:Any] = [.credits:ModelNotices.credits]
+            if let mark = CassiniBrandMark.image(forHeight:64)?.copy() as? NSImage {
+                mark.size = NSSize(width:98,height:64)
+                options[.applicationIcon] = mark
+            }
+            NSApp.orderFrontStandardAboutPanel(options:options)
+        }
     }
     #if DEBUG
     static var menuConfigured: Bool {

@@ -26,6 +26,8 @@ struct CassiniBrandMark: View {
 
     private static let images = cache
 
+    static func image(forHeight height: CGFloat) -> NSImage? { images[assetName(forHeight:height)] }
+
     var body: some View {
         let width = round(height * 184.0 / 120.0)
         if let image = Self.images[Self.assetName(forHeight: height)] {

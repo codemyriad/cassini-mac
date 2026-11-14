@@ -1,52 +1,60 @@
 # Wave 5 Mac alignment (D-973)
 
-The shared contracts are in `codemyriad/cassini-ux`. This pass restores the
-four Settings tabs from HARMONY §10: Recording, Transcription, Library and
-Browser companion. D34.2's Sparkle controls remain available as an Updates
-group after the Recording controls. The Transcription network explanation
-includes update checks only when a real updater is available (D15).
+First run uses COMPONENTS §8 / L-27: the pinned Saturn mark, two left-aligned
+headline lines at 64 pt in the platform font, and Record at the start of a
+static waveform. The waveform uses square 4 pt bars, the brand accent role,
+and a fade at both ends. Its provisional count, height pattern and geometry
+are named constants in `FirstRunWave` and `FirstRunHeroMetrics`. The Library
+heading is available to accessibility without a visible toolbar title.
 
-Settings keeps the local companion setup guide reachable after a healthy
-connection, so another supported browser can be added. Connection status,
-repair guidance, per-tab reload advice, and no-browser gating continue to use
-the existing production state and shared strings (D37.4, D39).
+The hero scales each sentence to remain on one line in narrow windows. A
+compact layout keeps Record reachable at the 760 × 480 minimum; the content
+can scroll vertically. The decorative wave has no animation, audio input,
+permission request or accessibility stops. Record uses the existing consent
+and capture path. The native About panel reuses the cached Saturn mark.
 
-## First-run dependency
+The how-to, shortcut and current privacy line follow the waveform. Privacy
+wording remains the published desktop wording until L-09 closes; a custom
+Library location retains its existing folder-path disclosure. No phone backup
+qualifier is shown on Mac. Shared catalog bytes are pinned to
+`31973ff9784fcc66c1c7993b903a336e8f2c1432`, which publishes both hero lines in
+all six languages; neither vendored copy is edited independently.
 
-D-1010's 14 November comment advances the desktop hero under D-956; phones
-remain gated by D-937. COMPONENTS §8 specifies the Saturn mark, two left-aligned
-headline lines, Record with a decorative waveform, the how-to line and the
-existing privacy wording until L-09 closes.
+Settings has HARMONY §10's four tabs: Recording, Transcription, Library and
+Browser companion. D34.2's Sparkle controls are an Updates group after the
+Recording controls. The Transcription network explanation mentions update
+checks only when a real updater is available (D15).
 
-The shared catalog at `2d4415dc89ff50850e018fef7dd22c8c89582f63` (this app's pin)
-and the current shared repository contain neither hero headline. The referenced
-`LibraryEmpty` JSON/PNG still draws the old microphone layout. D-956's comment
-also says not to infer the unbriefed layout from the Phase 1 briefs. This PR
-therefore preserves current first-run behaviour and approved privacy copy.
-Finishing the hero requires published localized strings and a current desktop
-build brief; do not add English literals or modify the vendored catalog locally.
-The local fixture renderer now supports first run and all four Settings pages
-for the eventual light/dark comparison.
+Settings keeps Add from Cassini reachable after a healthy companion connection,
+so another supported browser can be added. Connection status, repair guidance,
+per-tab reload advice and no-browser gating retain the existing production
+state and shared strings. Tests query the link by identifier because macOS
+exposes a link-style SwiftUI Button as an AXLink.
 
 ## Verification
 
-- `python3 scripts/check-ux-copy.py`: catalog pins, allowed platforms and keys.
-- `python3 scripts/check-brand-tokens.py`: shared token parity and colour usage.
-- `python3 scripts/test-render-local-ux.py`: all page selections, dimensions,
-  completion/error handling and ownership of fixture processes.
-- `LibraryBoards.testSettingsRecordingPreferenceAndTabs`: four tabs, first-record
-  preference, shortcut sheet, Updates controls, Library actions and Browser tab.
+- `scripts/check-ux-copy.py`: both catalog copies, pins, platforms and used keys.
+- `scripts/check-brand-tokens.py`: shared token parity and colour usage.
+- `scripts/test-render-local-ux.py`: all four Settings pages, first run, language,
+  theme, dimensions, errors and ownership of fixture processes.
+- `scripts/test-export-ux-boards.py`: paired light/dark screenshot inventory.
+- `LocalizationTests`: all catalog translations and placeholder handling.
+- `LibraryBoards.testFirstRun`, `testFrenchLibraryAndFirstRunFitAtBoardSize`
+  and `testFirstRunHeroFitsMinimumWindow`: localized hero, one-line sentences,
+  hidden Library heading, reachable Record and first-record consent.
+- `LibraryBoards.testSettingsRecordingPreferenceAndTabs`: four tabs, existing
+  preferences, shortcut sheet, Updates controls, Library actions and Browser tab.
 - `LibraryBoards.testCompanionHealthUsesExplicitTabAdviceAndFileCheckedSetup`:
-  healthy connection can open the local guide, explicit repair/reload states.
-- `LibraryBoards.testSettingsTranscriptionModelChoices`: existing model controls
-  and no update-network claim in fixture builds without an updater.
+  healthy connection opens/closes the local guide; explicit repair/reload states.
+- `LibraryBoards.testSettingsTranscriptionModelChoices`: model controls and no
+  update-network claim in builds without an updater.
+- `SettingsSelfTest`: About assets and existing licences remain available.
 
 ## Visual evidence
 
-The `d973-pr-shots/` folder contains light/dark before, after and difference
-images generated with the shared `tools/pr-shots/pr-shots.py`. These are frozen
-renders of Cassini's own views on the local Mac, not desktop screenshots or
-proof of user interaction. Source changes are from `973a66c`; the before build
-uses main's Settings view with the same fixture harness. The disconnected
-Browser page comparison covers the tab strip; the connected Add from Cassini
-interaction is covered separately by the UI regression.
+`d973-pr-shots/` contains light/dark before, after and difference images generated
+with the shared `tools/pr-shots/pr-shots.py`. These are frozen renders of Cassini's
+own views on the local Mac, not desktop captures or proof of user interaction.
+The before build uses main's relevant views with the same fixture harness. The
+disconnected Browser comparison covers the tab strip; the connected guide
+interaction is covered separately by the hosted UI regression.
