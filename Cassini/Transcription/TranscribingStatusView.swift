@@ -6,6 +6,7 @@ import IOKit.ps
 /// Status belongs to the meeting pane; the Library keeps its compact row badge.
 struct TranscribingStatusView: View {
     let meeting: LibraryMeeting
+    var horizontalPadding: CGFloat = 28
     @State private var showingDetails = false
     @State private var queue = TranscriptionQueue.shared
     @State private var move = LibraryMoveCoordinator.shared
@@ -56,7 +57,7 @@ struct TranscribingStatusView: View {
                 ProgressView().progressViewStyle(.linear).tint(CassiniTheme.accent)
                     .frame(height:3).accessibilityLabel(presentation.status)
             }
-        }.padding(.horizontal,28).padding(.vertical,14)
+        }.padding(.horizontal,horizontalPadding).padding(.vertical,14)
             .font(.system(size:13)).foregroundStyle(CassiniTheme.ink)
             .accessibilityElement(children:.contain).accessibilityIdentifier("transcribing-controls")
             .onChange(of:meeting.libraryKey) { _,_ in showingDetails = false }

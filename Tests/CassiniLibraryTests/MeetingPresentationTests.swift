@@ -5,6 +5,46 @@ import CassiniKit
 @testable import CassiniLibrary
 
 struct MeetingPresentationTests {
+    @Test func timestampRevelationUsesSoundingWordsAndAsideHostsRatherThanReadingOrder() throws {
+        let turns = MeetingPresentation.turns([
+            .init(speaker: "host", startMs: 0, endMs: 800, text: "Agreed."),
+            .init(speaker: "guest", startMs: 750, endMs: 1100, text: "Yes."),
+            .init(speaker: "host", startMs: 1000, endMs: 1800, text: "Thanks."),
+            .init(speaker: "other", startMs: 2500, endMs: 3000, text: "Next."),
+            .init(speaker: "silent", startMs: 2000, endMs: 2000, text: ".")])
+        let aside = try #require(turns.first { $0.speaker == "guest" })
+        let host = try #require(aside.host)
+        let next = try #require(turns.first { $0.speaker == "other" })
+        let reordered = Array(turns.reversed())
+        #expect(MeetingPresentation.readingTurn(at: 900, in: reordered) == host)
+        #expect(MeetingPresentation.readingTurn(at: 2000, in: reordered) == next.id)
+        #expect(MeetingPresentation.readingTurn(at: 3500, in: reordered) == next.id)
+        #expect(MeetingPresentation.readingTurn(at: 0, in: []) == nil)
+    }
+    @Test(arguments: [true, false]) func summariesRequireVerifiedAttachmentsForExternalAndImportedMeetings(trusted: Bool) throws {
+        let f = try Fixture()
+        let base = try Data(contentsOf: f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus"))
+        let parsed = try CassiniReader.read(base)
+        let summary = "# Summary\n\nA decision at 00:00:04."
+        var manifest = try #require(parsed.manifest?.raw)
+        manifest = try manifest.setting("attachments", to: .array([.object([
+            ("name", .string("summary.md")), ("mime", .string("text/markdown")),
+            ("contentBase64", .string(Data(summary.utf8).base64EncodedString()))])]))
+        if !trusted {
+            manifest = try manifest.setting("integrity", to: #require(manifest["integrity"]).setting("matchPolicy", to: .string("future-policy")))
+        }
+        let speaker = try #require(parsed.manifest?.speakers.first?.id)
+        let body = try JSONSerialization.data(withJSONObject: ["items": [["speaker": speaker, "startMs": 0, "endMs": 100, "text": "Decision."]]])
+        let tags = try PortableMeetingTags.make(manifest: manifest, transcript: body, wordCount: 1)
+        let url = f.root.appendingPathComponent("Summary.opus")
+        _ = try OpusStreamFile.rewrite(base, tags: tags, to: url)
+        let file = try CassiniReader.read(contentsOf: url)
+        #expect(file.manifest?.summaryMarkdown == summary)
+        let external = MeetingPresentation.external(file, url: url)
+        let imported = try LibraryImport.copy(url, into: f.root.appendingPathComponent("Library"))
+        #expect(external.summaryMarkdown == (trusted ? summary : nil))
+        #expect(imported.summaryMarkdown == (trusted ? summary : nil))
+    }
     @Test func openingVerifiedWordsKeepsTheirIdentityAndText() throws {
         let f = try Fixture()
         let base = try Data(contentsOf:f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus"))

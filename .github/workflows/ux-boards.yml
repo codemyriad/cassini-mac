@@ -48,8 +48,8 @@ jobs:
     - name: Prepare hosted display (fixtures are in the shared app)
       run: |
         python3 scripts/hosted-display.py
-    - name: Speaker dialog regressions
-      timeout-minutes: 5
+    - name: Speaker and meeting regressions
+      timeout-minutes: 7
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
         TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'
@@ -59,6 +59,15 @@ jobs:
           -destination 'platform=macOS' -parallel-testing-enabled NO \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSpeakerNamesClearMergeUndoAndReopen \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSpeakerDialogActionsAtMinimumWindowHeight \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingTitleAndHiddenControls \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingSummaryIsFirstAndFindOpensTranscript \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testSummaryTimestampRevealsOffscreenTranscriptWhilePaused \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingBoard \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingEditedTitleSurvivesSavedSelection \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testKeyboardSelectionOfRecordingRetiresSavedCommands \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testLibraryWindowReopensSelectedMeetingWithBulkExport \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testActiveTranscribingStatusDetailsAndStopKeepsProgress \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testFrenchLibraryPhrasesWithAmericanRegionalSettings \
           -resultBundlePath build/UXSpeakers.xcresult \
           2>&1 | tee build/ux-speakers.log
     - name: Render Library boards
@@ -113,9 +122,13 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordFirstBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testActiveTranscribingStatusDetailsAndStopKeepsProgress \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingBoard \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingSummaryIsFirstAndFindOpensTranscript \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testSummaryTimestampRevealsOffscreenTranscriptWhilePaused \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingFindIsLocalAndKeepsTransportAndSidebar \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingScrolledHeaderKeepsFindAndFloatingPlayerReachable \
           -resultBundlePath build/UXBoardsDark.xcresult \
           2>&1 | tee build/ux-boards-dark.log
-        echo "Dark Library boards: 26 tests (31 boards), $((SECONDS - dark_start)) s wall" >> "$GITHUB_STEP_SUMMARY"
+        echo "Dark Library boards: $((SECONDS - dark_start)) s wall" >> "$GITHUB_STEP_SUMMARY"
     - name: Library boards test durations
       if: always()
       run: |

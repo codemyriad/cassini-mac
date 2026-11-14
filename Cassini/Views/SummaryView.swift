@@ -5,10 +5,33 @@ import SwiftUI
 /// the transcript.
 struct SummaryView: View {
     let markdown: String
-    let session: SessionModel
+    @Binding var tickedItems: Set<Int>
+    let goToTranscript: (Int) -> Void
+
+    init(markdown: String, session: SessionModel) {
+        self.markdown = markdown
+        _tickedItems = Binding(get: { session.tickedSummaryItems }, set: { session.tickedSummaryItems = $0 })
+        goToTranscript = { session.goToTranscript(ms: $0) }
+    }
+
+    init(markdown: String, meeting: MeetingDetailModel) {
+        self.markdown = markdown
+        _tickedItems = Binding(get: { meeting.tickedSummaryItems }, set: { meeting.tickedSummaryItems = $0 })
+        goToTranscript = { ms in
+            meeting.tab = .transcript
+            meeting.revealPositionMs = Int64(ms)
+            meeting.seek(ms)
+        }
+    }
 
     var body: some View {
         ScrollView {
+            content.frame(maxWidth: 640, alignment: .leading)
+                .frame(maxWidth: .infinity).padding(.horizontal, 20).padding(.vertical, 28)
+        }.cassiniTopScrollEdge()
+    }
+
+    var content: some View {
             VStack(alignment: .leading, spacing: 18) {
                 ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
                     switch block {
@@ -28,15 +51,10 @@ struct SummaryView: View {
                     }
                 }
             }
-            .frame(maxWidth: 640, alignment: .leading)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 28)
-        }
-        .cassiniTopScrollEdge()
+            .frame(maxWidth: .infinity, alignment: .leading)
         .environment(\.openURL, OpenURLAction { url in
             guard url.scheme == "cassini", url.host == "seek", let ms = Int(url.lastPathComponent) else { return .systemAction }
-            session.goToTranscript(ms: ms)
+            goToTranscript(ms)
             return .handled
         })
     }
@@ -46,9 +64,9 @@ struct SummaryView: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             if let checked = item.checked {
                 Toggle(isOn: Binding(
-                    get: { session.tickedSummaryItems.contains(key) != checked },
+                    get: { tickedItems.contains(key) != checked },
                     set: { on in
-                        if on != checked { session.tickedSummaryItems.insert(key) } else { session.tickedSummaryItems.remove(key) }
+                        if on != checked { tickedItems.insert(key) } else { tickedItems.remove(key) }
                     }
                 )) { EmptyView() }
                     .toggleStyle(.checkbox)

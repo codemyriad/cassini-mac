@@ -146,6 +146,19 @@ import Observation
             report["explicitReplayResumesTranscriptFollow"] = preview.followRevision > revision && preview.canFollowTranscript
         } else { report["asideActionSelectsOwnRunAndHost"] = false }
         preview.close()
+        let find = MeetingFindModel()
+        report["findDoesNotFocusOnInitialMount"] = !find.consumeFocusRequest()
+        find.requestFocus()
+        report["findConsumesFocusOnce"] = find.consumeFocusRequest() && !find.consumeFocusRequest()
+        find.requestFocus()
+        report["findHandlesLaterFocusRequest"] = find.consumeFocusRequest() && !find.consumeFocusRequest()
+        var refreshed = fixture
+        refreshed.state.transcript = .done
+        let cached = MeetingDetailModel(meeting:refreshed,frozen:true)
+        let findRevision = cached.turnsRevision
+        refreshed.state.transcript = .running
+        cached.meeting = refreshed
+        report["activeInvalidatesFind"] = cached.turns.isEmpty && cached.turnsRevision > findRevision
         let skippedKeys = ScrollEdgeChrome.nativeCoverageKeys
         let reportValid = report.filter({ $0.key != "audioDevicesOpened" }).allSatisfy { key, value in
             if key == "scrollEdgeNativeMacOS26Available" {

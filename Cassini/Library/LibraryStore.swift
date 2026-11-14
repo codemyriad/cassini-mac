@@ -37,12 +37,16 @@ struct LibraryLaunchContext {
            let name = argument("-CassiniScreenshot"), ["library", "first-run", "meeting", "record-first", "recording", "received", "export", "search", "settings-recording", "settings-transcription"].contains(name),
            let path = argument("-CassiniFixture"), let clock = argument("-CassiniNow"),
            let date = ISO8601DateFormatter().date(from: clock) {
-            context.root = URL(fileURLWithPath: path).appendingPathComponent("root")
+            let directory = ScreenshotFixture.longMeetingDirectory ?? URL(fileURLWithPath: path)
+            context.root = directory.appendingPathComponent("root")
             context.now = date; context.timeZone = TimeZone(identifier: "Europe/Rome")!; context.screenshot = true; context.screenshotDark = screenshotDark
-            if let bytes = try? Data(contentsOf: URL(fileURLWithPath: path).appendingPathComponent("activity.json")),
+            if let bytes = try? Data(contentsOf: directory.appendingPathComponent("activity.json")),
                let phases = try? JSONDecoder().decode([String: String].self, from: bytes) {
                 for (id, phase) in phases { if let id = UUID(uuidString: id) { context.activity[id] = phase == "saving" ? .saving : .recording } }
             }
+            // Accessibility checks for the idle Record action use the same
+            // read-only meetings with no capture activity, rather than a live header.
+            if argument("-CassiniFixtureActivity") == "none" { context.activity = [:] }
         }
         #endif
         #if DEBUG
@@ -203,7 +207,30 @@ final class LibraryStore {
                 }
                 guard started, generation == epoch else { return }
                 let retained = Set(LibraryLocationModel.shared.location.pendingMoves.map { LibraryLocation.canonical(URL(fileURLWithPath:$0.id)) })
-                let result = LibraryScan.merging(([context.root] + context.previousRoots).compactMap { rootSnapshots[$0] },retaining:retained)
+                var result = LibraryScan.merging(([context.root] + context.previousRoots).compactMap { rootSnapshots[$0] },retaining:retained)
+                #if DEBUG
+                // Reading boards use the completed fixture; active status has its
+                // own launch flag. Normalize snapshots, never vendored bytes.
+                if context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "meeting",
+                   LibraryLaunchContext.argument("-CassiniTranscribingPreview") != "YES" {
+                    for index in result.meetings.indices where result.meetings[index].title == "Client call, Rossi & Partners" {
+                        result.meetings[index].state.transcript = .done
+                        result.meetings[index].state.etaMinutes = nil
+                    }
+                }
+                // Keep the summary fixture in every snapshot, so navigation refresh
+                // exercises the same summary-bearing model as initial selection.
+                if context.screenshot, ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
+                   LibraryLaunchContext.argument("-CassiniSummaryFixture") == "YES" {
+                    let timestamp = LibraryLaunchContext.argument("-CassiniLongMeetingFixture") == "YES" ? "00:31:10" : "00:03:12"
+                    result.meetings = result.meetings.map { meeting in
+                        var meeting = meeting
+                        let decision = LibraryLaunchContext.argument("-CassiniLongMeetingFixture") == "YES" ? "\n\n\(timestamp)" : "\n- Review the decision at \(timestamp)."
+                        meeting.summaryMarkdown = "# Meeting summary\n\nReview the budget and agree on the next steps.\n\n- [ ] Share the updated figures." + decision
+                        return meeting
+                    }
+                }
+                #endif
                 snapshot = result; offline = primaryFailed
                 if let folder = selectionFolderWhenAvailable,
                    let selected = result.meetings.first(where:{ LibraryLocation.canonical($0.folder) == folder }) {
@@ -216,7 +243,7 @@ final class LibraryStore {
                 let validKeys = Set(meetings.map(\.libraryKey))
                 let surviving = selectedKeys.intersection(validKeys)
                 if surviving.isEmpty {
-                    let initial = context.screenshot ? (meetings.first(where:{ $0.title == "Budget review" })?.libraryKey ?? meetings.first?.libraryKey) : meetings.first?.libraryKey
+                    let initial = context.screenshot ? (meetings.first(where:{ $0.title == "Budget review" })?.libraryKey ?? meetings.first?.libraryKey) : (meetings.first(where: { $0.state.lifecycle == .saved }) ?? meetings.first)?.libraryKey
                     selectedKeys = initial.map { [$0] } ?? []
                 } else if surviving != selectedKeys {
                     selectedKeys = surviving
@@ -248,7 +275,7 @@ final class LibraryStore {
         var newestOwner: URL?
         if recorder.isRecording, let folder = recorder.directory, let id = UUID(uuidString:String(folder.lastPathComponent.dropFirst("Recording-".count))),newlyRecording.contains(id) { newestOwner = folder }
         if let owned = CaptureCollection.shared.captures.values.filter({ newlyRecording.contains($0.snapshot.manifest.id) }).min(by:{ $0.originUptime < $1.originUptime }) { newestOwner = owned.snapshot.directory }
-        if let folder = newestOwner {
+        if let folder = newestOwner, selected?.state.lifecycle != .saved {
             selectedKey = folder.lastPathComponent; selectionFolderWhenAvailable = LibraryLocation.canonical(folder)
         }
         for id in changedIDs {

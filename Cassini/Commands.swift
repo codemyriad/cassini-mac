@@ -54,16 +54,22 @@ struct AppCommands: Commands {
         }
         CommandGroup(after: .sidebar) {
             Button(UXText.text("common.backToLibrary")) {
-                if LibrarySearchModel.shared.visible { LibrarySearchModel.shared.close() } else { MeetingNavigation.shared.back() }
+                if LibrarySearchModel.shared.visible { LibrarySearchModel.shared.close() } else {
+                    MeetingNavigation.shared.back()
+                    NotificationCenter.default.post(name: MeetingNavigation.returnToLibrarySelection, object: nil)
+                }
             }
-                .keyboardShortcut("[", modifiers: .command).disabled(speakerDialog || detail == nil && !LibrarySearchModel.shared.visible)
+                .keyboardShortcut("[", modifiers: .command).disabled(speakerDialog || !LibrarySearchModel.shared.visible && MeetingNavigation.shared.detail?.fileURL == nil)
         }
         CommandGroup(replacing:.textEditing) {
-            Button(UXText.text("search.field.a11y")) { LibrarySearchModel.shared.open() }.keyboardShortcut("f",modifiers:.command).disabled(speakerDialog)
+            Button(UXText.text(detail?.meeting.state.lifecycle == .saved ? "meeting.find.placeholder" : "search.field.a11y")) {
+                if let detail, detail.meeting.state.lifecycle == .saved { detail.focusFind() }
+                else { LibrarySearchModel.shared.open() }
+            }.keyboardShortcut("f",modifiers:.command).disabled(speakerDialog)
         }
         CommandMenu(UXText.mac("menu.playback")) {
             Button(UXText.text(detail?.isPlaying == true ? "player.pause" : "common.play")) { detail?.toggle() }
-                .keyboardShortcut(.space, modifiers: []).disabled(speakerDialog || detail?.canPlay != true)
+                .keyboardShortcut(.space, modifiers: []).disabled(speakerDialog || detail?.canPlay != true || detail?.find.focused == true)
             Button(UXText.text("player.back10")) { detail?.skip(-10) }.keyboardShortcut(.leftArrow, modifiers: []).disabled(speakerDialog || detail?.canPlay != true)
             Button(UXText.text("player.forward10")) { detail?.skip(10) }.keyboardShortcut(.rightArrow, modifiers: []).disabled(speakerDialog || detail?.canPlay != true)
             Divider()

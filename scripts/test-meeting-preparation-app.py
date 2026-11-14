@@ -30,15 +30,15 @@ if os.environ.get('CASSINI_TRANSCRIPT_RENDER'):
 args.output.with_suffix('.stderr.txt').write_text(stderr)
 assert result.returncode == 0,(result.returncode,result.stdout,stderr)
 report = json.loads(result.stdout)
-assert all(report[name] is True for name in ('queuedSkipsTranscriptPresentation','runningSkipsTranscriptPresentation','preparedOffMain','mainActorProgressed','outageCancelled','recoveryDelivered','readoutDeliveredWithTurns',
-    'nativeTrackMatchesThumbTravel','nativePointerClampsToTrack','nativePointerPreservesThumbGrabOffset','nativePointerSnapAndDragReadout','nativeDragReadoutClears',
+assert all(report[name] is True for name in ('activeInvalidatesFind','queuedSkipsTranscriptPresentation','runningSkipsTranscriptPresentation','preparedOffMain','mainActorProgressed','outageCancelled','recoveryDelivered','readoutDeliveredWithTurns',
+    'nativeTrackMatchesThumbTravel','nativeTrackUsesCassiniAccent','nativePointerClampsToTrack','nativePointerPreservesThumbGrabOffset','nativePointerSnapAndDragReadout','nativeDragReadoutClears',
     'nativeMouseDownSnapsNearTurn','nativeDisabledPointerIsIgnored',
     'nativeMouseDownPreservesOffCenterGrab','nativeStationaryThumbDoesNotSnap','nativeVerticalThumbMovementDoesNotSeek','nativeZeroWidthThumbDoesNotSeek','nativeThumbGrabPreservesExactValues','nativePointerKeepsTranscriptFocus','nativeMouseUpDoesNotRepeatSeek',
     'nativeMouseDragUsesWindowCoordinates','nativeMouseDownClampsBothEnds','nativeMouseDragStopsWhenDisabled','nativeMouseDragStopsWhenDetached',
     'nativeAccessibilitySeekDoesNotSnap','nativeAccessibilityTenSecondStep','nativeStopClearsSnap',
     'mergeWhilePreparedResolvesReadoutAndHeaders','mergeWhilePreparedResolvesBar','mergedSpeakerRowStopsCachedListening',
     'suspendedMergeResolvesReadoutAndHeaders','unlistedSpeechIsNotSilence','mergedPreparationRecovers',
-    'asideHasExactListeningTint','asideNativeListenButton','asideButtonAccessibility','asideButtonGeometry','speakerModalBlocksLibraryUndo','speakerMergeHasNativeKeyboardFocus','speakerNativeFocusCycle','speakerNativeFocusSkipsDisabled','disabledEnvironmentBlocksInlineListen','enabledEnvironmentRestoresInlineListen','unchangedRowDoesNotRestyle',
+    'findSelectionInvalidatesNativeCache','findAppearanceInvalidatesNativeCache','asideHasExactListeningTint','asideNativeListenButton','asideButtonAccessibility','asideButtonGeometry','speakerModalBlocksLibraryUndo','speakerMergeHasNativeKeyboardFocus','speakerNativeFocusCycle','speakerNativeFocusSkipsDisabled','disabledEnvironmentBlocksInlineListen','enabledEnvironmentRestoresInlineListen','unchangedRowDoesNotRestyle',
     'clockKeepsSelectionAndInlineButton','bodyUsesEightPercentAndClearsAside','focusedTranscriptShiftReturnPlays',
     'asideActionSelectsOwnRunAndHost','explicitReplayResumesTranscriptFollow',
     'inlineButtonFocusableWithoutFullKeyboardAccess','tabSkipsSelectableTranscript',
@@ -52,6 +52,7 @@ assert all(report[name] is True for name in ('queuedSkipsTranscriptPresentation'
     'titleAlignmentWideLeadingControlsClampToZero','titleAlignmentPassThroughHitTesting','titleAlignmentRejectsStaleAndInvalidProposals',
     'speakerRowReadOnlyKeepsPrimaryInk','speakerRowCaptionUsesFullRowWidth',
     'brandTokensSynced','brandTokensRejectsDrift',
+    'findDoesNotFocusOnInitialMount','findConsumesFocusOnce','findHandlesLaterFocusRequest',
     'meetingCardRestLightIsCardRest','meetingCardRestDarkIsCardRest','meetingCardSelectedDarkLiftsAboveRest',
     'scrollEdgeWindowSuppressesTitlebarHairline','scrollEdgeLegacyFallbackHasNoHeaderHairline',
     'sessionPreparedOffMain','sessionMainActorProgressed','sessionSwitchCancelled',

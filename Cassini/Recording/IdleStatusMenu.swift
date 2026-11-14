@@ -54,7 +54,11 @@ struct IdleStatusMenu: View {
                 .accessibilityIdentifier("idle-menu-status")
             Divider()
             action("hidden.openCassini",id:"open") {
-                dismiss(); LibrarySearchModel.shared.close(); MeetingNavigation.shared.back()
+                dismiss(); LibrarySearchModel.shared.close()
+                if MeetingNavigation.shared.detail?.fileURL != nil {
+                    MeetingNavigation.shared.back()
+                    NotificationCenter.default.post(name: MeetingNavigation.returnToLibrarySelection, object: nil)
+                }
                 ApplicationWindows.library(); NSApp.activate(ignoringOtherApps:true)
             }
             action("hidden.menu.settings",id:"settings") {

@@ -147,6 +147,8 @@ public struct LibraryMeeting: Sendable {
     public var speakers: [MeetingSpeaker] { didSet { transcriptTurns = [] } }
     public var quote: MeetingQuote?
     public var notes: [MeetingNote]
+    /// Verified portable summary attachment; never written into meeting.json.
+    public var summaryMarkdown: String? = nil
     public var audioFiles: [URL]
     public var issues: [LibraryReadIssue]
     /// Keep construction module-visible across Swift toolchains: private backing storage

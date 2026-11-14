@@ -162,6 +162,9 @@ import SwiftUI
             try browser.addTrack(id:"b",label:"B",kind:"remote",sampleRate:16000,channels:1)
             try browser.appendNative(id:"b",pcm:Data(repeating:0,count:3200),offsetMs:0)
             let newer = try browserScanner.scan().meetings.first(where:{ $0.id == browser.manifest.id }).unwrap("changed browser source list")
+            // SwiftUI can initialize a background page again without presenting
+            // it. A lookup must not evict this independently active editor.
+            _ = RecordingPageModel.editor(for:saved)
             try require(RecordingPageModel.editor(for:newer) === editor,"browser updates keep unsaved editor state")
             editor.update(newer)
             try await waitForVoiceCount(editor,2)

@@ -300,7 +300,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         MainActor.assumeIsolated {
             LibrarySearchModel.shared.close()
-            MeetingNavigation.shared.back()
+            if MeetingNavigation.shared.detail?.fileURL != nil {
+                MeetingNavigation.shared.back()
+                NotificationCenter.default.post(name: MeetingNavigation.returnToLibrarySelection, object: nil)
+            }
             MeetingNavigation.shared.openLibrary?()
             sender.activate(ignoringOtherApps:true)
         }
@@ -377,7 +380,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            let window = event.window ?? NSApp.keyWindow,
            window.accessibilityIdentifier() == "cassini-library-window",
            window.attachedSheet == nil, NSApp.modalWindow == nil,
-           !(window.firstResponder is NSText), MeetingNavigation.shared.savedDetail == nil,
+           !(window.firstResponder is NSText),
+           (MeetingNavigation.shared.savedDetail == nil || LibraryKeyboardMenu.hasListFocus(in: window)),
            !MeetingNavigation.shared.loading, !LibrarySearchModel.shared.visible,
            !LibraryMoveCoordinator.shared.busy, let meeting = LibraryStore.shared.selected {
             SessionPlaybackController.stopAll(); MeetingNavigation.shared.open(meeting)
@@ -386,7 +390,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let window = event.window ?? NSApp.keyWindow,
            window.accessibilityIdentifier() == "cassini-library-window",
            window.attachedSheet == nil, NSApp.modalWindow == nil,
-           !(window.firstResponder is NSText), MeetingNavigation.shared.savedDetail == nil,
+           !(window.firstResponder is NSText),
+           (MeetingNavigation.shared.savedDetail == nil || LibraryKeyboardMenu.hasListFocus(in: window)),
            !MeetingNavigation.shared.loading, !LibrarySearchModel.shared.visible,
            event.modifierFlags.intersection([.command,.option,.control]).isEmpty,
            ((event.keyCode == 109 && event.modifierFlags.contains(.shift)) || event.charactersIgnoringModifiers == "\u{F735}"),

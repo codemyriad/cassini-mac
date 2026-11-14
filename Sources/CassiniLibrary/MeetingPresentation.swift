@@ -133,6 +133,24 @@ public enum MeetingPresentation {
     }
     /// The turns shown as paragraphs: every turn not shown inside another.
     public static func visibleTurns(_ turns: [Turn]) -> [Turn] { turns.filter { $0.host == nil } }
+    /// Canonical reading order need not be chronological. Reveal the sounding
+    /// word's visible host, then the nearest upcoming word (or final past word).
+    public static func readingTurn(at position: Int64, in turns: [Turn]) -> Int? {
+        var sounding: (id: Int, start: Int64)?
+        var upcoming: (id: Int, start: Int64)?
+        var previous: (id: Int, start: Int64)?
+        for turn in turns {
+            let id = turn.host ?? turn.id
+            for item in turn.items where item.endMs > item.startMs {
+                if item.startMs <= position && position < item.endMs {
+                    if sounding == nil || item.startMs > sounding!.start { sounding = (id, item.startMs) }
+                } else if item.startMs > position {
+                    if upcoming == nil || item.startMs < upcoming!.start { upcoming = (id, item.startMs) }
+                } else if previous == nil || item.startMs > previous!.start { previous = (id, item.startMs) }
+            }
+        }
+        return (sounding ?? upcoming ?? previous)?.id
+    }
     public struct Prose: Sendable {
         public struct Seek: Sendable { public let range: Range<Int>; public let item: LibraryTranscriptItem; public let turnID: Int }
         public let text: String
@@ -187,6 +205,7 @@ public enum MeetingPresentation {
         result.recordedTime = file.meetingTime
         result.sortingFallback = file.manifest.flatMap { MeetingTime.parseInstant($0.meeting.createdAtUtc) }
         result.metadataReadOnly = true; result.transcriptItems = words
+        result.summaryMarkdown = trusted ? file.manifest?.summaryMarkdown : nil
         result.wordEndsBoundedByAudio = trusted && file.manifest?.wordEndsBoundedByAudio == true
         result.exportTitle = trusted || file.state == .plainAudio ? title : url.deletingPathExtension().lastPathComponent
         return result

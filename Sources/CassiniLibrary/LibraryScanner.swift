@@ -144,7 +144,10 @@ public struct LibraryScanner: Sendable {
                         meeting.durationMs = Int64(digest.durationMs); meeting.audioFiles = [url]
                     } else { meeting.issues.append(.invalidAudio) }
                     if file.state == .unknownCassiniFormat { meeting.issues.append(.unsupportedVersion) }
-                    if file.state == .ok { for speaker in file.manifest?.speakers ?? [] { embeddedNames[speaker.id] = speaker.label } }
+                    if file.state == .ok {
+                        meeting.summaryMarkdown = file.manifest?.summaryMarkdown
+                        for speaker in file.manifest?.speakers ?? [] { embeddedNames[speaker.id] = speaker.label }
+                    }
                 }
             } catch { meeting.issues.append(.invalidAudio) }
             titleCandidates.append((receivedMetadata.originalName as NSString).deletingPathExtension)
