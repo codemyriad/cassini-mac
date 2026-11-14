@@ -665,6 +665,8 @@ final class LibraryBoards: XCTestCase {
                 local.click()
                 XCTAssertTrue(waitForPresent(settings.sheets.buttons["companion-local-done"],timeout:10),app.debugDescription)
                 app.typeKey(.escape,modifierFlags:[])
+                let guideClosed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:settings.sheets.firstMatch)
+                XCTAssertEqual(XCTWaiter.wait(for:[guideClosed],timeout:5),.completed,app.debugDescription)
                 capture(settings,name:"settings-browser")
             }
             let message = settings.staticTexts["companion-reload-message"]
@@ -898,7 +900,7 @@ final class LibraryBoards: XCTestCase {
         for title in ["Recording", "Transcription", "Library", "Browser companion"] {
             XCTAssertTrue(window.toolbars.buttons[title].exists,window.debugDescription)
         }
-        window.scrollViews.firstMatch.swipeUp()
+        window.scrollViews.firstMatch.scroll(byDeltaX:0,deltaY:-500)
         let updatesToggle = window.descendants(matching:.any).matching(identifier:"settings-automatic-updates").firstMatch
         XCTAssertTrue(updatesToggle.waitForExistence(timeout:5),window.debugDescription)
         XCTAssertTrue(window.buttons["settings-check-updates"].exists,window.debugDescription)
