@@ -31,7 +31,7 @@ except subprocess.TimeoutExpired as error:
 (args.output/'recording-comfort-stderr.txt').write_text(result.stderr)
 assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
 report = json.loads(result.stdout)
-for name in ('recordingComfort', 'sameNameCaptureIsolation', 'shortcutRegistered', 'existingNotesPreserved', 'titleReset', 'browserClockAndSources', 'diskWarningLifecycle', 'silentMicAfter20Seconds', 'assertionReleasedAfterStop'):
+for name in ('recordingComfort', 'sameNameCaptureIsolation', 'shortcutRegistered', 'existingNotesPreserved', 'titleReset', 'browserClockAndSources', 'libraryKeyboardRouting', 'savingCompletionStaysInLibrary', 'diskWarningLifecycle', 'silentMicAfter20Seconds', 'assertionReleasedAfterStop'):
     assert report[name] is True, (name, report)
 menu = report['menu']
 assert menu['assertionHeld'] is True and menu['levels'][0]['silent'] is True

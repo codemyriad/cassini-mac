@@ -109,6 +109,7 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testExportBoardAndKeyboardChoices \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testExportReceivedAudioThroughAFileOnlySaveGrant \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingBoard \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingNonSilentBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordFirstBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingBoard \
           -resultBundlePath build/UXBoardsDark.xcresult \
