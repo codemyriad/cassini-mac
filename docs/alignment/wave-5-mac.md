@@ -55,6 +55,8 @@ exposes a link-style SwiftUI Button as an AXLink.
 `d973-pr-shots/` contains light/dark before, after and difference images generated
 with the shared `tools/pr-shots/pr-shots.py`. These are frozen renders of Cassini's
 own views on the local Mac, not desktop captures or proof of user interaction.
-The before build uses main's relevant views with the same fixture harness. The
+The comparison spans the complete D-973 change: Settings/Browser parity in
+PR #309 and the hero follow-up in PR #310. Its baseline is `fd18c36`, before
+both slices, using the same fixture harness. The
 disconnected Browser comparison covers the tab strip; the connected guide
 interaction is covered separately by the hosted UI regression.

@@ -2,7 +2,7 @@
   "version": 1,
   "app": "mac",
   "repo": "codemyriad/cassini-mac",
-  "pr": 309,
+  "pr": 310,
   "git_images": false,
   "no_baseline": false,
   "rows": [
@@ -125,7 +125,7 @@
     "image": "frozen-app-view"
   },
   "head": {
-    "sha": "2425d2ff6bc52cd67938336fae9d3a7ef338efd5",
+    "sha": "caedf9c53ffe23e269436105c69a79f510b48ecb",
     "run_id": "local",
     "runner": "unknown",
     "image": "frozen-app-view"
