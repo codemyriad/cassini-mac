@@ -72,8 +72,8 @@ final class LibraryBoards: XCTestCase {
         let empty=first.windows["cassini-library-window"],record=empty.buttons["first-run-record"]
         XCTAssertTrue(record.waitForExistence(timeout:20),first.debugDescription)
         XCTAssertEqual(record.label,"Enregistrer")
-        XCTAssertTrue(text("Chaque mot transcrit.",in:empty),first.debugDescription)
-        XCTAssertTrue(text("Rien n’est mis en ligne.",in:empty),first.debugDescription)
+        XCTAssertEqual(empty.staticTexts["first-run-hero-title"].label,"Chaque mot transcrit.",first.debugDescription)
+        XCTAssertEqual(empty.staticTexts["first-run-hero-subtitle"].label,"Rien n’est mis en ligne.",first.debugDescription)
         capture(empty,name:"first-run-fr")
         record.click()
         let start=empty.sheets.buttons["record-first-start"]
@@ -1326,7 +1326,9 @@ final class LibraryBoards: XCTestCase {
         let explanation = window.sheets.staticTexts["Cassini also records the sound of your meeting apps so the other participants are on the recording."]
         XCTAssertTrue(explanation.exists)
         XCTAssertGreaterThan(explanation.frame.height, 28, "The complete explanation must wrap, rather than truncate")
-        XCTAssertEqual(window.toolbars.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", "Library", "Library")).count, 1)
+        XCTAssertEqual(window.toolbars.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", "Library", "Library")).count,0)
+        XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"first-run-library").firstMatch.exists,
+                      "First-run consent keeps Library as an accessibility heading")
         capture(window, name: "record-first")
         XCTAssertEqual(window.frame.width, 1120, accuracy: 0.1)
         XCTAssertEqual(window.frame.height, 720, accuracy: 0.1)
@@ -1774,10 +1776,10 @@ final class LibraryBoards: XCTestCase {
         } else {
             capture(window, name: name)
             XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20), window.debugDescription)
-            XCTAssertTrue(text("Every word written down.",in:window))
-            XCTAssertTrue(text("None of it uploaded.",in:window))
             let primary = window.staticTexts["first-run-hero-title"]
             let secondary = window.staticTexts["first-run-hero-subtitle"]
+            XCTAssertEqual(primary.label,"Every word written down.")
+            XCTAssertEqual(secondary.label,"None of it uploaded.")
             XCTAssertEqual(primary.frame.minX,secondary.frame.minX,accuracy:1)
             for line in [primary,secondary] {
                 XCTAssertTrue(window.frame.contains(line.frame),window.debugDescription)
