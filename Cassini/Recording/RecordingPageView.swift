@@ -87,7 +87,8 @@ struct RecordingPageView: View {
                 }
 
             }.frame(maxWidth:640).padding(.top,32).padding(.horizontal,32).padding(.bottom,40).frame(maxWidth:.infinity)
-        }.background(CassiniTheme.paneGround)
+        }.cassiniTopScrollEdge()
+            .background(CassiniTheme.paneGround)
             .accessibilityElement(children:.contain).accessibilityIdentifier("recording-page")
             .sheet(isPresented:$changingCapture) { WhatIsRecordedView(model:model) }
             .sheet(isPresented:$explainingFallback) {

@@ -54,11 +54,12 @@ struct LibraryView: View {
             VStack(alignment:.leading,spacing:0) {
                 ParakeetRecommendationView(afterFirst:true)
                 ParakeetDefaultNotice()
-            }.padding(.horizontal,18)
+            }.padding(.horizontal,18).background(CassiniTheme.paneGround)
 
             if !store.context.screenshot && companionSetup.showLibraryState && navigation.detail == nil && !search.visible {
                 BrowserConnectionStateView(identifier:"library-browser-status",presenter:.library)
                     .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).padding(.horizontal,18).padding(.vertical,8)
+                    .background(CassiniTheme.paneGround)
             }
         }
 
@@ -146,10 +147,11 @@ struct LibraryView: View {
             }
             }
         }
+        .cassiniUnifiedToolbarChrome()
         .background(WindowAccessor { window in
             guard let window else { return }
             window.setAccessibilityIdentifier("cassini-library-window")
-            window.toolbarStyle = .unified
+            ScrollEdgeChrome.configureUnifiedWindow(window)
             window.titleVisibility = .hidden
             RecordingConfirmation.attach(to: window)
             #if DEBUG
@@ -254,19 +256,6 @@ struct LibraryView: View {
         let firstGroupIsToday = store.groups.first?.title == todayTitle
         return HStack(spacing: 0) {
             VStack(spacing: 0) {
-                LibrarySearchField(
-                    text: $search.query,
-                    large: false,
-                    onClick: { search.open() },
-                    onBegin: { search.open() },
-                    onChange: { search.open() },
-                    onCancel: { search.close() }
-                )
-                .frame(height: 28)
-                .padding(.horizontal, 10)
-                .padding(.top, 6)
-                .padding(.bottom, 8)
-
                 ZStack {
                     List(selection: $store.selectedKeys) {
                         if !importer.transientItems.isEmpty && !firstGroupIsToday {
@@ -337,17 +326,32 @@ struct LibraryView: View {
                     }
                     .listStyle(.sidebar)
                     .scrollContentBackground(.hidden)
+                    .cassiniTopScrollEdge()
                     .opacity(dropState.dimsListContent ? 0.30 : 1.0)
                     .accessibilityLabel(UXText.text("library.listPane.a11y"))
 
                     LibraryDropListOverlay(state: dropState)
                 }
+                .cassiniPinnedTopBar {
+                    LibrarySearchField(
+                        text: $search.query,
+                        large: false,
+                        onClick: { search.open() },
+                        onBegin: { search.open() },
+                        onChange: { search.open() },
+                        onCancel: { search.close() }
+                    )
+                    .frame(height: 28)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 6)
+                    .padding(.bottom, 8)
+                }
 
                 LibraryDropHintFooter(entered: dropState.showsWindowOutline)
             }
-            .background(NativeSidebarMaterial())
+            .cassiniSidebarBackground()
             .frame(minWidth: 400, maxWidth: 400)
-            Divider()
+            CassiniColumnDivider()
             if let meeting = store.selected { preview(meeting) }
             else if store.selectedKeys.count > 1 {
                 VStack {
@@ -593,6 +597,7 @@ struct LibraryView: View {
                 }
             }.padding(.horizontal, 44).padding(.vertical, 32)
         }
+            .cassiniTopScrollEdge()
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(CassiniTheme.paneGround)
             .accessibilityElement(children: .contain)

@@ -8,40 +8,47 @@ struct LibrarySearchView: View {
     let format: LibraryFormat
     var body: some View {
         HStack(spacing:0) {
-            VStack(alignment:.leading,spacing:0) {
-                LibrarySearchField(text:$model.query,large:false,focusRequest:model.focusRequest,onChange:{ model.refresh() },onCancel:{ model.close() })
-                    .frame(height:28).padding(.horizontal,10).padding(.top,6).padding(.bottom,8)
-                HStack(spacing:6) {
-                    Menu {
-                        Button(UXText.text("search.filter.anySpeaker")) { model.speaker = nil; model.refresh() }
-                        Divider()
-                        ForEach(model.names,id:\.self) { name in Button(name) { model.speaker = name; model.refresh() } }
-                    } label: {
-                        Text(model.speaker.map { UXText.text("search.filter.speaker",["name":$0]) } ?? UXText.text("search.filter.speakerNone"))
-                            .foregroundStyle(model.speaker != nil ? CassiniTheme.onAccent : CassiniTheme.ink)
-                    }.menuIndicator(.hidden).menuStyle(.borderlessButton).buttonStyle(.plain).fixedSize()
-                        .modifier(SearchChip(active:model.speaker != nil)).accessibilityIdentifier("search-speaker")
-                    Menu {
-                        ForEach(SearchDate.allCases,id:\.self) { date in Button(dateText(date)) { model.date = date; model.refresh() } }
-                    } label: { Text(dateText(model.date)) }.menuIndicator(.hidden).menuStyle(.borderlessButton).buttonStyle(.plain).fixedSize()
-                        .modifier(SearchChip(active:model.date != .any)).accessibilityIdentifier("search-date")
-                    Button(UXText.text("search.filter.recordedByMe")) { model.own.toggle(); model.refresh() }.buttonStyle(.plain)
-                        .modifier(SearchChip(active:model.own)).accessibilityAddTraits(model.own ? .isSelected : [])
-                        .accessibilityIdentifier("search-own")
-                }.padding(.horizontal,10).padding(.bottom,10)
-                Text(model.count).font(.system(size:12,weight:.semibold)).foregroundStyle(CassiniTheme.ink2)
-                    .padding(.horizontal,18).padding(.bottom,6).accessibilityIdentifier("search-count")
-                ScrollView {
-                    LazyVStack(spacing:MeetingCard<EmptyView>.Metrics.interCardGap) {
-                        ForEach(model.hits) { hit in if let meeting = model.meeting(hit) { row(hit,meeting:meeting) } }
-                    }.padding(.horizontal,10).padding(.vertical,4)
-                }
-            }.frame(width:460).background(NativeSidebarMaterial())
+            ScrollView {
+                LazyVStack(spacing:MeetingCard<EmptyView>.Metrics.interCardGap) {
+                    ForEach(model.hits) { hit in if let meeting = model.meeting(hit) { row(hit,meeting:meeting) } }
+                }.padding(.horizontal,10).padding(.vertical,4)
+            }
+            .cassiniTopScrollEdge()
+            .cassiniPinnedTopBar(alignment: .leading) {
+                searchHeader
+            }
+            .frame(width:460).cassiniSidebarBackground()
                 .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("search.results.a11y"))
-            Divider()
+            CassiniColumnDivider()
             if let hit = model.selected, let meeting = model.meeting(hit) { context(hit,meeting:meeting) }
             else { CassiniTheme.paneGround }
         }.onChange(of:model.query) { _,_ in model.refresh() }
+    }
+    private var searchHeader: some View {
+        VStack(alignment:.leading,spacing:0) {
+            LibrarySearchField(text:$model.query,large:false,focusRequest:model.focusRequest,onChange:{ model.refresh() },onCancel:{ model.close() })
+                .frame(height:28).padding(.horizontal,10).padding(.top,6).padding(.bottom,8)
+            HStack(spacing:6) {
+                Menu {
+                    Button(UXText.text("search.filter.anySpeaker")) { model.speaker = nil; model.refresh() }
+                    Divider()
+                    ForEach(model.names,id:\.self) { name in Button(name) { model.speaker = name; model.refresh() } }
+                } label: {
+                    Text(model.speaker.map { UXText.text("search.filter.speaker",["name":$0]) } ?? UXText.text("search.filter.speakerNone"))
+                        .foregroundStyle(model.speaker != nil ? CassiniTheme.onAccent : CassiniTheme.ink)
+                }.menuIndicator(.hidden).menuStyle(.borderlessButton).buttonStyle(.plain).fixedSize()
+                    .modifier(SearchChip(active:model.speaker != nil)).accessibilityIdentifier("search-speaker")
+                Menu {
+                    ForEach(SearchDate.allCases,id:\.self) { date in Button(dateText(date)) { model.date = date; model.refresh() } }
+                } label: { Text(dateText(model.date)) }.menuIndicator(.hidden).menuStyle(.borderlessButton).buttonStyle(.plain).fixedSize()
+                    .modifier(SearchChip(active:model.date != .any)).accessibilityIdentifier("search-date")
+                Button(UXText.text("search.filter.recordedByMe")) { model.own.toggle(); model.refresh() }.buttonStyle(.plain)
+                    .modifier(SearchChip(active:model.own)).accessibilityAddTraits(model.own ? .isSelected : [])
+                    .accessibilityIdentifier("search-own")
+            }.padding(.horizontal,10).padding(.bottom,10)
+            Text(model.count).font(.system(size:12,weight:.semibold)).foregroundStyle(CassiniTheme.ink2)
+                .padding(.horizontal,18).padding(.bottom,6).accessibilityIdentifier("search-count")
+        }.frame(maxWidth:.infinity,alignment:.leading)
     }
     private func row(_ hit: SearchHit, meeting: LibraryMeeting) -> some View {
         let selected = model.selectedID == hit.id
@@ -113,7 +120,8 @@ struct LibrarySearchView: View {
                     VStack(alignment:.leading,spacing:10) { actions(hit,meeting:meeting) }
                 }
             }.padding(.horizontal,44).padding(.vertical,32).frame(maxWidth:.infinity,alignment:.leading)
-        }.background(CassiniTheme.paneGround).accessibilityElement(children:.contain)
+        }.cassiniTopScrollEdge()
+            .background(CassiniTheme.paneGround).accessibilityElement(children:.contain)
             .accessibilityLabel(UXText.text("search.context.a11y"))
     }
     @ViewBuilder private func actions(_ hit: SearchHit, meeting: LibraryMeeting) -> some View {

@@ -111,7 +111,7 @@ enum ScreenshotFixture {
     private static func prepare(_ window: NSWindow, sheet: Bool, boardSize: Bool) {
         if LibraryLaunchContext.screenshotDark { window.appearance = NSAppearance(named: .darkAqua) }
         window.setAccessibilityIdentifier("cassini-screenshot-window")
-        window.toolbarStyle = .unified
+        ScrollEdgeChrome.configureUnifiedWindow(window)
         guard let screen = window.screen ?? NSScreen.main else { NSApp.terminate(nil); return }
         // The board-size job selects a larger display mode before launch. Keep
         // every edge on screen; never pass by clipping an offscreen window.
