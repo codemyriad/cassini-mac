@@ -35,7 +35,7 @@ enum ScreenshotFixture {
         let scheme = value("-CassiniScreenshotScheme", in: arguments) ?? "light"
         guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               let name = value("-CassiniScreenshot", in: arguments),
-              ["window", "sheet", "library", "first-run", "meeting", "record-first", "recording", "received", "export", "search", "settings-recording", "settings-transcription"].contains(name),
+              ["window", "sheet", "library", "first-run", "meeting", "record-first", "recording", "received", "export", "search", "settings-recording", "settings-transcription", "settings-library", "settings-browser"].contains(name),
               ["light", "dark"].contains(scheme),
               let directory = value("-CassiniFixture", in: arguments),
               let clock = value("-CassiniNow", in: arguments),
@@ -62,7 +62,7 @@ enum ScreenshotFixture {
 
         if name.hasPrefix("settings-") {
             Task { @MainActor in
-                SettingsNavigation.shared.tab = name == "settings-recording" ? .recording : .transcription
+                SettingsNavigation.shared.tab = SettingsTab(rawValue:String(name.dropFirst("settings-".count))) ?? .recording
                 ApplicationWindows.preferences()
                 NSApp.activate(ignoringOtherApps: true)
             }
@@ -88,10 +88,11 @@ enum ScreenshotFixture {
     /// automation. Renders only this app's fixture view, never the desktop.
     private static func localBoardRender(_ window: NSWindow) {
         guard ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1",
-              let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["meeting","recording","received","export","search"].contains(name),
+              let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["first-run","meeting","recording","received","export","search"].contains(name),
               !RecordingFixture.enabled else { return }
         Task { @MainActor in
             for _ in 0..<60 {
+                if name == "first-run" && LibraryStore.shared.loaded { break }
                 if name == "meeting" && MeetingNavigation.shared.detail != nil { break }
                 if name == "recording" && MeetingNavigation.shared.detail?.meeting.state.lifecycle == .recording { break }
                 if name == "received" && LibraryStore.shared.selected?.state.origin == .received { break }
@@ -104,7 +105,8 @@ enum ScreenshotFixture {
                 await MeetingRenameCoordinator.shared.previewSpeaker(meeting)
             }
             try? await Task.sleep(for:.seconds(1))
-            guard (name != "recording" || MeetingNavigation.shared.detail?.meeting.state.lifecycle == .recording),
+            guard (name != "first-run" || LibraryStore.shared.loaded && LibraryStore.shared.meetings.isEmpty),
+                  (name != "recording" || MeetingNavigation.shared.detail?.meeting.state.lifecycle == .recording),
                   (name != "meeting" || MeetingNavigation.shared.detail != nil),
                   (name != "export" || window.attachedSheet != nil),
                   (name != "search" || LibrarySearchModel.shared.hits.count == 4),

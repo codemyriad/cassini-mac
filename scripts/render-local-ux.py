@@ -16,7 +16,7 @@ import uuid
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('app',type=Path)
-parser.add_argument('board',choices=['meeting','recording','received','export','search','settings-recording','settings-transcription'])
+parser.add_argument('board',choices=['first-run','meeting','recording','received','export','search','settings-recording','settings-transcription','settings-library','settings-browser'])
 parser.add_argument('--output',type=Path,required=True)
 parser.add_argument('--listening',choices=['playing','finished'])
 parser.add_argument('--speaker')
@@ -31,7 +31,7 @@ assert not args.speaker_editor or args.board == 'meeting', 'Speaker editor requi
 assert not args.transcribing or args.board == 'meeting', 'Transcribing preview requires the meeting fixture'
 assert os.environ.get('CASSINI_LOCAL_WORKFLOW_TESTS') == '1', 'Explicit local workflow opt-in required'
 app = args.app.resolve()
-fixture = app/'Contents/Resources/Fixtures/Library'/('received-only' if args.board == 'received' else 'main')
+fixture = app/'Contents/Resources/Fixtures/Library'/('received-only' if args.board == 'received' else 'empty' if args.board == 'first-run' else 'main')
 assert fixture.is_dir(),fixture
 with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
     output,stderr = Path(temporary)/'stdout.json',Path(temporary)/'stderr.txt'
