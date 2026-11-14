@@ -382,22 +382,22 @@
     },
     {
       "id": "mac.import.drop.formats",
-      "en": "Cassini files, Opus, MP3, M4A, WAV, and ZIP",
+      "en": "Cassini files, Opus, MP3, M4A, WAV, FLAC, and ZIP",
       "l10n": {
         "it": {
-          "text": "file Cassini, Opus, MP3, M4A, WAV e ZIP"
+          "text": "file Cassini, Opus, MP3, M4A, WAV, FLAC e ZIP"
         },
         "fr": {
-          "text": "fichiers Cassini, Opus, MP3, M4A, WAV et ZIP"
+          "text": "fichiers Cassini, Opus, MP3, M4A, WAV, FLAC et ZIP"
         },
         "es": {
-          "text": "archivos Cassini, Opus, MP3, M4A, WAV y ZIP"
+          "text": "archivos Cassini, Opus, MP3, M4A, WAV, FLAC y ZIP"
         },
         "pt-BR": {
-          "text": "arquivos Cassini, Opus, MP3, M4A, WAV e ZIP"
+          "text": "arquivos Cassini, Opus, MP3, M4A, WAV, FLAC e ZIP"
         },
         "pt-PT": {
-          "text": "ficheiros Cassini, Opus, MP3, M4A, WAV e ZIP"
+          "text": "ficheiros Cassini, Opus, MP3, M4A, WAV, FLAC e ZIP"
         }
       }
     },
