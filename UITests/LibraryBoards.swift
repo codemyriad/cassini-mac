@@ -3,6 +3,48 @@ import AppKit
 import XCTest
 
 final class LibraryBoards: XCTestCase {
+    @MainActor func testStarsPersistAndSearchCarriesLibraryChoiceThenResetsOtherFilters() throws {
+        let defaultsID = UUID().uuidString
+        let app = try launch("library",fixture:"main",extra:["-CassiniDefaultsID",defaultsID])
+        defer { app.terminate() }
+        var window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["meeting-more-actions"].waitForExistence(timeout:20),app.debugDescription)
+        window.buttons["meeting-more-actions"].click()
+        let star = app.menuItems["Star"]
+        XCTAssertTrue(star.waitForExistence(timeout:5),app.debugDescription); star.click()
+        let filters = window.segmentedControls["library-filters"]
+        XCTAssertTrue(filters.exists,app.debugDescription)
+        filters.buttons["Starred"].click()
+        XCTAssertFalse(window.staticTexts["library-starred-empty"].exists)
+        capture(window,name:"library-starred")
+        app.terminate()
+        let relaunched = try launch("library",fixture:"main",extra:["-CassiniDefaultsID",defaultsID])
+        defer { relaunched.terminate() }
+        window = relaunched.windows["cassini-library-window"]
+        let starredChoice = window.segmentedControls["library-filters"].buttons["Starred"]
+        XCTAssertTrue(starredChoice.waitForExistence(timeout:20),relaunched.debugDescription)
+        XCTAssertEqual(starredChoice.value as? String,"1")
+        window.searchFields["library-search-field"].click()
+        let starred = window.buttons["search-starred"]
+        XCTAssertTrue(starred.waitForExistence(timeout:5),relaunched.debugDescription)
+        XCTAssertTrue(starred.isSelected)
+        window.descendants(matching:.any).matching(identifier:"search-date").firstMatch.click()
+        XCTAssertTrue(relaunched.menuItems["This year"].exists); relaunched.menuItems["This year"].click()
+        window.searchFields["library-search-field"].typeText("budget")
+        capture(window,name:"search-starred")
+        relaunched.typeKey(.escape,modifierFlags:[])
+        window.searchFields["library-search-field"].click()
+        XCTAssertTrue(window.buttons["search-starred"].waitForExistence(timeout:5))
+        XCTAssertTrue(window.buttons["search-starred"].isSelected)
+        XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"search-date").firstMatch.label.contains("Any date"))
+        relaunched.typeKey(.escape,modifierFlags:[])
+        let row = window.outlines.staticTexts.matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout:5)); row.rightClick()
+        let unstar = relaunched.menuItems["Unstar"]
+        XCTAssertTrue(unstar.waitForExistence(timeout:5),relaunched.debugDescription); unstar.click()
+        XCTAssertTrue(window.staticTexts["library-starred-empty"].waitForExistence(timeout:5),relaunched.debugDescription)
+    }
+
     /// D-963: both Stop routes preserve the meeting and expose Resume after the
     /// asynchronous metadata commit. Retained partial words are not a live draft.
     @MainActor func testActiveTranscribingStatusDetailsAndStopKeepsProgress() throws {

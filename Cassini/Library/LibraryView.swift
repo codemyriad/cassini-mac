@@ -113,6 +113,7 @@ struct LibraryView: View {
                 ToolbarItem(placement:.primaryAction) {
                     LibraryToolbarAction(title:"",label:UXText.text("meeting.moreActions"),identifier:"meeting-more-actions",style:.more,menu:{
                         var entries:[LibraryToolbarAction.MenuEntry]=[
+                            .init(title:UXText.text(store.isStarred(detail.meeting) ? "meeting.unstar" : "meeting.star"),identifier:"meeting-star") { store.toggleStar(detail.meeting) },
                             .init(title:UXText.text("details.menu"),identifier:"recording-details") {recordingDetails.show(detail.meeting)}]
                         if !meetingShowsTranscriptionInToolbar(detail), let spec = meetingTranscriptionToolbarSpec(detail) {
                             entries.insert(.init(title:spec.title,identifier:spec.identifier,enabled:spec.enabled,action:spec.action),at:0)
@@ -141,7 +142,9 @@ struct LibraryView: View {
                 ToolbarItem(placement:.principal) { Color.clear.frame(width:1) }
                 ToolbarItem(placement:.primaryAction) {
                     LibraryToolbarAction(title:"",label:UXText.text("meeting.moreActions"),identifier:"recording-more-actions",style:.more,menu:{
-                        LibraryToolbarAction.menu([.init(title:UXText.text("details.menu"),identifier:"recording-details") { recordingDetails.show(meeting) }])
+                        LibraryToolbarAction.menu([
+                            .init(title:UXText.text(store.isStarred(meeting) ? "meeting.unstar" : "meeting.star"),identifier:"recording-star") { store.toggleStar(meeting) },
+                            .init(title:UXText.text("details.menu"),identifier:"recording-details") { recordingDetails.show(meeting) }])
                     }) { }
                 }
             }
@@ -297,7 +300,7 @@ struct LibraryView: View {
                             openSelection(userInitiated: true)
                         }
                     })) {
-                        if !importer.transientItems.isEmpty && !firstGroupIsToday {
+                        if store.preferences.filter == .all && !importer.transientItems.isEmpty && !firstGroupIsToday {
                             Section {
                                 ForEach(importer.transientItems) { item in
                                     transientImportRow(item)
@@ -307,9 +310,15 @@ struct LibraryView: View {
                                     .accessibilityIdentifier("library-day-header-importing")
                             }
                         }
+                        if store.preferences.filter == .starred && store.visibleMeetings.isEmpty {
+                            Text(UXText.text("library.starred.empty"))
+                                .foregroundStyle(CassiniTheme.ink2)
+                                .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                                .accessibilityIdentifier("library-starred-empty")
+                        }
                         ForEach(Array(store.groups.enumerated()), id: \.element.id) { groupIndex, group in
                             Section {
-                                if groupIndex == 0 && firstGroupIsToday {
+                                if store.preferences.filter == .all && groupIndex == 0 && firstGroupIsToday {
                                     ForEach(importer.transientItems) { item in
                                         transientImportRow(item)
                                     }
@@ -331,6 +340,8 @@ struct LibraryView: View {
                                             }
                                         })
                                         .contextMenu {
+                                            Button(UXText.text(store.isStarred(meeting) ? "meeting.unstar" : "meeting.star")) { store.toggleStar(meeting) }
+                                                .accessibilityIdentifier("library-star")
                                             Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = meeting.libraryKey; rename.show(meeting) }
                                                 .disabled(store.selectedKeys.count > 1 || !rename.canRename(meeting)).accessibilityIdentifier("library-rename")
                                             Button(UXText.text("common.exportEllipsis")) { store.selectedKey = meeting.libraryKey; exporter.show(meeting) }
@@ -374,18 +385,28 @@ struct LibraryView: View {
                     LibraryDropListOverlay(state: dropState)
                 }
                 .cassiniPinnedTopBar {
-                    LibrarySearchField(
-                        text: $search.query,
-                        large: false,
-                        onClick: { search.open() },
-                        onBegin: { search.open() },
-                        onChange: { search.open() },
-                        onCancel: { search.close() }
-                    )
-                    .frame(height: 28)
-                    .padding(.horizontal, 10)
-                    .padding(.top, 6)
-                    .padding(.bottom, 8)
+                    VStack(spacing:8) {
+                        LibrarySearchField(
+                            text: $search.query,
+                            large: false,
+                            onClick: { search.open() },
+                            onBegin: { search.open() },
+                            onChange: { search.open() },
+                            onCancel: { search.close() }
+                        )
+                        .frame(height: 28)
+                        .padding(.horizontal, 10)
+                        .padding(.top, 6)
+                        Picker(UXText.text("library.filters.a11y"),selection:$store.preferences.filter) {
+                            Text(UXText.text("library.filter.all")).tag(LibraryPreferences.Filter.all)
+                            Text(UXText.text("library.filter.starred")).tag(LibraryPreferences.Filter.starred)
+                        }.pickerStyle(.segmented).labelsHidden()
+                            .accessibilityIdentifier("library-filters")
+                            .padding(.horizontal,10).padding(.bottom,8)
+                            .onChange(of:store.preferences.filter) { _,_ in
+                                store.selectedKeys.formIntersection(Set(store.visibleMeetings.map(\.libraryKey)))
+                            }
+                    }
                 }
 
                 LibraryDropHintFooter(entered: dropState.showsWindowOutline)
@@ -516,6 +537,11 @@ struct LibraryView: View {
         return MeetingCard(isSelected: selected) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 10) {
+                    if store.isStarred(meeting) {
+                        Image(systemName:"star.fill").foregroundStyle(CassiniTheme.ink2)
+                            .accessibilityLabel(UXText.text("library.row.starred.a11y"))
+                            .accessibilityIdentifier("library-starred-" + meeting.libraryKey)
+                    }
                     Text(meeting.title ?? UXText.text("library.untitled"))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(CassiniTheme.ink)

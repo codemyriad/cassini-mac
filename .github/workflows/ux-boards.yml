@@ -110,6 +110,7 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSettingsTranscriptionModelChoices \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testParakeetRecommendationCapabilityAndPersistedDismissal \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSettingsRecordingPreferenceAndTabs \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testStarsPersistAndSearchCarriesLibraryChoiceThenResetsOtherFilters \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testLibrary \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testFirstRun \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSearchBoardFiltersAndOpeningTheHit \
