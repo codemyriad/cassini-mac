@@ -81,6 +81,13 @@ scripts/check-native-recording.sh             # actual Core Audio tap; macOS con
 
 Both check stereo separation with generated 440/880 Hz tones. The sink-only check covers planar and interleaved input, frame counts and the production WAV writer. The full check captures only Cassini's own generated tone and never opens the microphone. It launches through LaunchServices so macOS attributes consent to Cassini instead of an SSH process. The script exits nonzero on failure and removes its generated recordings. The full hardware check is a manual release gate: it remains unverified until macOS system-audio consent can be granted on this Mac. It does not bypass TCC. There is no input device here, so microphone hardware validation also remains outstanding.
 
+## Shared UX contracts
+
+After fetching `cassini-ux`, run `python3 scripts/sync-ux.py ~/cassini-ux` to
+vendor `origin/main` strings and import types verbatim, update both commit/hash
+pins, and verify copy policy. Run `python3 scripts/check-ux-copy.py` independently
+to check the vendored copies and used string IDs.
+
 ## Conformance
 
 ```sh

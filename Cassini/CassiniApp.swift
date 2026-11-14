@@ -67,7 +67,7 @@ extension UTType {
     static let oggAudio = UTType(importedAs: "org.xiph.ogg-audio")
     static let opusAudio = UTType(importedAs: "org.xiph.opus")
 
-    /// Decided audio UTIs from `contract/import-types.json` (`status == "decided"` only; excludes `flac`).
+    /// Decided audio UTIs from `contract/import-types.json` (`status == "decided"` only; includes native `flac`).
     static var decidedImportAudioContentTypes: [UTType] {
         ImportTypesContract.shared.decidedUTIIdentifiers.compactMap { identifier in
             switch identifier {
