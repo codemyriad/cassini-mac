@@ -98,7 +98,10 @@ jobs:
           -resultBundlePath build/UXBoards.xcresult \
           2>&1 | tee build/ux-boards.log
     - name: Render dark Library boards
-      timeout-minutes: 9
+      # Run43623183819 passed the Starred search regression at9 min, then
+      # the guard killed the next progressing test. Leave headroom for the
+      # full dark subset and result-bundle finalization on hosted runners.
+      timeout-minutes: 12
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
         TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'

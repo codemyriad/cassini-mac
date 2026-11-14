@@ -90,7 +90,7 @@ class NativeSpectrogramScheduling(unittest.TestCase):
         boards, native, diagnostics = jobs['boards'], jobs['spectrogram'], jobs['spectrogram_diagnostics']
         self.assertIn('timeout-minutes: 55',boards)
         self.assertIn('timeout-minutes: 35',boards)
-        self.assertIn('timeout-minutes: 9',boards)
+        self.assertIn('timeout-minutes: 12',boards)
         self.assertIn('needs: [build]\n',boards)
         self.assertIn('TEST_RUNNER_CASSINI_SCREENSHOT_SCHEME: dark',boards)
         self.assertIn('--dark build/ux-attachments-dark',boards)
