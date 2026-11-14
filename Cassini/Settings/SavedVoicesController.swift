@@ -153,7 +153,9 @@ import CassiniWhistle
               !RecordingController.shared.isRecording, !CaptureCollection.shared.isRecording else { return }
         prepared=nil; sampleReady=false; message=nil
         enrollmentTask=Task {
-            guard await AVCaptureDevice.requestAccess(for:.audio), !Task.isCancelled, enrollmentPresented else { return }
+            let allowed=await AVCaptureDevice.requestAccess(for:.audio)
+            guard !Task.isCancelled, enrollmentPresented else { return }
+            guard allowed else { message=UXText.text("savedVoices.changeFailed"); return }
             do {
                 let root=FileManager.default.temporaryDirectory.appendingPathComponent("voice-enrollment-"+UUID().uuidString,isDirectory:true)
                 try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
@@ -186,7 +188,8 @@ import CassiniWhistle
                 try Task.checkCancellation()
                 prepared=(result.embedding,result.seconds,generation); sampleReady=true
             } catch is CancellationError {}
-            catch { message=UXText.text("voices.enroll.tooShort") }
+            catch SavedVoicesError.invalidPrint { message=UXText.text("voices.enroll.tooShort") }
+            catch { message=UXText.text("savedVoices.changeFailed") }
         }
     }
     func saveEnrollment() {
@@ -229,7 +232,11 @@ import CassiniWhistle
         let worker=Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cassini-parakeet-worker")
         let result=try await WhistleSubprocess.run(executable:worker,arguments:[guided ? "--voice-guided":"--voice","--model",modelDirectory.path],
             environment:WhistleEnvironment.worker(),input:data,timeout:60)
-        guard result.status == 0, result.inputError == nil else { throw SavedVoicesError.invalidPrint }
+        guard result.status == 0, result.inputError == nil else {
+            let code=(try? JSONSerialization.jsonObject(with:result.stdout) as? [String:Any])?["code"] as? String
+            if code == "voice-too-short" { throw SavedVoicesError.invalidPrint }
+            throw SavedVoicesError.unavailable
+        }
         return try JSONDecoder().decode(EmbeddingResult.self,from:result.stdout)
     }
 }

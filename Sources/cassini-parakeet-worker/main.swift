@@ -91,6 +91,7 @@ do {
 } catch {
     let code: String
     if case ParakeetFailure.invalidModel = error { code = "invalid-model" }
+    else if case ParakeetFailure.invalidAudio = error, ["--voice","--voice-guided"].contains(CommandLine.arguments.dropFirst().first ?? "") { code = "voice-too-short" }
     else { code = "transcribe-failed" }
     try? emit(Response(id:requestID,error:String(describing:error),code:code)); exit(78)
 }

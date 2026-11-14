@@ -54,7 +54,7 @@ public struct SavedVoicesSnapshot: Sendable {
     public let clips: [String:VoiceClip]
     public let readOnly: Bool
 }
-public enum SavedVoicesError: Error { case newerVersion, invalidName, invalidPrint, changedGeneration, unsafeStorage, missingVoice }
+public enum SavedVoicesError: Error { case newerVersion, invalidName, invalidPrint, unavailable, changedGeneration, unsafeStorage, missingVoice }
 
 /// One atomic document owns profiles and sample references. No audio or biometric
 /// data is written to the Library. flock also serializes separate app processes.

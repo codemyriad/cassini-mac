@@ -32,7 +32,7 @@ import CassiniLibrary
         guard let meeting else { return false }
         if presentation == .speakers {
             guard let speaker=selectedSpeaker else {return false}
-            return canEditSpeakers(meeting) && SpeakerEdits.validName(name) && (SpeakerEdits.normalizedName(name) != speaker.name || rememberVoice && voiceEnrollment != nil)
+            return canEditSpeakers(meeting) && SpeakerEdits.validName(name) && (SpeakerEdits.normalizedName(name) != speaker.name || rememberVoice && SavedVoicesStore.validName(name) && voiceEnrollment != nil)
         }
         let original = meeting.title ?? UXText.text("library.untitled")
         return !working && name != original && (normalized == nil || normalized != original) && canRename(meeting)
@@ -144,7 +144,7 @@ import CassiniLibrary
         working=true;speakerChangeFailed=false;speakerRetry=edit
         let location=LibraryLocationModel.shared.location
         let scanner=LibraryStore.shared.scannerForRename(meeting) ?? LibraryScanner(root:meeting.folder.deletingLastPathComponent())
-        let enrollment=rememberVoice ? voiceEnrollment:nil, enrollmentName=name, voiceID=savedVoiceID
+        let enrollment=rememberVoice && SavedVoicesStore.validName(name) ? voiceEnrollment:nil, enrollmentName=name, voiceID=savedVoiceID
         task=Task {
             do {
                 let updated=try await Task.detached(priority:.userInitiated) {
