@@ -187,11 +187,28 @@ struct MeetingExportSheet: View {
                     if kind == .cassini && meeting.state.transcript == .done { Divider() }
                 }
                 if meeting.state.transcript == .done {
-                    DisclosureGroup(UXText.text("export.moreFormats"), isExpanded: $moreFormats) {
-                        ForEach(MeetingExportKind.more(for: meeting), id: \.self) { kind in
-                            option(kind)
+                    // Explicit disclosure control: on macOS 15 clicking the label of a
+                    // default DisclosureGroup does not toggle it, only the chevron does.
+                    Button { moreFormats.toggle() } label: {
+                        HStack(spacing:6) {
+                            Image(systemName: moreFormats ? "chevron.down" : "chevron.right")
+                                .font(.system(size:10,weight:.semibold)).foregroundStyle(CassiniTheme.ink2)
+                                .frame(width:12).accessibilityHidden(true)
+                            Text(UXText.text("export.moreFormats")).foregroundStyle(CassiniTheme.ink)
+                            Spacer()
+                        }.padding(12).contentShape(Rectangle())
+                    }.buttonStyle(.plain).disabled(coordinator.working)
+                        .accessibilityIdentifier("export-more-formats")
+                        .accessibilityLabel(UXText.text("export.moreFormats"))
+                        .accessibilityValue(moreFormats ? "1" : "0")
+                    if moreFormats {
+                        VStack(spacing:0) {
+                            Divider()
+                            ForEach(MeetingExportKind.more(for: meeting), id: \.self) { kind in
+                                option(kind)
+                            }
                         }
-                    }.padding(12).accessibilityIdentifier("export-more-formats")
+                    }
                 }
             }.background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
                 .clipShape(RoundedRectangle(cornerRadius:8)).overlay { RoundedRectangle(cornerRadius:8).stroke(CassiniTheme.cardStroke) }
