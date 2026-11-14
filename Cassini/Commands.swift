@@ -60,15 +60,10 @@ struct AppCommands: Commands {
             }
             Button(UXText.text("export.zip.all")) { BulkZipExportCoordinator.shared.exportAll() }
                 .disabled(speakerDialog || !BulkZipExportCoordinator.shared.canExportAll)
-            Button(UXText.text("meeting.moveToRecentlyDeleted")) {
+            Button(UXText.text("common.moveToTrash")) {
                 let trash = MeetingTrashCoordinator.shared
                 if trash.commandEnabled, let meeting = trash.commandMeeting { trash.move(meeting,undoManager:NSApp.keyWindow?.undoManager) }
             }.keyboardShortcut(.delete,modifiers:.command).disabled(speakerDialog || !MeetingTrashCoordinator.shared.commandEnabled)
-            Divider()
-            Button(UXText.text("menu.trash")) {
-                ApplicationWindows.recentlyDeleted()
-                NSApp.activate(ignoringOtherApps: true)
-            }.disabled(speakerDialog)
         }
         CommandGroup(after: .sidebar) {
             Button(UXText.text("common.backToLibrary")) {

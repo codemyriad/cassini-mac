@@ -131,8 +131,6 @@ final class LibraryStore {
     @ObservationIgnored private var started = false
     @ObservationIgnored private var pending = Set<URL>()
     @ObservationIgnored private var scanning = false
-    @ObservationIgnored private var recoveredRoots = Set<String>()
-    @ObservationIgnored private var retentionTask: Task<Void, Never>?
     // A completed capture is discovered and queued for transcription inside
     // this scan. Keep update installation out of the saving-to-queue handoff.
     var isRefreshing: Bool { scanning || !pending.isEmpty }
@@ -157,23 +155,15 @@ final class LibraryStore {
             do { try watcher.start { [weak self] folder in Task { @MainActor in self?.refresh(affected:folder) } } }
             catch { /* A read-only snapshot remains useful. */ }
         }
-        if !context.screenshot {
-            startHourlyRetention()
-        }
         refresh()
     }
-    func stop() {
-        started = false; epoch &+= 1
-        retentionTask?.cancel(); retentionTask = nil
-        watchers.forEach { $0.stop() }; watchers = []; pending.removeAll(); scanning = false
-    }
+    func stop() { started = false; epoch &+= 1; watchers.forEach { $0.stop() }; watchers = []; pending.removeAll(); scanning = false }
     func reloadLocation() {
         let selection = selected
         let folder = selectionFolderWhenAvailable ?? selection.map { LibraryLocation.canonical($0.folder) }
         selectionFolderWhenAvailable = folder
         selectionWhenAvailable = folder?.lastPathComponent
-        stop(); recoveredRoots.removeAll()
-        LibraryLocationModel.shared.reload(); context = LibraryLocationModel.shared.context()
+        stop(); LibraryLocationModel.shared.reload(); context = LibraryLocationModel.shared.context()
         scanners = [:]; rootSnapshots = [:]; loaded = false
         for root in [context.root] + context.previousRoots { scanners[root] = LibraryScanner(root:root,activity:activity) }
         selectedKey = selection?.libraryKey ?? selectedKey; start()
@@ -209,18 +199,6 @@ final class LibraryStore {
                 var primaryFailed = false
                 for root in [context.root] + context.previousRoots {
                     guard let scanner = scanners[root], target == context.root || target.path == root.path || target.deletingLastPathComponent().path == root.path else { continue }
-                    let canonicalPath = LibraryLocation.canonical(root).path
-                    if !context.screenshot, recoveredRoots.insert(canonicalPath).inserted {
-                        let scanNow = context.now ?? Date()
-                        let untitled = UXText.text("library.untitled")
-                        let access = LibraryLocationModel.shared.available ? (try? LibraryAccess(LibraryLocationModel.shared.location, tolerateMissingPrevious: true)) : nil
-                        await Task.detached(priority: .utility) { [access] in
-                            defer { withExtendedLifetime(access) {} }
-                            _ = try? LibraryTrash.recover(in: root, untitled: untitled, now: scanNow)
-                            _ = try? LibraryTrash.purgeExpired(in: root, now: scanNow)
-                        }.value
-                        guard started, generation == epoch else { return }
-                    }
                     do {
                         let result = try await scanner.scanInBackground(affected:target == context.root ? nil : target,now:context.now ?? Date())
                         guard started, generation == epoch else { return }
@@ -315,31 +293,6 @@ final class LibraryStore {
         if let snapshot { self.snapshot = .init(meetings:snapshot.meetings.filter { $0.folder != meeting.folder },issues:snapshot.issues) }
         selectedKey = next?.libraryKey; selectionWhenAvailable = nil; selectionFolderWhenAvailable = nil
         revision &+= 1; start()
-    }
-    private func startHourlyRetention() {
-        retentionTask?.cancel()
-        retentionTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3600))
-                guard !Task.isCancelled, let self, self.started else { break }
-                let roots = [self.context.root] + self.context.previousRoots
-                let now = self.context.now ?? Date()
-                let access = LibraryLocationModel.shared.available ? (try? LibraryAccess(LibraryLocationModel.shared.location, tolerateMissingPrevious: true)) : nil
-                let purgedAny = await Task.detached(priority: .utility) { [access] () -> Bool in
-                    defer { withExtendedLifetime(access) {} }
-                    var didPurge = false
-                    for root in roots {
-                        if let purged = try? LibraryTrash.purgeExpired(in: root, now: now), !purged.isEmpty {
-                            didPurge = true
-                        }
-                    }
-                    return didPurge
-                }.value
-                if purgedAny {
-                    RecentlyDeletedModel.shared.refresh()
-                }
-            }
-        }
     }
     func excerpt(_ meeting: LibraryMeeting) -> [LibraryTranscriptTurn] { Array(meeting.transcriptTurns.prefix(3)) }
 }

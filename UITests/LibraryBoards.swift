@@ -118,8 +118,8 @@ final class LibraryBoards: XCTestCase {
         window.sheets.buttons["record-first-start"].click()
         XCTAssertTrue(window.buttons["recording-stop"].waitForExistence(timeout:10))
         app.menuBars.menuBarItems["File"].click()
-        XCTAssertFalse(app.menuItems["Move to Recently Deleted"].isEnabled,"Recording cannot be trashed")
-        XCTAssertTrue(app.menuItems["Recently Deleted"].exists && app.menuItems["Recently Deleted"].isEnabled)
+        XCTAssertFalse(app.menuItems["Move to Trash"].isEnabled,"Recording cannot be trashed")
+        XCTAssertFalse(app.menuItems["Recently Deleted"].exists)
         app.typeKey(.escape,modifierFlags:[])
         window.buttons["recording-stop"].click()
         XCTAssertTrue(window.buttons["meeting-play"].waitForExistence(timeout:10))
@@ -128,32 +128,19 @@ final class LibraryBoards: XCTestCase {
         row.rightClick()
         XCTAssertTrue(app.menuItems["Export…"].exists)
         XCTAssertTrue(window.menuItems["move-to-trash"].isEnabled)
-        XCTAssertEqual(window.menuItems["move-to-trash"].title,"Move to Recently Deleted")
+        XCTAssertEqual(window.menuItems["move-to-trash"].title,"Move to Trash")
         capture(window,name:"trash")
         app.typeKey(.escape,modifierFlags:[])
         row.click()
         app.typeKey(XCUIKeyboardKey(rawValue:"\u{F70D}"),modifierFlags:.shift)
         XCTAssertTrue(app.menuItems["library-keyboard-trash"].waitForExistence(timeout:5),"Shift-F10 opens the selected row menu")
         XCTAssertTrue(app.menuItems["library-keyboard-trash"].isEnabled)
-        XCTAssertEqual(app.menuItems["library-keyboard-trash"].title,"Move to Recently Deleted")
+        XCTAssertEqual(app.menuItems["library-keyboard-trash"].title,"Move to Trash")
         app.typeKey(.escape,modifierFlags:[])
         app.typeKey(.delete,modifierFlags:.command)
         XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:10),app.debugDescription)
         XCTAssertFalse(window.sheets.firstMatch.exists,"No confirmation")
         capture(window,name:"trash-after")
-
-        app.menuBars.menuBarItems["File"].click()
-        app.menuItems["Recently Deleted"].click()
-        let trashWindow = app.windows["cassini-recently-deleted-window"]
-        XCTAssertTrue(trashWindow.waitForExistence(timeout:10),app.debugDescription)
-        let restoreButton = trashWindow.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@","trash-restore-")).firstMatch
-        XCTAssertTrue(restoreButton.waitForExistence(timeout:10),app.debugDescription)
-        XCTAssertTrue(trashWindow.buttons["trash-delete-all"].isEnabled)
-        restoreButton.click()
-        XCTAssertTrue(trashWindow.descendants(matching:.any)["recently-deleted-empty"].waitForExistence(timeout:10),app.debugDescription)
-        XCTAssertFalse(trashWindow.buttons["trash-delete-all"].isEnabled)
-        XCTAssertTrue(window.buttons["meeting-play"].waitForExistence(timeout:10))
-        trashWindow.buttons[XCUIIdentifierCloseWindow].click()
     }
     /// D52.3a: Recording details opens from the meeting's More menu and closes again.
     @MainActor func testRecordingDetailsFromTheMoreMenu() throws {
@@ -225,7 +212,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.outlines.firstMatch.exists)
         app.typeKey("f",modifierFlags:.command)
         app.menuBars.menuBarItems["File"].click()
-        XCTAssertFalse(app.menuItems["Move to Recently Deleted"].isEnabled,"Search and text focus retain delete")
+        XCTAssertFalse(app.menuItems["Move to Trash"].isEnabled,"Search and text focus retain delete")
         app.typeKey(.escape,modifierFlags:[])
     }
     @MainActor func testCompanionSetupBoard() throws {
@@ -447,18 +434,23 @@ final class LibraryBoards: XCTestCase {
         app.typeKey(.escape,modifierFlags:[])
         XCTAssertTrue(window.buttons["first-run-record"].exists)
         XCTAssertFalse(app.buttons["recording-stop"].exists,"Reading consent captions must never start a capture")
-        if app.menuBars.menuBarItems["Help"].exists {
-            app.menuBars.menuBarItems["Help"].click()
-            XCTAssertFalse(app.menuItems["Cassini Help"].exists)
-            XCTAssertTrue(app.menuItems["Cassini talk Help"].exists)
-            app.menuItems["Cassini talk Help"].click()
-            let helpWindow = app.windows["cassini-help-window"]
-            XCTAssertTrue(helpWindow.waitForExistence(timeout:10),app.debugDescription)
-            for topic in ["help-topic-record","help-topic-library","help-topic-trash","help-topic-voices"] {
-                XCTAssertTrue(helpWindow.descendants(matching:.any)[topic].exists,topic)
-            }
-            helpWindow.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(app.menuBars.menuBarItems["Help"].exists)
+        app.menuBars.menuBarItems["Help"].click()
+        XCTAssertFalse(app.menuItems["Cassini Help"].exists)
+        XCTAssertTrue(app.menuItems["Cassini talk Help"].exists)
+        app.menuItems["Cassini talk Help"].click()
+        let helpWindow = app.windows["cassini-help-window"]
+        XCTAssertTrue(helpWindow.waitForExistence(timeout:10),app.debugDescription)
+        for topic in ["help-topic-record","help-topic-library","help-topic-trash","help-topic-voices"] {
+            XCTAssertTrue(helpWindow.descendants(matching:.any)[topic].exists,topic)
         }
+        XCTAssertTrue(text("Deleted meetings go to the Trash. Choose Edit › Undo right away, or later open the Trash in Finder and choose Put Back.",in:helpWindow))
+        XCTAssertFalse(text("30 days",in:helpWindow))
+        // Opening Help again reuses the single scene.
+        app.menuBars.menuBarItems["Help"].click()
+        app.menuItems["Cassini talk Help"].click()
+        XCTAssertEqual(app.windows.matching(identifier:"cassini-help-window").count,1)
+        helpWindow.buttons[XCUIIdentifierCloseWindow].click()
         app.menuBars.menuBarItems["Cassini talk"].click()
         XCTAssertTrue(app.menuItems["Saved Voices…"].exists)
         app.menuItems["Saved Voices…"].click()
@@ -1215,7 +1207,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.textFields["recording-title"].waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertFalse(window.buttons["meeting-export"].exists)
         app.menuBars.menuBarItems["File"].click()
-        XCTAssertFalse(app.menuItems["Move to Recently Deleted"].isEnabled)
+        XCTAssertFalse(app.menuItems["Move to Trash"].isEnabled)
         app.typeKey(.escape, modifierFlags: [])
         app.typeKey(.delete, modifierFlags: .command)
         XCTAssertTrue(window.textFields["recording-title"].exists)

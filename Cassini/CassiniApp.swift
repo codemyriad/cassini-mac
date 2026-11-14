@@ -37,13 +37,6 @@ struct CassiniApp: App {
         }
             .menuBarExtraStyle(.window)
 
-        Window(UXText.text("trash.title"), id: "recently-deleted") {
-            RecentlyDeletedView().tint(CassiniTheme.sceneTint)
-        }
-            .defaultLaunchBehavior(.suppressed)
-            .defaultSize(width: 680, height: 500)
-            .windowToolbarStyle(.unified)
-
         Window(UXText.text("help.title"), id: "help") {
             HelpView().tint(CassiniTheme.sceneTint)
         }

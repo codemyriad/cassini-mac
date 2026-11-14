@@ -3,7 +3,7 @@ import AppKit
 import CassiniLibrary
 import SwiftUI
 
-/// Offline in-app Help window (`HARMONY` §12, `D100`, `D-1033`): four concise topics,
+/// Offline in-app Help window (`HARMONY` §12, `D101`, `D-1033`): four concise topics,
 /// zero external links, zero network calls.
 struct HelpView: View {
     @State private var shortcut = RecordingRuntime.shared.shortcut
@@ -33,7 +33,7 @@ struct HelpView: View {
                 id: "help-topic-trash",
                 icon: "arrow.uturn.backward.circle",
                 title: UXText.text("help.trash.title"),
-                body: UXText.text("help.trash.body")
+                body: UXText.text("help.trash.systemBody")
             ),
             Topic(
                 id: "help-topic-voices",

@@ -7,8 +7,8 @@ import Observation
     static let shared = MeetingTrashCoordinator()
     private(set) var busy = false
     private(set) var failure: LibraryMeeting?
+    private(set) var unsupported = false
     #if DEBUG
-    private(set) var lastTrashEntry: TrashEntry?
     private(set) var lastTrashURL: URL?
     private(set) var lastUndoAvailable = false
     var fixtureFailure: Error?
@@ -54,33 +54,26 @@ import Observation
                 #else
                 let injected: Error? = nil
                 #endif
-                let now = LibraryStore.shared.context.now ?? Date()
-                let entry = try await Task.detached(priority:.userInitiated) { [access] in
+                let result = try await Task.detached(priority:.userInitiated) { [access] in
                     defer { withExtendedLifetime(access) {} }
                     if let injected { throw injected }
-                    return try LibraryTrash.trashMeeting(meeting,roots:access.roots,now:now)
+                    return try LibraryTrash.move(meeting.folder,roots:access.roots)
                 }.value
                 LibraryStore.shared.removed(meeting)
-                RecentlyDeletedModel.shared.refresh()
+                // No promise of Undo if the sandbox cannot access the resulting
+                // Trash URL. Finder's Put Back remains available in either case.
                 #if DEBUG
-                lastTrashEntry = entry
-                lastTrashURL = entry.map {
-                    $0.root
-                        .appendingPathComponent(LibraryTrash.trashDirectory,isDirectory:true)
-                        .appendingPathComponent($0.entryId,isDirectory:true)
-                        .appendingPathComponent(meeting.folder.lastPathComponent,isDirectory:true)
-                }
-                lastUndoAvailable = entry != nil && undoManager != nil
+                lastTrashURL = result; lastUndoAvailable = result.map { Self.canRestore($0,to:meeting.folder) } ?? false
                 #endif
-                if let entry, let undoManager {
+                if let result, let undoManager, Self.canRestore(result,to:meeting.folder) {
                     undoManager.registerUndo(withTarget:self) { target in
-                        target.restore(entry,originalFolder:meeting.folder,access:access)
+                        target.restore(result,to:meeting.folder,access:access)
                     }
-                    undoManager.setActionName(UXText.text("meeting.moveToRecentlyDeleted"))
+                    undoManager.setActionName(UXText.text("common.moveToTrash"))
                 }
             } catch {
                 if let previousMoves { try? location.setMovesPreservingRoots(previousMoves) }
-                failure = meeting
+                failure = meeting; unsupported = LibraryTrash.unsupported(error)
                 LibraryStore.shared.selectedKey = meeting.libraryKey; LibraryStore.shared.refresh(affected:meeting.folder)
             }
             TranscriptionQueue.shared.releaseTrashed(meeting.folder)
@@ -88,10 +81,14 @@ import Observation
             LibraryMoveCoordinator.shared.maybeRetryDeferred()
         }
     }
-    private func restore(_ entry: TrashEntry, originalFolder: URL, access: LibraryAccess) {
+    private static func canRestore(_ trashed: URL, to original: URL) -> Bool {
+        FileManager.default.isDeletableFile(atPath:trashed.path) &&
+        FileManager.default.isWritableFile(atPath:original.deletingLastPathComponent().path) &&
+        !FileManager.default.fileExists(atPath:original.path)
+    }
+    private func restore(_ trashed: URL, to original: URL, access: LibraryAccess) {
         guard !closing else { return }
         let preceding = restoration
-        let untitled = UXText.text("library.untitled")
         restoration = Task {
             await preceding?.value
             // Undo must not silently disappear if another Trash or Library Move
@@ -104,10 +101,12 @@ import Observation
             do {
                 try await Task.detached { [access] in
                     defer { withExtendedLifetime(access) {} }
-                    try LibraryTrash.restore(entryId:entry.entryId,in:entry.root,untitled:untitled)
+                    // Never replace a newer meeting or a Finder-restored item.
+                    guard renameatx_np(AT_FDCWD,trashed.path,AT_FDCWD,original.path,UInt32(RENAME_EXCL)) == 0 else {
+                        throw POSIXError(POSIXErrorCode(rawValue:errno) ?? .EIO)
+                    }
                 }.value
-                LibraryStore.shared.refresh(affected:originalFolder)
-                RecentlyDeletedModel.shared.refresh()
+                LibraryStore.shared.refresh(affected:original)
             } catch { NSApp.presentError(error) }
             busy = false
         }

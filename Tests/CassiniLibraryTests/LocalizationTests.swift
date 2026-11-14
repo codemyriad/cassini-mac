@@ -11,6 +11,23 @@ import Testing
         let value=text as NSString
         return Set(regex.matches(in:text,range:NSRange(location:0,length:value.length)).map {value.substring(with:$0.range(at:1))})
     }
+    @Test func offlineHelpUsesMacSystemTrashCopyAndSubstitutesCurrentShortcut() {
+        let strings = LibraryLocalization.shared
+        let trash = strings.text("help.trash.systemBody", language: .en)
+        #expect(trash == "Deleted meetings go to the Trash. Choose Edit › Undo right away, or later open the Trash in Finder and choose Put Back.")
+        #expect(!trash.contains("30"))
+        #expect(!trash.contains("Recently Deleted"))
+        for language in CassiniLanguage.allCases {
+            let body = strings.text("help.trash.systemBody", language: language)
+            #expect(body.contains("Finder"))
+            #expect(!body.contains("30"))
+            for shortcut in ["⌘R", "⌥⌘R"] {
+                let record = strings.text("help.record.body", ["shortcut": shortcut], language: language)
+                #expect(record.contains(shortcut))
+                #expect(!record.contains("{shortcut}"))
+            }
+        }
+    }
     @Test func osLanguageAndPortugueseRegions() {
         let expected:[String:CassiniLanguage]=["en-GB":.en,"it-CH":.it,"fr-CA":.fr,"es-MX":.es,
             "pt":.ptBR,"pt-BR":.ptBR,"pt_br":.ptBR,"pt-PT":.ptPT,"pt-AO":.ptPT,"pt-MZ":.ptPT,

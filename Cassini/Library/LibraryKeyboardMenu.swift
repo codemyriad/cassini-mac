@@ -57,7 +57,7 @@ import CassiniLibrary
         menu.addItem(exportAllItem)
         if let meeting, trash.canTrash(meeting) {
             menu.addItem(.separator())
-            let removeItem = ActionItem(title:UXText.text("meeting.moveToRecentlyDeleted")) { trash.move(meeting,undoManager:undo) }
+            let removeItem = ActionItem(title:UXText.text("common.moveToTrash")) { trash.move(meeting,undoManager:undo) }
             removeItem.identifier = NSUserInterfaceItemIdentifier("library-keyboard-trash")
             removeItem.setAccessibilityIdentifier("library-keyboard-trash")
             menu.addItem(removeItem)
