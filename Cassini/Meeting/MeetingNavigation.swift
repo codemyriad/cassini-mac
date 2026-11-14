@@ -81,7 +81,9 @@ import Observation
     var meeting: LibraryMeeting {
         didSet {
             if let id=namingSpeakerID {namingSpeakerID=meeting.speaker(for:id)?.id}
-            if MeetingPresentation.turnInputsChanged(from:oldValue,to:meeting) {
+            if TranscribingPresentation.isActive(meeting.state) {
+                if !TranscribingPresentation.isActive(oldValue.state) { clearTranscriptPresentation() }
+            } else if TranscribingPresentation.isActive(oldValue.state) || MeetingPresentation.turnInputsChanged(from:oldValue,to:meeting) {
                 prepareTurns()
                 shares = MeetingPresentation.shares(meeting)
             }
@@ -121,11 +123,19 @@ import Observation
         self.meeting = meeting; self.fileURL = fileURL?.standardizedFileURL; self.frozen = frozen
         let audio = SessionPlayback(); self.audio = audio; listen = ListenController(playback:audio); speakerSample=SpeakerSample(playback:audio)
         fileAccessLease = lease
-        shares = MeetingPresentation.shares(meeting)
+        if !TranscribingPresentation.isActive(meeting.state) { shares = MeetingPresentation.shares(meeting) }
         audio.onFailure = { NSApp.presentError($0) }
         prepareTurns()
     }
+    private func clearTranscriptPresentation() {
+        preparation?.cancel(); preparation = nil
+        turns = []; listeningTurns = []; shares = [:]
+        listen.setTurns([])
+        timelineReadout = TimelineReadout()
+        transcriptListening = TranscriptListening()
+    }
     private func prepareTurns() {
+        guard !TranscribingPresentation.isActive(meeting.state) else { return }
         // Screenshot and self-test fixtures render a fixed frame: prepared in place.
         if frozen {
             turns = MeetingPresentation.turns(meeting.transcriptItems,gaps:meeting.speakerGaps,endsBoundedByAudio:meeting.wordEndsBoundedByAudio)

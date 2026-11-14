@@ -11,6 +11,9 @@ struct MeetingView: View {
     @State private var handScrolling = false
     var showsCompanionSuggestion: Bool { !suggestionDismissed && !CaptureCollection.shared.connected }
     private var meeting: LibraryMeeting { model.meeting }
+    private var isTranscribing: Bool {
+        TranscribingPresentation.isActive(meeting.state)
+    }
     private var shares: [String: Int] { model.shares }
     /// M11: paragraphs only; an aside is shown inside its host.
     private var visibleTurns: [MeetingPresentation.Turn] { MeetingPresentation.visibleTurns(model.turns) }
@@ -161,9 +164,15 @@ struct MeetingView: View {
     }
     var body: some View {
         VStack(spacing: 0) {
+            if isTranscribing {
+                TranscribingStatusView(meeting:meeting)
+                Divider()
+            }
             HStack(spacing: 0) {
-                speakersPane
-                CassiniColumnDivider()
+                if !isTranscribing {
+                    speakersPane
+                    CassiniColumnDivider()
+                }
                 ScrollViewReader { proxy in ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
                         if meeting.hasNoSpeech {
@@ -172,8 +181,10 @@ struct MeetingView: View {
                             NoSpeechTranscriptLine(action:meeting.canWriteDown ? { TranscriptionQueue.shared.writeDown(model) } : nil,meeting:meeting)
                         }
                         if let line = issueLine { InlineMeetingLine(id: line, actionID: meeting.state.transcript == .failed ? "common.tryAgain" : nil, action: meeting.state.transcript == .failed ? { TranscriptionQueue.shared.writeDown(model) } : nil).disabled(LibraryMoveCoordinator.shared.busy) }
-                        if showsCompanionSuggestion { companionCard }
-                        ForEach(visibleTurns) { turn in turnRow(turn) }
+                        if !isTranscribing {
+                            if showsCompanionSuggestion { companionCard }
+                            ForEach(visibleTurns) { turn in turnRow(turn) }
+                        }
                     }.padding(.horizontal, 48).padding(.vertical, 22)
                 }.cassiniTopScrollEdge()
                     .accessibilityIdentifier("meeting-transcript")
@@ -209,7 +220,7 @@ struct MeetingView: View {
             }
             // Keep the controls in the main layout/hit-test tree. On macOS 15,
             // safeAreaInset paints this bar but its buttons fail AX hit testing.
-            if let presentation = model.listeningPresentation {
+            if !isTranscribing, let presentation = model.listeningPresentation {
                 ListeningBar(model:model,presentation:presentation,colour:colour(model.listen.speaker.flatMap { meeting.speaker(for:$0) }))
                     .transition(reduceMotion ? .identity : .move(edge:.bottom).combined(with:.opacity))
             }
@@ -278,8 +289,9 @@ struct MeetingView: View {
             Button { model.skip(10) } label: { Image(systemName: "goforward.10").frame(width: 24, height: 36) }.help(UXText.text("player.forward10")).accessibilityLabel(UXText.text("player.forward10"))
             Text(LibraryFormat.position(Int64(model.positionMs))).monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk).font(.system(size: 11.5)).accessibilityIdentifier("meeting-elapsed")
             MeetingPositionSlider(position:Binding(get:{ Double(model.positionMs) },set:{ model.seek(Int($0)) }),duration:Double(max(1,model.durationMs)),
-                                  readout:model.timelineReadout,names:meeting.speakerDisplayNames,
-                                  timeline:model.listen.timeline)
+                                  readout:isTranscribing ? TimelineReadout() : model.timelineReadout,
+                                  names:isTranscribing ? [:] : meeting.speakerDisplayNames,
+                                  timeline:isTranscribing ? ListeningTimeline() : model.listen.timeline)
                 .frame(minWidth:80,maxWidth:.infinity).frame(height:22)
             Text(LibraryFormat.position(Int64(model.durationMs))).monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk).font(.system(size: 11.5))
             Button(UXText.text("format.playbackRate", ["rate": model.rate.formatted(.number.precision(.fractionLength(0...2)).locale(UXText.locale))])) { model.cycleRate() }

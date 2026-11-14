@@ -223,7 +223,14 @@ struct LibraryView: View {
                 recordCoordinator.showingFirst = true
             }
             if store.context.screenshot, ["meeting","export"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""), navigation.detail == nil,
-               let meeting = store.meetings.first(where: { $0.title == (LibraryLaunchContext.argument("-CassiniScreenshot") == "export" ? "Budget review" : "Client call, Rossi & Partners") }) {
+               var meeting = store.meetings.first(where: { $0.title == (LibraryLaunchContext.argument("-CassiniScreenshot") == "export" ? "Budget review" : "Client call, Rossi & Partners") }) {
+                // The shared vector retains words under `running`. The reading
+                // board represents the completed meeting; L-45 has its own preview.
+                // Change only this frozen value, never the vendored fixture bytes.
+                if LibraryLaunchContext.argument("-CassiniTranscribingPreview") != "YES" {
+                    meeting.state.transcript = .done
+                    meeting.state.etaMinutes = nil
+                }
                 navigation.open(meeting,frozen:true)
                 if LibraryLaunchContext.argument("-CassiniScreenshot") == "export" {
                     Task { @MainActor in
@@ -555,7 +562,7 @@ struct LibraryView: View {
                 if let line = RecordingOverview.libraryDiskLine { Text(line).foregroundStyle(CassiniTheme.warningNotice) }
                 if meeting.state.transcript == .failed { InlineMeetingLine(id: "errors.transcribeFailed.line", actionID: "common.tryAgain", action: { TranscriptionQueue.shared.enqueue(meeting, retry: true) }).disabled(LibraryMoveCoordinator.shared.busy) }
                 if meeting.state.transcript == .damaged { InlineMeetingLine(id: "errors.transcriptDamaged.line", action: nil) }
-                if meeting.state.origin == .own { ScrollView(.horizontal) {
+                if meeting.state.origin == .own && !TranscribingPresentation.isActive(meeting.state) { ScrollView(.horizontal) {
                     HStack(spacing: 8) {
                         ForEach(meeting.speakers, id: \.id) { speaker in
                             HStack(spacing: 6) {
@@ -577,7 +584,7 @@ struct LibraryView: View {
                     Button { readTranscript(meeting) } label: {
                         Text(UXText.text("library.preview.readTranscript")).fontWeight(.semibold).padding(.horizontal, 16).frame(height: 36)
                     }.buttonStyle(.plain).background(CassiniTheme.chipFill, in: RoundedRectangle(cornerRadius: 6))
-                        .disabled(meeting.transcriptItems.isEmpty || LibraryMoveCoordinator.shared.busy)
+                        .disabled((meeting.transcriptItems.isEmpty && !TranscribingPresentation.isActive(meeting.state)) || LibraryMoveCoordinator.shared.busy)
                         .accessibilityIdentifier("preview-read-transcript")
                 }
                 if meeting.hasNoSpeech {
@@ -585,7 +592,7 @@ struct LibraryView: View {
                     NoSpeechTranscriptLine(action:meeting.canWriteDown ? { TranscriptionQueue.shared.enqueue(meeting,retry:true) } : nil)
                         .disabled(LibraryMoveCoordinator.shared.busy)
                 }
-                if !meeting.transcriptItems.isEmpty {
+                if !meeting.transcriptItems.isEmpty && !TranscribingPresentation.isActive(meeting.state) {
                     VStack(alignment: .leading, spacing: 16) {
                         Divider()
                         Text(UXText.text("library.preview.transcriptHeading")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2).padding(.top, 4)
@@ -618,6 +625,7 @@ struct LibraryView: View {
             .background(CassiniTheme.paneGround)
             .accessibilityElement(children: .contain)
             .accessibilityLabel(UXText.text("library.previewPane.a11y"))
+            .accessibilityIdentifier("library-preview")
     }
     private var autoTag: some View {
         Text(UXText.text("common.autoTag")).font(.system(size: 10, weight: .medium)).foregroundStyle(CassiniTheme.ink2)
@@ -724,10 +732,6 @@ struct LibraryView: View {
             let title = UXText.text("common.writeDown")
             return .init(title:title,identifier:"meeting-write-down",enabled:!busy) { TranscriptionQueue.shared.writeDown(detail) }
         }
-        if [.queued,.running].contains(detail.meeting.state.transcript) && !detail.meeting.metadataReadOnly {
-            let title = UXText.text("transcribing.stopAndKeepProgress")
-            return .init(title:title,identifier:"meeting-stop-transcription",enabled:!busy) { TranscriptionQueue.shared.stop(detail.meeting) }
-        }
         return nil
     }
     @ViewBuilder
@@ -737,7 +741,7 @@ struct LibraryView: View {
             Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
                 .buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("preview-write-down")
         } else if [.queued,.running].contains(meeting.state.transcript) && !meeting.metadataReadOnly {
-            Button(UXText.text("transcribing.stopAndKeepProgress")) { TranscriptionQueue.shared.stop(meeting) }
+            Button(UXText.text("common.stop")) { TranscriptionQueue.shared.stop(meeting) }
                 .buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("preview-stop-transcription")
         }
     }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Unit tests for scripts/export-ux-boards.py (28 light/dark pairs, luminance agreement, shots.json)."""
+"""Unit tests for scripts/export-ux-boards.py (30 light/dark pairs, luminance agreement, shots.json)."""
 from __future__ import annotations
 import importlib.util, json, os, struct, tempfile, unittest, zlib
 from pathlib import Path
@@ -54,13 +54,13 @@ class ExportUXBoardsTests(unittest.TestCase):
             dark_entries.append({'testIdentifier': f'LibraryBoards/testDark_{idx}()', 'attachments': [att(fn)]})
         (self.dark / 'manifest.json').write_text(json.dumps(dark_entries))
 
-    def test_exports_all_28_light_and_28_dark_pairs_and_writes_pr_shots_manifest(self) -> None:
+    def test_exports_all_30_light_and_30_dark_pairs_and_writes_pr_shots_manifest(self) -> None:
         self.populate()
         with patch.dict(os.environ, {'ImageOS': 'macos15', 'ImageVersion': '20261110.1'}), patch('builtins.print'):
             doc = exporter.export_boards(self.light, self.out, self.dark)
         self.assertEqual((doc['app'], doc['runner']['image_os'], doc['runner']['image_version']), ('mac', 'macos15', '20261110.1'))
         shots = doc['shots']
-        self.assertEqual(len(shots), 56)
+        self.assertEqual(len(shots), 60)
         self.assertEqual({s['path'] for s in shots if s['scheme'] == 'light'}, {f'{n}.png' for n in exporter.EXPECTED_BOARDS})
         self.assertEqual({s['path'] for s in shots if s['scheme'] == 'dark'}, {f'dark/{n}.png' for n in exporter.EXPECTED_BOARDS})
         by_screen: dict[tuple[str, str, str], set[str]] = {}
