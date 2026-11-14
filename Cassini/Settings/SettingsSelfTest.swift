@@ -222,6 +222,7 @@ import Sparkle
             try check((downloadedCredits.attribute(.link,at:labelRange.location,effectiveRange:nil) as? URL) == notice,"downloaded-model label opens its local NOTICE")
             try FileManager.default.removeItem(at:noticesRoot)
             try check(!ModelNotices.credits(appData:noticesRoot).string.contains(noticesLabel),"downloaded-model label disappears after removal")
+            try check(CassiniBrandMark.image(forHeight:64) != nil,"About and first run can load the pinned Saturn mark")
             try check(ModelNotices.menuConfigured,"native About menu reaches model notices")
             try check(ModelNotices.files.count >= 6 && ModelNotices.files.allSatisfy { (try? Data(contentsOf:$0).isEmpty) == false },"bundled model/decoder notices reachable")
             // Simulate Quit: stop the move scheduler first, then let the jobs

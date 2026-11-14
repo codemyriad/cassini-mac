@@ -150,6 +150,13 @@ class RenderLocalUX(unittest.TestCase):
         self.assertNotIn('-CassiniScreenshotScheme', self.arguments)
         self.assertNotIn('-AppleAccentColor', self.arguments)
 
+    def test_localized_hero_reaches_the_frozen_view(self):
+        for language, locale in [('fr','fr_FR'),('it','it_IT'),('es','es_ES'),('pt-BR','pt_BR'),('pt-PT','pt_PT')]:
+            with self.subTest(language=language):
+                self.render('first-run',extra=('--language',language))
+                self.assertEqual(self.arguments[self.arguments.index('-AppleLanguages') + 1],f'({language})')
+                self.assertEqual(self.arguments[self.arguments.index('-AppleLocale') + 1],locale)
+
     def test_accent_is_unpinned_by_default_and_configurable_for_probes(self):
         self.render()
         self.assertNotIn('-AppleAccentColor', self.arguments)
