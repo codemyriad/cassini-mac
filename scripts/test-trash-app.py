@@ -49,8 +49,12 @@ assert {c['kind'] for c in report['sandboxCases']}=={'music','bookmark'}
 for case in report['sandboxCases']:
     source=Path(case['trashed']);destination=Path(case['original'])
     assert source.is_dir() and not destination.exists(),case
+    assert '.cassini/trash/' in str(source),case
     assert hashlib.sha256((source/'session.json').read_bytes()).hexdigest()==case['sessionSHA256']
     os.rename(source,destination)
+    entry_json=source.parent/'entry.json'
+    if entry_json.exists(): entry_json.unlink()
+    if source.parent.is_dir(): source.parent.rmdir()
 putback.write_text(json.dumps(report))
 resume=command.copy();resume[resume.index('-CassiniTranscriptionFixture')+1]='NO'
 restored=run(resume+['-CassiniTrashPutBackFile',str(putback)],'putback')

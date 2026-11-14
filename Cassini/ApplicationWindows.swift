@@ -12,5 +12,7 @@ import SwiftUI
     }
     static func library() { window(id:"library") }
     static func preferences() { settings() }
+    static func recentlyDeleted() { window(id:"recently-deleted") }
+    static func help() { window(id:"help") }
     static func legacy(_ url:URL) { window(id:"legacy-viewer",value:LegacyRoute(url:url)) }
 }

@@ -37,6 +37,19 @@ struct CassiniApp: App {
         }
             .menuBarExtraStyle(.window)
 
+        Window(UXText.text("trash.title"), id: "recently-deleted") {
+            RecentlyDeletedView().tint(CassiniTheme.sceneTint)
+        }
+            .defaultLaunchBehavior(.suppressed)
+            .defaultSize(width: 680, height: 500)
+            .windowToolbarStyle(.unified)
+
+        Window(UXText.text("help.title"), id: "help") {
+            HelpView().tint(CassiniTheme.sceneTint)
+        }
+            .defaultLaunchBehavior(.suppressed)
+            .defaultSize(width: 560, height: 520)
+
         WindowGroup(UXText.text("app.name"), id: "legacy-viewer", for: LegacyRoute.self) { $route in
             if let route { LegacyDocumentView(url: route.url).tint(CassiniTheme.sceneTint) }
         }.defaultSize(width: 1280, height: 780)

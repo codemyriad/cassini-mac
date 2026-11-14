@@ -94,10 +94,10 @@ import Darwin
             try check(trash.failure == nil && queue.active == nil,"another queued job continued and can stop independently")
             phase = "failure"
             let retry = try generate(primary,title:"Trash retry")
-            trash.fixtureFailure = CocoaError(.featureUnsupported)
+            trash.fixtureFailure = POSIXError(.EIO)
             trash.move(retry,undoManager:nil); await trash.waitForShutdown()
-            try check(trash.failure?.id == retry.id && trash.unsupported && store.selectedKey == retry.libraryKey,"unsupported selected error")
-            try check(FileManager.default.fileExists(atPath:retry.folder.path),"unsupported preserves source")
+            try check(trash.failure?.id == retry.id && store.selectedKey == retry.libraryKey,"failure selected error")
+            try check(FileManager.default.fileExists(atPath:retry.folder.path),"failure preserves source")
             trash.fixtureFailure = nil
             trash.move(retry,undoManager:nil); await trash.waitForShutdown()
             try check(trash.failure == nil && !FileManager.default.fileExists(atPath:retry.folder.path),"retry succeeds")
@@ -130,10 +130,18 @@ import Darwin
                 trash.move(meeting,undoManager:undo); await trash.waitForShutdown(); undo.endUndoGrouping()
                 try check(trash.failure == nil && !FileManager.default.fileExists(atPath:meeting.folder.path),"real sandbox trash")
                 let offered = undo.canUndo
-                try check(offered == trash.lastUndoAvailable,"undo capability matches actual access")
+                try check(offered && offered == trash.lastUndoAvailable,"in-app Recently Deleted Undo available in sandbox")
                 if offered {
                     undo.undo(); await trash.waitForShutdown()
                     try check(try Data(contentsOf:meeting.folder.appendingPathComponent("session.json")) == before,"undo restores unchanged producer")
+                    store.refresh(); try await wait { store.meetings.contains { $0.id == meeting.id } }
+                    trash.move(meeting,undoManager:nil); await trash.waitForShutdown()
+                    await RecentlyDeletedModel.shared.refreshNow()
+                    guard let entry = RecentlyDeletedModel.shared.entries.first(where: { $0.entryId == trash.lastTrashEntry?.entryId }) else {
+                        throw Failure.check("RecentlyDeletedModel missing trashed entry")
+                    }
+                    RecentlyDeletedModel.shared.restore(entry)
+                    try await wait { !RecentlyDeletedModel.shared.busy && FileManager.default.fileExists(atPath:meeting.folder.path) }
                     store.refresh(); try await wait { store.meetings.contains { $0.id == meeting.id } }
                     trash.move(meeting,undoManager:nil); await trash.waitForShutdown()
                 }

@@ -120,7 +120,7 @@ struct LibraryView: View {
                         if detail.meeting.speakerMergeCount>0 {
                             entries.append(.init(title:UXText.text("meeting.undoMerge"),identifier:"undo-speaker-merge",enabled:rename.canEditSpeakers(detail.meeting)) {rename.undoSpeakerMerge(detail.meeting)})
                         }
-                        entries.append(.init(title:UXText.text("common.moveToTrash"),identifier:"move-to-trash",enabled:trash.canTrash(detail.meeting)) {
+                        entries.append(.init(title:UXText.text("meeting.moveToRecentlyDeleted"),identifier:"move-to-trash",enabled:trash.canTrash(detail.meeting)) {
                             store.selectedKey=detail.meeting.libraryKey
                             trash.move(detail.meeting,undoManager:undoManager ?? NSApp.keyWindow?.undoManager)
                         })
@@ -260,7 +260,7 @@ struct LibraryView: View {
         .preferredColorScheme(LibraryLaunchContext.screenshotDark ? .dark : (store.context.screenshot ? .light : nil))
     }
     private func trashButton(_ meeting: LibraryMeeting) -> some View {
-        Button(UXText.text("common.moveToTrash")) {
+        Button(UXText.text("meeting.moveToRecentlyDeleted")) {
             store.selectedKey = meeting.libraryKey
             trash.move(meeting,undoManager:undoManager ?? NSApp.keyWindow?.undoManager)
         }.accessibilityIdentifier("move-to-trash")
@@ -268,13 +268,9 @@ struct LibraryView: View {
     @ViewBuilder private var trashFailure: some View {
         if let meeting = trash.failure, (navigation.detail?.meeting.libraryKey ?? store.selectedKey) == meeting.libraryKey {
             HStack(spacing:12) {
-                Text(UXText.text(trash.unsupported ? "meeting.trashUnsupported" : "meeting.trashFailed"))
+                Text(UXText.text("meeting.recentlyDeletedFailed"))
                 Spacer()
-                if trash.unsupported {
-                    Button(UXText.text("meeting.showInFiles")) { NSWorkspace.shared.activateFileViewerSelecting([meeting.folder]) }
-                } else {
-                    Button(UXText.text("common.tryAgain")) { trash.move(meeting,undoManager:undoManager) }.disabled(!trash.canTrash(meeting))
-                }
+                Button(UXText.text("common.tryAgain")) { trash.move(meeting,undoManager:undoManager) }.disabled(!trash.canTrash(meeting))
             }.padding(12).foregroundStyle(CassiniTheme.warnInk).background(CassiniTheme.warnTint)
                 .accessibilityIdentifier("trash-failure")
         }

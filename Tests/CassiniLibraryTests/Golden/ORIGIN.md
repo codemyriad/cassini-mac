@@ -23,3 +23,6 @@ ux-draft/listen-by-speaker at 998a1b0, also used by GNOME PR #241 at 6969850.
 - turns.json SHA256: 0c0d49a7f1d57f97b243d08c0558ab13506a39a93316a2e7506d228f21d75e29
 - README.md SHA256: 499612b72cee5c64cb449f1797d3932a19c44e32a94711ebd8eb25a8d76c354b
 The entirely synthetic English fixture is CC0-1.0; no real meeting content.
+
+D-1033 (S-12 §7.1): library-v2/trash-vectors.json copied verbatim from cassini-ux at 5e4f0bff95300f2ef795fe71244b22644cad5c25:
+- trash-vectors.json SHA256: e221e0b5c355cfab68b107e6493ca98e07588a2e7e78b3ef352d5624f8a72d76 (30 cases, 125 crash points, 8 daysLeft vectors)

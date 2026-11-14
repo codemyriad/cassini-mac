@@ -26,7 +26,20 @@ struct AppCommands: Commands {
             Button(UXText.text("app.checkForUpdates")) { ApplicationUpdates.shared.checkForUpdates() }
                 .disabled(speakerDialog || !ApplicationUpdates.shared.canCheckForUpdates)
         }
-        CommandGroup(replacing:.help) { }
+        CommandGroup(after: .appSettings) {
+            Button(UXText.text("savedVoices.menuItem")) {
+                SettingsNavigation.shared.openSavedVoices()
+            }
+            .disabled(speakerDialog)
+        }
+        CommandGroup(replacing: .help) {
+            Button(UXText.text("menu.help")) {
+                ApplicationWindows.help()
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            .keyboardShortcut("?", modifiers: .command)
+            .disabled(speakerDialog)
+        }
         CommandGroup(replacing: .newItem) {
             Button(UXText.text("import.action")) { LegacyOpening.chooseDocuments() }.keyboardShortcut("o", modifiers: .command).disabled(speakerDialog)
             Button(RecordingOverview.recordCommandTitle) {
@@ -47,10 +60,15 @@ struct AppCommands: Commands {
             }
             Button(UXText.text("export.zip.all")) { BulkZipExportCoordinator.shared.exportAll() }
                 .disabled(speakerDialog || !BulkZipExportCoordinator.shared.canExportAll)
-            Button(UXText.text("common.moveToTrash")) {
+            Button(UXText.text("meeting.moveToRecentlyDeleted")) {
                 let trash = MeetingTrashCoordinator.shared
                 if trash.commandEnabled, let meeting = trash.commandMeeting { trash.move(meeting,undoManager:NSApp.keyWindow?.undoManager) }
             }.keyboardShortcut(.delete,modifiers:.command).disabled(speakerDialog || !MeetingTrashCoordinator.shared.commandEnabled)
+            Divider()
+            Button(UXText.text("menu.trash")) {
+                ApplicationWindows.recentlyDeleted()
+                NSApp.activate(ignoringOtherApps: true)
+            }.disabled(speakerDialog)
         }
         CommandGroup(after: .sidebar) {
             Button(UXText.text("common.backToLibrary")) {

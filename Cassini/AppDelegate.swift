@@ -347,6 +347,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
         let modifiers = event.modifierFlags.intersection([.command,.option,.control,.shift])
+        if event.keyCode == 51,
+           modifiers == [.command],
+           trackingMenus.isEmpty,
+           let window = event.window ?? NSApp.keyWindow,
+           window.accessibilityIdentifier() == "cassini-recently-deleted-window",
+           window.attachedSheet == nil, NSApp.modalWindow == nil,
+           !(window.firstResponder is NSText),
+           RecentlyDeletedModel.shared.promptDeleteSelected(window: window) {
+            return nil
+        }
         if [125,126].contains(event.keyCode),
            modifiers == [.command,.option] || modifiers == [.command,.option,.shift],
            trackingMenus.isEmpty,
