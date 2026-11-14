@@ -177,12 +177,7 @@ import CassiniWhistle
             do {
                 let generation=try await store.snapshot().generation
                 let samples=try await Task.detached(priority:.userInitiated) {
-                    var output:[Float]=[]
-                    try MeetingAudioDecoder.decode(file) { block,rate in
-                        guard rate == 16000, output.count+block.count <= 720000 else { throw SavedVoicesError.invalidPrint }
-                        output.append(contentsOf:block)
-                    }
-                    return output
+                    try Self.readGuidedAudio(file)
                 }.value
                 let result=try await Self.embedding(samples,guided:true)
                 try Task.checkCancellation()
@@ -205,6 +200,22 @@ import CassiniWhistle
                 snapshot=try await store.snapshot(); self.prepared=nil; sampleReady=false; enrollmentPresented=false
             } catch { message=UXText.text("savedVoices.changeFailed") }
         }
+    }
+    /// AVAudioRecorder's WAV has Apple's JUNK/alignment chunks; the capture-owned
+    /// checkpoint WAV decoder intentionally accepts only Cassini's own layout.
+    nonisolated static func readGuidedAudio(_ url:URL) throws -> [Float] {
+        let file=try AVAudioFile(forReading:url,commonFormat:.pcmFormatFloat32,interleaved:false)
+        let format=file.processingFormat
+        guard format.sampleRate == 16000, format.channelCount == 1, file.length <= 720000,
+              let buffer=AVAudioPCMBuffer(pcmFormat:format,frameCapacity:8192) else { throw SavedVoicesError.invalidPrint }
+        var samples:[Float]=[]
+        while file.framePosition < file.length {
+            try Task.checkCancellation();try file.read(into:buffer)
+            guard buffer.frameLength > 0, let data=buffer.floatChannelData else { throw SavedVoicesError.invalidPrint }
+            samples.append(contentsOf:UnsafeBufferPointer(start:data[0],count:Int(buffer.frameLength)))
+        }
+        guard samples.count >= 64000, samples.count <= 720000, samples.allSatisfy(\.isFinite) else { throw SavedVoicesError.invalidPrint }
+        return samples
     }
     struct TranscriptEnrollment: Sendable {
         let embedding:[Float]
@@ -260,7 +271,19 @@ import CassiniWhistle
                 try bytes.write(to:model,options:.atomic)
             }.value
             let samples=(0..<80000).map { Float(sin(Double($0)*0.12)*0.1) }
-            let result=try await SavedVoicesController.embedding(samples)
+            let appleWAV=root.appendingPathComponent("apple-recorder-layout.wav")
+            do {
+                let writer=try AVAudioFile(forWriting:appleWAV,settings:[AVFormatIDKey:kAudioFormatLinearPCM,AVSampleRateKey:16000,
+                    AVNumberOfChannelsKey:1,AVLinearPCMBitDepthKey:16,AVLinearPCMIsFloatKey:false,AVLinearPCMIsBigEndianKey:false])
+                let buffer=AVAudioPCMBuffer(pcmFormat:writer.processingFormat,frameCapacity:80000)!
+                buffer.frameLength=80000
+                samples.withUnsafeBufferPointer { buffer.floatChannelData![0].update(from:$0.baseAddress!,count:samples.count) }
+                try writer.write(from:buffer)
+            }
+            let appleSamples=try SavedVoicesController.readGuidedAudio(appleWAV)
+            guard appleSamples.count == samples.count,
+                  zip(appleSamples,samples).allSatisfy({abs($0-$1) <= 1.0/32768}) else { throw SavedVoicesError.invalidPrint }
+            let result=try await SavedVoicesController.embedding(appleSamples)
             guard let normalized=Voiceprint.normalized(result.embedding), result.seconds == 5 else { throw SavedVoicesError.invalidPrint }
             let store=SavedVoicesStore(directory:root.appendingPathComponent("voices"))
             let generation=try await store.snapshot().generation
@@ -271,7 +294,7 @@ import CassiniWhistle
             do { _=try await SavedVoicesController.embedding([Float](repeating:0,count:80000),guided:true) }
             catch { silenceRejected=true }
             guard silenceRejected else { throw SavedVoicesError.invalidPrint }
-            var report:[String:Any] = ["dimension":normalized.count,"selectedSeconds":result.seconds,"guidedSilenceRejected":silenceRejected,
+            var report:[String:Any] = ["appleRecorderWAVDecoded":true,"dimension":normalized.count,"selectedSeconds":result.seconds,"guidedSilenceRejected":silenceRejected,
                 "signedWorkerInference":true,"privateEnrollmentAndForget":true,"audioDevicesOpened":false]
             var pcm=Data()
             while let part=try FileHandle.standardInput.read(upToCount:65536), !part.isEmpty {

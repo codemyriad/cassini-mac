@@ -1,1 +1,112 @@
-{"audioDevicesOpened":false,"dimension":512,"golden":{"comparisons":[{"a":"others~1\/d25-full","b":"others~1\/d25-window-1","cosine":0.93511199951171875},{"a":"others~1\/d25-full","b":"others~1\/d25-window-2","cosine":0.73431795835494995},{"a":"others~1\/d25-full","b":"others~2\/d25-full","cosine":0.50464361906051636},{"a":"others~1\/d25-full","b":"others~2\/d25-window-1","cosine":0.26986953616142273},{"a":"others~1\/d25-full","b":"others~2\/d25-window-2","cosine":0.4794086217880249},{"a":"others~1\/d25-window-1","b":"others~1\/d25-window-2","cosine":0.71460694074630737},{"a":"others~1\/d25-window-1","b":"others~2\/d25-full","cosine":0.4546179473400116},{"a":"others~1\/d25-window-1","b":"others~2\/d25-window-1","cosine":0.29182142019271851},{"a":"others~1\/d25-window-1","b":"others~2\/d25-window-2","cosine":0.48353597521781921},{"a":"others~1\/d25-window-2","b":"others~2\/d25-full","cosine":0.14244596660137177},{"a":"others~1\/d25-window-2","b":"others~2\/d25-window-1","cosine":0.27974939346313477},{"a":"others~1\/d25-window-2","b":"others~2\/d25-window-2","cosine":0.16856551170349121},{"a":"others~2\/d25-full","b":"others~2\/d25-window-1","cosine":0.75247824192047119},{"a":"others~2\/d25-full","b":"others~2\/d25-window-2","cosine":0.9611814022064209},{"a":"others~2\/d25-window-1","b":"others~2\/d25-window-2","cosine":0.75313812494277954}],"dimension":512,"matches":{"full":{"others~1":{"state":"auto","voiceId":"voice_reader1"},"others~2":{"state":"auto","voiceId":"voice_reader2"}},"secondWindows":{"others~1":{"state":"suggested","voiceId":"voice_reader1"},"others~2":{"state":"auto","voiceId":"voice_reader2"}}},"prints":6},"guidedSilenceRejected":true,"privateEnrollmentAndForget":true,"selectedSeconds":5,"signedWorkerInference":true}
+{
+  "appleRecorderWAVDecoded": true,
+  "audioDevicesOpened": false,
+  "dimension": 512,
+  "golden": {
+    "comparisons": [
+      {
+        "a": "others~1/d25-full",
+        "b": "others~1/d25-window-1",
+        "cosine": 0.9351119995117188
+      },
+      {
+        "a": "others~1/d25-full",
+        "b": "others~1/d25-window-2",
+        "cosine": 0.73431795835495
+      },
+      {
+        "a": "others~1/d25-full",
+        "b": "others~2/d25-full",
+        "cosine": 0.5046436190605164
+      },
+      {
+        "a": "others~1/d25-full",
+        "b": "others~2/d25-window-1",
+        "cosine": 0.26986953616142273
+      },
+      {
+        "a": "others~1/d25-full",
+        "b": "others~2/d25-window-2",
+        "cosine": 0.4794086217880249
+      },
+      {
+        "a": "others~1/d25-window-1",
+        "b": "others~1/d25-window-2",
+        "cosine": 0.7146069407463074
+      },
+      {
+        "a": "others~1/d25-window-1",
+        "b": "others~2/d25-full",
+        "cosine": 0.4546179473400116
+      },
+      {
+        "a": "others~1/d25-window-1",
+        "b": "others~2/d25-window-1",
+        "cosine": 0.2918214201927185
+      },
+      {
+        "a": "others~1/d25-window-1",
+        "b": "others~2/d25-window-2",
+        "cosine": 0.4835359752178192
+      },
+      {
+        "a": "others~1/d25-window-2",
+        "b": "others~2/d25-full",
+        "cosine": 0.14244596660137177
+      },
+      {
+        "a": "others~1/d25-window-2",
+        "b": "others~2/d25-window-1",
+        "cosine": 0.27974939346313477
+      },
+      {
+        "a": "others~1/d25-window-2",
+        "b": "others~2/d25-window-2",
+        "cosine": 0.1685655117034912
+      },
+      {
+        "a": "others~2/d25-full",
+        "b": "others~2/d25-window-1",
+        "cosine": 0.7524782419204712
+      },
+      {
+        "a": "others~2/d25-full",
+        "b": "others~2/d25-window-2",
+        "cosine": 0.9611814022064209
+      },
+      {
+        "a": "others~2/d25-window-1",
+        "b": "others~2/d25-window-2",
+        "cosine": 0.7531381249427795
+      }
+    ],
+    "dimension": 512,
+    "matches": {
+      "full": {
+        "others~1": {
+          "state": "auto",
+          "voiceId": "voice_reader1"
+        },
+        "others~2": {
+          "state": "auto",
+          "voiceId": "voice_reader2"
+        }
+      },
+      "secondWindows": {
+        "others~1": {
+          "state": "suggested",
+          "voiceId": "voice_reader1"
+        },
+        "others~2": {
+          "state": "auto",
+          "voiceId": "voice_reader2"
+        }
+      }
+    },
+    "prints": 6
+  },
+  "guidedSilenceRejected": true,
+  "privateEnrollmentAndForget": true,
+  "selectedSeconds": 5,
+  "signedWorkerInference": true
+}

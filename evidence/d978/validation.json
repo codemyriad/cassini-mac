@@ -12,5 +12,6 @@
   "capabilityLimit": "Mixed system and received audio require the existing unimplemented Mac D24 separator; no automatic naming is enabled without that capability.",
   "screenshots": "Cache renders of app fixture views; before from main run 43584592267. Local macOS 27 versus CI macos-15 is advisory, not a pixel-equivalence result.",
   "nativeSpeakerEnrollmentKeyboardCycle": "passed",
-  "nativeMeetingPreparationProbe": "passed"
+  "nativeMeetingPreparationProbe": "passed",
+  "appleRecorderWAVWithMetadataChunks": "decoded through AVFoundation; passed native regression"
 }
