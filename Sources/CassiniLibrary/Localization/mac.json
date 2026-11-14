@@ -379,6 +379,48 @@
           "text": "A falar agora"
         }
       }
+    },
+    {
+      "id": "mac.import.drop.formats",
+      "en": "Cassini files, Opus, MP3, M4A, WAV, and ZIP",
+      "l10n": {
+        "it": {
+          "text": "file Cassini, Opus, MP3, M4A, WAV e ZIP"
+        },
+        "fr": {
+          "text": "fichiers Cassini, Opus, MP3, M4A, WAV et ZIP"
+        },
+        "es": {
+          "text": "archivos Cassini, Opus, MP3, M4A, WAV y ZIP"
+        },
+        "pt-BR": {
+          "text": "arquivos Cassini, Opus, MP3, M4A, WAV e ZIP"
+        },
+        "pt-PT": {
+          "text": "ficheiros Cassini, Opus, MP3, M4A, WAV e ZIP"
+        }
+      }
+    },
+    {
+      "id": "mac.import.error.decodeFailed",
+      "en": "This audio file couldn’t be imported.",
+      "l10n": {
+        "it": {
+          "text": "Impossibile importare questo file audio."
+        },
+        "fr": {
+          "text": "Impossible d’importer ce fichier audio."
+        },
+        "es": {
+          "text": "No se pudo importar este archivo de audio."
+        },
+        "pt-BR": {
+          "text": "Não foi possível importar este arquivo de áudio."
+        },
+        "pt-PT": {
+          "text": "Não foi possível importar este ficheiro de áudio."
+        }
+      }
     }
   ]
 }

@@ -5,6 +5,8 @@ import CassiniTranscription
 import CassiniWhistle
 import Observation
 #if DEBUG
+import AVFoundation
+import AudioToolbox
 import SwiftUI
 import CassiniRecording
 import CassiniKit
@@ -424,6 +426,7 @@ import Darwin
             try await verifyActiveUserStopStaleScanFenceAndResume(root:root, activeSession:session, activeMeeting:meeting, nextActive:received)
             try await verifyLockContentionCompletionWhileRetryPending(root:root, blockerID:received.id)
             try await verifyStopCoordinatesWithMoveAndTrashUnderMetadataLock(root:root)
+            try await verifyDesktopAudioImportDropAndTransientCards(root:root)
             // A second accepted import and an accepted Stop are owned by the same shutdown path.
             let another = root.deletingLastPathComponent().appendingPathComponent("Another source.opus")
             try FileManager.default.copyItem(at:source,to:another)
@@ -439,7 +442,7 @@ import Darwin
                 guard FileManager.default.fileExists(atPath:root.appendingPathComponent(name + "/meeting.json").path) else { throw POSIXError(.EINVAL) }
             }
             try FileManager.default.removeItem(at:root.deletingLastPathComponent())
-            let report = ["queueMetadataOffMain":true,"enqueueReturnedBeforeLockRelease":true,"shutdownStartedBeforeLockRelease":true,"metadataBeforeWorker":true,"repeatedWriteDownImportsOnce":true,"shutdownWaitsForImport":true,"queuedIntentSurvivesQuit":true,"concurrentImportKeepsExportProgressAndCancel":true,"bannerRemovalPreservesSharedExportReceipt":true,"singleImportConfirmationAndSilentReopen":true,"userStopPreservesAndResumesWithoutAutoRestart":true,"lockContentionRetryPreservesCompletedTranscript":true,"stopCommitsBeforeShutdownMoveAndTrash":true,"audioDevicesOpened":false]
+            let report = ["queueMetadataOffMain":true,"enqueueReturnedBeforeLockRelease":true,"shutdownStartedBeforeLockRelease":true,"metadataBeforeWorker":true,"repeatedWriteDownImportsOnce":true,"shutdownWaitsForImport":true,"queuedIntentSurvivesQuit":true,"concurrentImportKeepsExportProgressAndCancel":true,"bannerRemovalPreservesSharedExportReceipt":true,"singleImportConfirmationAndSilentReopen":true,"userStopPreservesAndResumesWithoutAutoRestart":true,"lockContentionRetryPreservesCompletedTranscript":true,"stopCommitsBeforeShutdownMoveAndTrash":true,"desktopAudioDecodeDropAndTransientCards":true,"audioDevicesOpened":false]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch {
             importer.beginShutdown(); queue.beginShutdown()
@@ -1208,6 +1211,289 @@ import Darwin
               committedAfterShutdown.transcriptItems.map(\.text) == ["BeforeQuit"] else {
             throw NSError(domain:"ImportLifecycleSelfTest",code:19,userInfo:[NSLocalizedDescriptionKey:"Accepted Stop did not persist paused state before shutdown finished"])
         }
+    }
+
+    private static func verifyDesktopAudioImportDropAndTransientCards(root: URL) async throws {
+        let importer = LibraryImportCoordinator.shared
+        let scratch = root.deletingLastPathComponent().appendingPathComponent("d1028-proof", isDirectory: true)
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer {
+            importer.fixtureOnSingleGate = nil
+            importer.dismissNotice()
+            try? FileManager.default.removeItem(at: scratch)
+        }
+
+        // 1. Generate synthetic WAV, M4A, MP3, and unsupported/disguised files without opening audio devices.
+        let wavURL = scratch.appendingPathComponent("Design standup.wav")
+        do {
+            let fmt = try require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 44_100, channels: 2, interleaved: false))
+            let buf = try require(AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: 22_050))
+            buf.frameLength = 22_050
+            for i in 0..<22_050 {
+                let s = Float(sin(Double(i) * 2.0 * .pi * 440.0 / 44_100.0) * 0.35)
+                buf.floatChannelData![0][i] = s
+                buf.floatChannelData![1][i] = s * 0.5
+            }
+            let out = try AVAudioFile(
+                forWriting: wavURL,
+                settings: [
+                    AVFormatIDKey: kAudioFormatLinearPCM,
+                    AVSampleRateKey: 44_100,
+                    AVNumberOfChannelsKey: 2,
+                    AVLinearPCMBitDepthKey: 16,
+                    AVLinearPCMIsFloatKey: false,
+                    AVLinearPCMIsBigEndianKey: false,
+                    AVLinearPCMIsNonInterleaved: false,
+                ],
+                commonFormat: .pcmFormatFloat32,
+                interleaved: false
+            )
+            try out.write(from: buf)
+        }
+
+        let m4aURL = scratch.appendingPathComponent("Voice memo.m4a")
+        do {
+            let fmt = try require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 44_100, channels: 1, interleaved: false))
+            let buf = try require(AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: 26_460))
+            buf.frameLength = 26_460
+            for i in 0..<26_460 {
+                buf.floatChannelData![0][i] = Float(sin(Double(i) * 2.0 * .pi * 523.25 / 44_100.0) * 0.35)
+            }
+            let out = try AVAudioFile(
+                forWriting: m4aURL,
+                settings: [
+                    AVFormatIDKey: kAudioFormatMPEG4AAC,
+                    AVSampleRateKey: 44_100,
+                    AVNumberOfChannelsKey: 1,
+                    AVEncoderBitRateKey: 64_000,
+                ]
+            )
+            try out.write(from: buf)
+        }
+
+        let mp3URL = scratch.appendingPathComponent("Field interview.mp3")
+        do {
+            var mp3Data = Data()
+            for i in 0..<30 {
+                var frame = Data(repeating: 0, count: 417)
+                frame[0] = 0xFF; frame[1] = 0xFB; frame[2] = 0x90; frame[3] = 0xC4
+                frame[416] = UInt8(i & 0xFF)
+                mp3Data.append(frame)
+            }
+            try mp3Data.write(to: mp3URL)
+        }
+
+        let flacURL = scratch.appendingPathComponent("Lossless take.flac")
+        try (Data("fLaC".utf8) + Data(repeating: 0, count: 40)).write(to: flacURL)
+        let ogaURL = scratch.appendingPathComponent("Archive audio.oga")
+        try (Data("OggS".utf8) + Data(repeating: 0, count: 40)).write(to: ogaURL)
+        let theoraOggURL = scratch.appendingPathComponent("Screen clip.ogg")
+        do {
+            var page = Data("OggS".utf8) + Data([0, 0x02]) + Data(repeating: 0, count: 8) + Data([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 42])
+            page.append(Data([0x80]) + Data("theora".utf8) + Data([0x03, 0x02, 0x01]) + Data(repeating: 0, count: 32))
+            try page.write(to: theoraOggURL)
+        }
+        let brokenMp3URL = scratch.appendingPathComponent("Damaged recording.mp3")
+        try Data("corrupt-mp3-payload".utf8).write(to: brokenMp3URL)
+
+        // Verify W4.4 drop-target URL classification and unsupported-file naming
+        guard LibraryImportCoordinator.isSupportedDropURL(wavURL),
+              LibraryImportCoordinator.isSupportedDropURL(m4aURL),
+              LibraryImportCoordinator.isSupportedDropURL(mp3URL),
+              !LibraryImportCoordinator.isSupportedDropURL(flacURL),
+              !LibraryImportCoordinator.isSupportedDropURL(ogaURL),
+              !LibraryImportCoordinator.isSupportedDropURL(theoraOggURL) else {
+            throw NSError(domain: "ImportLifecycleSelfTest", code: 30, userInfo: [NSLocalizedDescriptionKey: "Drop URL classification mismatch"])
+        }
+        let multiNames = LibraryDropState.formattedUnsupportedFileNames([flacURL, theoraOggURL], locale: Locale(identifier: "en_GB"))
+        guard multiNames.contains("Lossless take.flac") && multiNames.contains("Screen clip.ogg") else {
+            throw NSError(domain: "ImportLifecycleSelfTest", code: 31, userInfo: [NSLocalizedDescriptionKey: "Expected unsupported drop state to name rejected files, got \(multiNames)"])
+        }
+
+        let proofDir = ProcessInfo.processInfo.environment["CASSINI_RENDER_D1028_PROOF_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+        func renderProof(_ name: String, view: some View, width: CGFloat = 420, height: CGFloat = 420) throws {
+            guard let proofDir else { return }
+            try FileManager.default.createDirectory(at: proofDir, withIntermediateDirectories: true)
+            for (scheme, suffix, appearanceName) in [(ColorScheme.light, "light", NSAppearance.Name.aqua), (ColorScheme.dark, "dark", NSAppearance.Name.darkAqua)] {
+                let wrapped = view
+                    .environment(\.colorScheme, scheme)
+                    .frame(width: width, height: height)
+                    .cassiniSidebarBackground()
+                let host = NSHostingView(rootView: wrapped)
+                host.appearance = NSAppearance(named: appearanceName)
+                host.frame = NSRect(x: 0, y: 0, width: width, height: height)
+                let win = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+                win.isReleasedWhenClosed = false
+                win.appearance = NSAppearance(named: appearanceName)
+                win.contentView = host
+                host.layoutSubtreeIfNeeded()
+                guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { continue }
+                host.cacheDisplay(in: host.bounds, to: rep)
+                if let png = rep.representation(using: .png, properties: [:]) {
+                    try png.write(to: proofDir.appendingPathComponent("\(name)-\(suffix).png"))
+                }
+                win.close()
+            }
+        }
+
+        try renderProof(
+            "w4-4-drop-unsupported",
+            view: ZStack {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(UXText.text("format.today")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2)
+                    MeetingCard(isSelected: false) {
+                        Text("Weekly sync").font(.system(size: 13, weight: .semibold)).foregroundStyle(CassiniTheme.ink)
+                    }
+                    Spacer()
+                }
+                .padding(14)
+                .opacity(0.30)
+                LibraryDropListOverlay(state: .unsupportedOverList(fileName: multiNames))
+            },
+            width: 400,
+            height: 280
+        )
+
+        // 2. Verify W4.5 `Importing…` card during active WAV decode, then completion.
+        let (enteredStream, enteredCont) = AsyncStream<Void>.makeStream()
+        let singleLatch = GateLatch { enteredCont.yield(()); enteredCont.finish() }
+        importer.fixtureOnSingleGate = { singleLatch.enterAndWait() }
+
+        importer.open(wavURL)
+        var enteredIter = enteredStream.makeAsyncIterator()
+        _ = await enteredIter.next()
+
+        guard let activeTransient = importer.transientItems.first(where: { $0.fileName == "Design standup.wav" }),
+              activeTransient.state == .importing,
+              activeTransient.title == "Design standup",
+              LibraryBadgeCatalog.importingPresentation?.kind == "importing" else {
+            singleLatch.release()
+            throw NSError(domain: "ImportLifecycleSelfTest", code: 32, userInfo: [NSLocalizedDescriptionKey: "Missing active Importing… card for WAV decode"])
+        }
+
+        if proofDir != nil {
+            let importingPres = LibraryBadgeCatalog.importingPresentation
+            try renderProof(
+                "w4-5-importing-card",
+                view: VStack(alignment: .leading, spacing: 8) {
+                    Text(UXText.text("format.today")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2)
+                    MeetingCard(isSelected: false) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 10) {
+                                Text(activeTransient.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(CassiniTheme.ink)
+                                Spacer(minLength: 2)
+                            }
+                            HStack(spacing: 6) {
+                                Text("14:18").foregroundStyle(CassiniTheme.ink2).monospacedDigit()
+                                if let importingPres {
+                                    CatalogStatusBadge(presentation: importingPres, isAnimating: false, onAccent: false)
+                                }
+                                Text(activeTransient.fileName).foregroundStyle(CassiniTheme.ink2)
+                            }
+                            .font(.system(size: 11.5))
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(14),
+                width: 400,
+                height: 180
+            )
+        }
+
+        singleLatch.release()
+        importer.fixtureOnSingleGate = nil
+        await importer.waitForShutdown()
+
+        guard !importer.transientItems.contains(where: { $0.fileName == "Design standup.wav" }) else {
+            throw NSError(domain: "ImportLifecycleSelfTest", code: 33, userInfo: [NSLocalizedDescriptionKey: "Succeeded WAV import left transient card behind"])
+        }
+
+        // 3. Verify batch import of MP3 + M4A + Broken MP3 + Unsupported FLAC:
+        //    MP3 and M4A import cleanly while Broken MP3 keeps its `Needs attention` card (`W4.6`) even after banner notice dismissal!
+        importer.openBatch([mp3URL, m4aURL, brokenMp3URL, flacURL])
+        await importer.waitForShutdown()
+
+        let scannedAfterBatch = try LibraryScanner(root: root).scan().meetings
+        for expectedTitle in ["Design standup", "Field interview", "Voice memo"] {
+            guard let m = scannedAfterBatch.first(where: { $0.title == expectedTitle }),
+                  m.state.origin == .received,
+                  m.canWriteDown else {
+                throw NSError(domain: "ImportLifecycleSelfTest", code: 34, userInfo: [NSLocalizedDescriptionKey: "Missing imported portable meeting '\(expectedTitle)'"])
+            }
+        }
+        guard !scannedAfterBatch.contains(where: { $0.title == "Lossless take" }) else {
+            throw NSError(domain: "ImportLifecycleSelfTest", code: 35, userInfo: [NSLocalizedDescriptionKey: "Open FLAC file was unexpectedly imported"])
+        }
+
+        guard let failedCard = importer.transientItems.first(where: { $0.fileName == "Damaged recording.mp3" }),
+              case .failed(let failureDetail) = failedCard.state,
+              !failureDetail.isEmpty,
+              LibraryBadgeCatalog.needsAttentionPresentation?.kind == "needsAttention" else {
+            throw NSError(domain: "ImportLifecycleSelfTest", code: 36, userInfo: [NSLocalizedDescriptionKey: "Failed batch item did not retain Needs attention card"])
+        }
+
+        // Dismissing the bottom notice banner by ID must keep the failed card (`W4.6`) in the list.
+        if let noticeID = importer.notice?.id {
+            importer.dismissNotice(noticeID)
+        }
+        guard importer.transientItems.contains(where: { $0.id == failedCard.id }) else {
+            throw NSError(domain: "ImportLifecycleSelfTest", code: 37, userInfo: [NSLocalizedDescriptionKey: "Dismissing banner notice wiped Needs attention card"])
+        }
+
+        if proofDir != nil {
+            let needsAttentionPres = LibraryBadgeCatalog.needsAttentionPresentation
+            let receivedPres = CatalogBadgePresentation(kind: "received", text: UXText.text("states.badge.received"), tint: "outline", glyph: "incoming")
+            try renderProof(
+                "w4-6-failed-card-and-decoded-meetings",
+                view: VStack(alignment: .leading, spacing: 8) {
+                    Text(UXText.text("format.today")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2)
+                    MeetingCard(isSelected: false) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 10) {
+                                Text(failedCard.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(CassiniTheme.ink)
+                                Spacer(minLength: 2)
+                                Text(UXText.text("common.done")).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(CassiniTheme.accentInk)
+                            }
+                            HStack(spacing: 6) {
+                                Text("14:19").foregroundStyle(CassiniTheme.ink2).monospacedDigit()
+                                if let needsAttentionPres {
+                                    CatalogStatusBadge(presentation: needsAttentionPres, isAnimating: false, onAccent: false)
+                                }
+                                Text(failureDetail).foregroundStyle(CassiniTheme.ink2).lineLimit(1)
+                            }
+                            .font(.system(size: 11.5))
+                        }
+                    }
+                    ForEach(["Voice memo", "Field interview", "Design standup"], id: \.self) { title in
+                        MeetingCard(isSelected: title == "Voice memo") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 10) {
+                                    Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(CassiniTheme.ink)
+                                    Spacer(minLength: 2)
+                                    Text("0:01").font(.system(size: 11.5)).foregroundStyle(CassiniTheme.ink2).monospacedDigit()
+                                }
+                                HStack(spacing: 6) {
+                                    Text("14:18").foregroundStyle(CassiniTheme.ink2).monospacedDigit()
+                                    CatalogStatusBadge(presentation: receivedPres, isAnimating: false, onAccent: false)
+                                }
+                                .font(.system(size: 11.5))
+                            }
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(14),
+                width: 400,
+                height: 360
+            )
+        }
+
+        importer.dismissTransientItem(failedCard.id)
+        guard !importer.transientItems.contains(where: { $0.id == failedCard.id }) else {
+            throw NSError(domain: "ImportLifecycleSelfTest", code: 38, userInfo: [NSLocalizedDescriptionKey: "Failed card did not dismiss when Done was clicked"])
+        }
+        importer.dismissNotice()
     }
 }
 #endif

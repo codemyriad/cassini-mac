@@ -32,10 +32,28 @@ import Observation
         var state: State
     }
 
-    static func isSupportedDropURL(_ url: URL) -> Bool {
+    /// Pure in-memory classification from the URL's extension; no filesystem I/O, so it is
+    /// safe on the main actor during `draggingEntered` / `draggingUpdated`.
+    nonisolated static func isSupportedDropExtension(_ url: URL) -> Bool {
         guard url.isFileURL, !url.hasDirectoryPath else { return false }
-        let ext = url.pathExtension.lowercased()
-        return LibraryImport.supportedAudioExtensions.contains(ext) || ext == "zip"
+        let dottedExt = ImportTypesContract.dottedExtension(for: url.lastPathComponent)
+        if dottedExt == ".zip" { return true }
+        return ImportTypesContract.shared.decidedEntries.contains { $0.extensions.contains(dottedExt) }
+    }
+
+    /// Extension check plus a header probe (`open`/`fstat`/`fstatfs`/`read`). Blocking I/O:
+    /// never call on the main actor; drag hover runs it via `ImportDropProbeSession.blockingProbe`.
+    nonisolated static func isSupportedDropURL(_ url: URL) -> Bool {
+        guard isSupportedDropExtension(url) else { return false }
+        if ImportTypesContract.dottedExtension(for: url.lastPathComponent) == ".zip" { return true }
+        return !ImportTypesContract.shared.isDisguisedUnsupportedContainer(at: url)
+    }
+
+    private static func createsTransientCard(_ url: URL) -> Bool {
+        guard url.isFileURL, !url.hasDirectoryPath else { return false }
+        let dottedExt = ImportTypesContract.dottedExtension(for: url.lastPathComponent)
+        if dottedExt == ".zip" { return true }
+        return ImportTypesContract.shared.decidedEntries.contains { $0.extensions.contains(dottedExt) }
     }
 
     private static func itemTitle(for url: URL) -> String {
@@ -114,6 +132,7 @@ import Observation
     @ObservationIgnored private var runToken: UInt64 = 0
     #if DEBUG
     @ObservationIgnored var fixtureOnProgressGate: (@Sendable (Int, Int) -> Void)?
+    @ObservationIgnored var fixtureOnSingleGate: (@Sendable () -> Void)?
     #endif
 
     var isBusy: Bool { task != nil || !pending.isEmpty }
@@ -145,8 +164,8 @@ import Observation
         let fileURLs = urls.filter { $0.isFileURL && !$0.hasDirectoryPath }
         guard !closing, !fileURLs.isEmpty else { return }
         if fileURLs.count == 1 {
-            let ext = fileURLs[0].pathExtension.lowercased()
-            if ext != "zip" && LibraryImport.supportedAudioExtensions.contains(ext) {
+            let dottedExt = ImportTypesContract.dottedExtension(for: fileURLs[0].lastPathComponent)
+            if dottedExt != ".zip" && ImportTypesContract.shared.decidedEntries.contains(where: { $0.extensions.contains(dottedExt) }) {
                 open(fileURLs[0])
                 return
             }
@@ -159,7 +178,7 @@ import Observation
             ))
             return
         }
-        for fileURL in fileURLs where Self.isSupportedDropURL(fileURL) {
+        for fileURL in fileURLs where Self.createsTransientCard(fileURL) {
             upsertTransientItem(for: fileURL, key: fileURL.standardizedFileURL.path)
         }
         let leases = fileURLs.map(FileAccessLease.init)
@@ -246,6 +265,27 @@ import Observation
         }
     }
 
+    private func settleBatchItem(url: URL, failureReason: String?, token: UInt64) {
+        guard runToken == token, !closing else { return }
+        let key = url.standardizedFileURL.path
+        if let failureReason {
+            if let idx = transientItems.firstIndex(where: { $0.id == key }) {
+                transientItems[idx].state = .failed(failureReason)
+            } else {
+                let item = TransientItem(
+                    id: key,
+                    title: Self.itemTitle(for: url),
+                    fileName: url.lastPathComponent,
+                    startedAt: LibraryStore.shared.context.now ?? Date(),
+                    state: .failed(failureReason)
+                )
+                transientItems.insert(item, at: 0)
+            }
+        } else {
+            transientItems.removeAll { $0.id == key && $0.state == .importing }
+        }
+    }
+
     private func startNext() {
         guard !closing, !paused, task == nil, !pending.isEmpty else { return }
         let job = pending.removeFirst()
@@ -257,6 +297,9 @@ import Observation
             notice = nil
             let lease = request.lease
             cancellingCurrent = false
+            #if DEBUG
+            let singleGate = fixtureOnSingleGate
+            #endif
             task = Task {
                 var requeued = false
                 defer {
@@ -270,6 +313,10 @@ import Observation
                     let work = Task.detached(priority: .userInitiated) { [lease] in
                         defer { withExtendedLifetime(lease) {} }
                         try Task.checkCancellation()
+                        #if DEBUG
+                        singleGate?()
+                        try Task.checkCancellation()
+                        #endif
                         return try LibraryImport.copyWithOutcome(
                             lease.url,
                             into: root,
@@ -307,10 +354,15 @@ import Observation
                     }
                 } catch {
                     if !closing {
+                        let reason = error.localizedDescription
                         if let idx = transientItems.firstIndex(where: { $0.id == request.key }) {
-                            transientItems[idx].state = .failed(error.localizedDescription)
+                            transientItems[idx].state = .failed(reason)
                         }
-                        NSApp.presentError(error)
+                        if (error as? POSIXError)?.code == .ENOENT {
+                            NSApp.presentError(error)
+                        } else {
+                            notice = Notice(message: reason, isWarning: true, autoDismiss: false)
+                        }
                     } else {
                         transientItems.removeAll { $0.id == request.key }
                     }
@@ -360,6 +412,15 @@ import Observation
                                 progressGate?(done, total)
                                 #endif
                             },
+                            onURLSettled: { settledURL, failureReason in
+                                Task { @MainActor in
+                                    LibraryImportCoordinator.shared.settleBatchItem(
+                                        url: settledURL,
+                                        failureReason: failureReason,
+                                        token: token
+                                    )
+                                }
+                            },
                             shouldCancel: {
                                 Task.isCancelled
                             }
@@ -381,7 +442,7 @@ import Observation
 
                     try Task.checkCancellation()
                     progress = nil
-                    transientItems.removeAll { batchKeys.contains($0.id) }
+                    transientItems.removeAll { batchKeys.contains($0.id) && $0.state == .importing }
                     if let selected = summary.lastSelected {
                         LibrarySearchModel.shared.close()
                         MeetingNavigation.shared.back()

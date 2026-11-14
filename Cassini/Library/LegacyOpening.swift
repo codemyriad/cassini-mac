@@ -41,7 +41,8 @@ enum LegacyOpening {
             return
         }
         if urls.count == 1 {
-            let ext = urls[0].pathExtension.lowercased()
+            let dottedExt = ImportTypesContract.dottedExtension(for: urls[0].lastPathComponent)
+            let ext = dottedExt.hasPrefix(".") ? String(dottedExt.dropFirst()) : ""
             if ext != "zip" && LibraryImport.supportedAudioExtensions.contains(ext) {
                 LibraryImportCoordinator.shared.open(urls[0])
                 return
@@ -90,8 +91,8 @@ enum LegacyOpening {
     static func chooseDocuments() {
         if let openPanel { openPanel.makeKeyAndOrderFront(nil); return }
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = CassiniDocument.readableContentTypes + [.zip]
-        panel.message = UXText.text("import.filter.cassiniAndZip")
+        panel.allowedContentTypes = UTType.decidedImportAudioContentTypes + [.zip]
+        panel.message = UXText.mac("import.drop.formats")
         panel.canChooseDirectories = false; panel.allowsMultipleSelection = true
         openPanel = panel
         panel.begin { response in

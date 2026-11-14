@@ -181,7 +181,7 @@ public struct TransferBannerPresentation: Equatable, Sendable {
 /// R1.4: original bytes are private and complete before meeting.json commits the
 /// import. A full-file hash identifies repeats, regardless of source filename.
 public enum LibraryImport {
-    public static let supportedAudioExtensions: Set<String> = ["opus", "ogg", "oga"]
+    public static let supportedAudioExtensions: Set<String> = ImportTypesContract.shared.decidedBareExtensionSet
 
     public final class BatchSession: @unchecked Sendable {
         public let root: URL
@@ -253,6 +253,7 @@ public enum LibraryImport {
     /// so `LibraryScanner`, watchers, and UI cannot discover or edit it until every archive member passes runtime limits.
     internal static func stageArchiveMember(
         _ source: URL,
+        candidateFileName: String? = nil,
         into root: URL,
         provisionalRoot: inout URL?,
         titleFallback: String,
@@ -268,9 +269,26 @@ public enum LibraryImport {
         guard fstat(input, &after) == 0, FileKey(after) == identity else { throw POSIXError(.EINVAL) }
         if shouldCancel() { throw CancellationError() }
 
+        let contract = ImportTypesContract.shared
+        let probe = Data(data.prefix(contract.maxProbeBytes))
+        let validation = contract.validateCandidate(
+            fileName: candidateFileName ?? source.lastPathComponent,
+            headerBytes: probe
+        )
+        guard validation.accepted, let typeID = validation.typeID else {
+            throw ImportTypesContract.ContractError.unsupportedCandidate(validation.reason)
+        }
+
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-        let file = try CassiniReader.read(data)
-        guard case .success? = file.audioDigest else { throw MetadataError.invalid }
+
+        let parsedOpus: CassiniFile?
+        if !DecodedAudioImport.requiresTranscode(typeID: typeID) {
+            let file = try CassiniReader.read(data)
+            guard case .success? = file.audioDigest else { throw MetadataError.invalid }
+            parsedOpus = file
+        } else {
+            parsedOpus = nil
+        }
 
         if let existing = try session.duplicate(for: digest) {
             return .existingDuplicate(existing)
@@ -299,13 +317,28 @@ public enum LibraryImport {
         defer { if !staged { try? FileManager.default.removeItem(at: folder) } }
 
         let original = folder.appendingPathComponent("original.opus")
-        let output = open(original.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
-        guard output >= 0 else { throw POSIXError(.EIO) }
-        do {
-            let write = FileHandle(fileDescriptor: output, closeOnDealloc: true)
-            defer { try? write.close() }
-            try write.write(contentsOf: data)
-            try write.synchronize()
+        let file: CassiniFile
+        if let parsedOpus {
+            let output = open(original.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+            guard output >= 0 else { throw POSIXError(.EIO) }
+            do {
+                let write = FileHandle(fileDescriptor: output, closeOnDealloc: true)
+                defer { try? write.close() }
+                try write.write(contentsOf: data)
+                try write.synchronize()
+            }
+            file = parsedOpus
+        } else {
+            try DecodedAudioImport.transcodeToOpus(
+                sourceURL: source,
+                typeID: typeID,
+                destinationURL: original,
+                shouldCancel: shouldCancel
+            )
+            let encodedData = try Data(contentsOf: original, options: .mappedIfSafe)
+            let verified = try CassiniReader.read(encodedData)
+            guard case .success? = verified.audioDigest else { throw MetadataError.invalid }
+            file = verified
         }
 
         if shouldCancel() { throw CancellationError() }
@@ -393,6 +426,14 @@ public enum LibraryImport {
                                        titleFallback: String? = nil, includeParentFolder: Bool = true,
                                        session: BatchSession? = nil,
                                        shouldCancel: () -> Bool = { false }) throws -> LibraryImportOutcome {
+        let contract = ImportTypesContract.shared
+        let dottedExt = ImportTypesContract.dottedExtension(for: source.lastPathComponent)
+        guard contract.decidedEntries.contains(where: { $0.extensions.contains(dottedExt) }) else {
+            let rejected = contract.validateCandidate(fileName: source.lastPathComponent)
+            throw ImportTypesContract.ContractError.unsupportedCandidate(rejected.reason)
+        }
+        let bareExt = String(dottedExt.dropFirst())
+
         let (input, identity) = try openRegular(source); defer { close(input) }
         guard identity.size > 0, identity.size <= Int64(UInt32.max) else { throw POSIXError(.EFBIG) }
         let read = FileHandle(fileDescriptor:input,closeOnDealloc:false)
@@ -405,36 +446,102 @@ public enum LibraryImport {
             Thread.sleep(forTimeInterval:0.02)
         }
         defer { flock(rootFD,LOCK_UN) }
-        let id = UUID(), folder = root.appendingPathComponent("Received-" + id.uuidString.lowercased())
-        try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
-        var committed = false
-        defer { if !committed { try? FileManager.default.removeItem(at:folder) } }
-        let original = folder.appendingPathComponent("original.opus")
-        let output = open(original.path,O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,0o600)
+
+        // Stage inside a hidden 0700 directory so scanners/watchers never observe an incomplete
+        // Received-<uuid> directory during copy or offline MP3/M4A/WAV transcoding.
+        let stageDir = root.appendingPathComponent(".cassini-import-" + UUID().uuidString.lowercased())
+        try FileManager.default.createDirectory(at:stageDir,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
+        defer { try? FileManager.default.removeItem(at:stageDir) }
+
+        let id = UUID()
+        let folderName = "Received-" + id.uuidString.lowercased()
+        let stagedFolder = stageDir.appendingPathComponent(folderName)
+        try FileManager.default.createDirectory(at:stagedFolder,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
+
+        let isDecoded = (bareExt == "mp3" || bareExt == "m4a" || bareExt == "wav")
+        let rawCopyTarget = isDecoded
+            ? stageDir.appendingPathComponent("source." + bareExt)
+            : stagedFolder.appendingPathComponent("original.opus")
+        let original = stagedFolder.appendingPathComponent("original.opus")
+
+        let output = open(rawCopyTarget.path,O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,0o600)
         guard output >= 0 else { throw POSIXError(.EIO) }
-        let write = FileHandle(fileDescriptor:output,closeOnDealloc:true); defer { try? write.close() }
+        var probe = Data()
+        probe.reserveCapacity(contract.maxProbeBytes)
+        var validatedTypeID: String?
         var hash = SHA256(), copied: Int64 = 0
-        while let data = try read.read(upToCount:1024 * 1024), !data.isEmpty {
-            if shouldCancel() { throw CancellationError() }
-            copied += Int64(data.count); guard copied <= identity.size else { throw POSIXError(.EINVAL) }
-            hash.update(data:data); try write.write(contentsOf:data)
+        do {
+            let write = FileHandle(fileDescriptor:output,closeOnDealloc:true); defer { try? write.close() }
+            while let data = try read.read(upToCount:1024 * 1024), !data.isEmpty {
+                if shouldCancel() { throw CancellationError() }
+                copied += Int64(data.count); guard copied <= identity.size else { throw POSIXError(.EINVAL) }
+                if validatedTypeID == nil {
+                    let needed = contract.maxProbeBytes - probe.count
+                    if needed > 0 { probe.append(data.prefix(needed)) }
+                    if probe.count >= contract.maxProbeBytes || copied == identity.size {
+                        let check = contract.validateCandidate(fileName: source.lastPathComponent, headerBytes: probe)
+                        guard check.accepted, let resolvedID = check.typeID else {
+                            throw ImportTypesContract.ContractError.unsupportedCandidate(check.reason)
+                        }
+                        validatedTypeID = resolvedID
+                    }
+                }
+                hash.update(data:data); try write.write(contentsOf:data)
+            }
+            var after = stat()
+            guard copied == identity.size, fstat(input,&after) == 0, FileKey(after) == identity else { throw POSIXError(.EINVAL) }
+            if validatedTypeID == nil {
+                let check = contract.validateCandidate(fileName: source.lastPathComponent, headerBytes: probe)
+                guard check.accepted, let resolvedID = check.typeID else {
+                    throw ImportTypesContract.ContractError.unsupportedCandidate(check.reason)
+                }
+                validatedTypeID = resolvedID
+            }
+            try write.synchronize()
         }
-        var after = stat()
-        guard copied == identity.size, fstat(input,&after) == 0, FileKey(after) == identity else { throw POSIXError(.EINVAL) }
-        try write.synchronize()
+
+        guard let typeID = validatedTypeID else {
+            throw ImportTypesContract.ContractError.unsupportedCandidate("unvalidated candidate")
+        }
         let digest = hash.finalize().map { String(format:"%02x",$0) }.joined()
-        let data = try Data(contentsOf:original,options:.mappedIfSafe)
-        let file = try CassiniReader.read(data)
-        guard case .success? = file.audioDigest else { throw MetadataError.invalid }
-        if let session {
-            if let duplicate = try session.duplicate(for: digest) { return .duplicate(duplicate) }
-        } else {
+
+        func findDuplicate() throws -> LibraryMeeting? {
+            if let session {
+                return try session.duplicate(for: digest)
+            }
             for candidate in [root] + additionalRoots where FileManager.default.fileExists(atPath:candidate.path) {
                 if let duplicate = try LibraryScanner(root:candidate).scan().meetings.first(where: { $0.received?.sha256 == digest }) {
-                    return .duplicate(duplicate)
+                    return duplicate
                 }
             }
+            return nil
         }
+
+        let file: CassiniFile
+        if DecodedAudioImport.requiresTranscode(typeID: typeID) {
+            // Check duplicate before running offline transcoding when re-importing an already-imported file.
+            if let duplicate = try findDuplicate() {
+                return .duplicate(duplicate)
+            }
+            try DecodedAudioImport.transcodeToOpus(
+                sourceURL: rawCopyTarget,
+                typeID: typeID,
+                destinationURL: original,
+                shouldCancel: shouldCancel
+            )
+            try? FileManager.default.removeItem(at: rawCopyTarget)
+            let data = try Data(contentsOf:original,options:.mappedIfSafe)
+            file = try CassiniReader.read(data)
+            guard case .success? = file.audioDigest else { throw MetadataError.invalid }
+        } else {
+            let data = try Data(contentsOf:original,options:.mappedIfSafe)
+            file = try CassiniReader.read(data)
+            guard case .success? = file.audioDigest else { throw MetadataError.invalid }
+            if let duplicate = try findDuplicate() {
+                return .duplicate(duplicate)
+            }
+        }
+
         if shouldCancel() { throw CancellationError() }
         let trusted = [.ok,.plainAudio].contains(file.state)
         let importedNotes = Self.importedNotes(trusted ? file.manifest?.raw["x"]?["gocassini.com"]?["notes"] : nil)
@@ -442,7 +549,7 @@ public enum LibraryImport {
         let title = [trusted ? file.manifest?.meeting.title : nil,trusted ? file.tags?["TITLE"] : nil,fallbackStem]
             .compactMap { $0?.trimmingCharacters(in:.whitespacesAndNewlines) }.first { !$0.isEmpty }
         if shouldCancel() { throw CancellationError() }
-        try MeetingMetadataWriter(directory:folder,id:id).transaction { metadata in
+        try MeetingMetadataWriter(directory:stagedFolder,id:id).transaction { metadata in
             var received: [String:Any] = ["originalName":"original.opus","sha256":digest,"importedAtMs":Int64(Date().timeIntervalSince1970 * 1000)]
             if includeParentFolder {
                 let parent = String(String.UnicodeScalarView(source.deletingLastPathComponent().lastPathComponent.unicodeScalars.prefix(255)))
@@ -456,13 +563,21 @@ public enum LibraryImport {
             if let title { metadata["title"] = String(String.UnicodeScalarView(title.unicodeScalars.prefix(500))) }
             if let transcript = Self.importedTranscript(file) { metadata["transcript"] = transcript }
         }
+        if shouldCancel() { throw CancellationError() }
+        let stageFD = open(stageDir.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard stageFD >= 0 else { throw POSIXError(.ENOENT) }
+        defer { close(stageFD) }
+        guard renameatx_np(stageFD, folderName, rootFD, folderName, UInt32(RENAME_EXCL)) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        _ = fsync(rootFD)
+        let finalFolder = root.appendingPathComponent(folderName)
         let meeting: LibraryMeeting
         if let session {
-            meeting = try session.recordImported(folder: folder, id: id, digest: digest)
+            meeting = try session.recordImported(folder: finalFolder, id: id, digest: digest)
         } else {
-            meeting = try readSingleImportedMeeting(root: root, folder: folder, id: id)
+            meeting = try readSingleImportedMeeting(root: root, folder: finalFolder, id: id)
         }
-        committed = true
         return .imported(meeting)
     }
 

@@ -48,7 +48,7 @@ public enum ZipArchiveImport {
     private enum EntryKind {
         case directory
         case unsupported
-        case supported(baseName: String, titleFallback: String)
+        case supported(baseName: String, ext: String, titleFallback: String)
     }
 
     private struct ArchiveEntry {
@@ -99,7 +99,6 @@ public enum ZipArchiveImport {
         let stagingDir = temporaryRoot.appendingPathComponent("CassiniZipStage-\(getpid())-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: stagingDir) }
-        let stagedFile = stagingDir.appendingPathComponent("entry.opus")
 
         let initialSummary = summary
         var provisionalRoot: URL?
@@ -146,9 +145,10 @@ public enum ZipArchiveImport {
                     )
                     stagedSteps.append(.unsupported)
 
-                case .supported(_, let titleFallback):
+                case .supported(let baseName, let ext, let titleFallback):
                     supportedDone += 1
                     onProgress(supportedDone, supportedTotal)
+                    let stagedFile = stagingDir.appendingPathComponent("entry." + ext)
                     try? FileManager.default.removeItem(at: stagedFile)
                     defer { try? FileManager.default.removeItem(at: stagedFile) }
 
@@ -186,6 +186,7 @@ public enum ZipArchiveImport {
                     do {
                         let outcome = try LibraryImport.stageArchiveMember(
                             stagedFile,
+                            candidateFileName: baseName,
                             into: root,
                             provisionalRoot: &provisionalRoot,
                             titleFallback: titleFallback,
@@ -642,13 +643,16 @@ public enum ZipArchiveImport {
         if segments.contains("__MACOSX") || baseName.hasPrefix("._") || baseName == ".DS_Store" {
             return .unsupported
         }
-        let nsBase = baseName as NSString
-        let ext = nsBase.pathExtension.lowercased()
+        let dottedExt = ImportTypesContract.dottedExtension(for: baseName)
+        guard !dottedExt.isEmpty else {
+            return .unsupported
+        }
+        let ext = String(dottedExt.dropFirst())
         guard LibraryImport.supportedAudioExtensions.contains(ext) else {
             return .unsupported
         }
-        let stem = nsBase.deletingPathExtension
-        return .supported(baseName: baseName, titleFallback: stem)
+        let stem = (baseName as NSString).deletingPathExtension
+        return .supported(baseName: baseName, ext: ext, titleFallback: stem)
     }
 
     // MARK: - Streaming Extraction & Runtime Byte Limits
@@ -1027,11 +1031,12 @@ public enum LibraryBatchImport {
         summary: inout LibraryImportSummary,
         onPartialSummary: (LibraryImportSummary) -> Void = { _ in },
         onProgress: (_ done: Int, _ total: Int) -> Void = { _, _ in },
+        onURLSettled: (_ url: URL, _ failureReason: String?) -> Void = { _, _ in },
         shouldCancel: () -> Bool = { false }
     ) throws -> LibraryImportSummary {
         let session = LibraryImport.BatchSession(root: root, additionalRoots: additionalRoots)
         if urls.count == 1, urls[0].pathExtension.lowercased() == "zip" {
-            return try ZipArchiveImport.importArchive(
+            let result = try ZipArchiveImport.importArchive(
                 urls[0],
                 into: root,
                 additionalRoots: additionalRoots,
@@ -1042,6 +1047,8 @@ public enum LibraryBatchImport {
                 onProgress: onProgress,
                 shouldCancel: shouldCancel
             )
+            onURLSettled(urls[0], nil)
+            return result
         }
 
         var totalItems = urls.count
@@ -1074,6 +1081,7 @@ public enum LibraryBatchImport {
                         shouldCancel: shouldCancel
                     )
                     completedItems += max(1, entryCount)
+                    onURLSettled(url, nil)
                 } catch let cancel as CancellationError {
                     throw cancel
                 } catch let failure as ZipArchiveFailure {
@@ -1082,13 +1090,15 @@ public enum LibraryBatchImport {
                     singleZipFailure = failure
                     summary.failed += 1
                     onPartialSummary(summary)
+                    onURLSettled(url, LibraryLocalization.shared.text(failure.localizationID))
                 } catch {
                     completedItems += 1
                     onProgress(min(completedItems, totalItems), totalItems)
                     summary.failed += 1
                     onPartialSummary(summary)
+                    onURLSettled(url, error.localizedDescription)
                 }
-            } else if LibraryImport.supportedAudioExtensions.contains(ext) {
+            } else if !ImportTypesContract.dottedExtension(for: url.lastPathComponent).isEmpty && LibraryImport.supportedAudioExtensions.contains(ext) {
                 let currentIndex = min(completedItems + 1, totalItems)
                 onProgress(currentIndex, totalItems)
                 do {
@@ -1108,11 +1118,13 @@ public enum LibraryBatchImport {
                         if summary.lastSelected == nil { summary.lastSelected = meeting }
                     }
                     onPartialSummary(summary)
+                    onURLSettled(url, nil)
                 } catch let cancel as CancellationError {
                     throw cancel
                 } catch {
                     summary.failed += 1
                     onPartialSummary(summary)
+                    onURLSettled(url, error.localizedDescription)
                 }
                 completedItems += 1
             } else {
@@ -1120,6 +1132,7 @@ public enum LibraryBatchImport {
                 onProgress(currentIndex, totalItems)
                 summary.unsupported += 1
                 onPartialSummary(summary)
+                onURLSettled(url, nil)
                 completedItems += 1
             }
         }
