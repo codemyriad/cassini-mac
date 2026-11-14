@@ -48,6 +48,19 @@ jobs:
     - name: Prepare hosted display (fixtures are in the shared app)
       run: |
         python3 scripts/hosted-display.py
+    - name: Speaker dialog regressions
+      timeout-minutes: 5
+      env:
+        TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
+        TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'
+      run: |
+        set -o pipefail
+        xcodebuild test-without-building -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" \
+          -destination 'platform=macOS' -parallel-testing-enabled NO \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testSpeakerNamesClearMergeUndoAndReopen \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testSpeakerDialogActionsAtMinimumWindowHeight \
+          -resultBundlePath build/UXSpeakers.xcresult \
+          2>&1 | tee build/ux-speakers.log
     - name: Render Library boards
       # D66: run43118098593 reached41 passing tests/18.46 min, then the old19 min
       # guard killed a progressing suite. These are outer hang guards,
@@ -81,6 +94,8 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testCompanionSetupBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testWhatIsRecordedBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRenameFromFileAndWindowTitle \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testSpeakerNamesClearMergeUndoAndReopen \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testSpeakerDialogActionsAtMinimumWindowHeight \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testListeningBarOffersPlayAgainAfterItsLastTurn \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testTranscriptTimePlaysAndSpeakerNameStartsListening \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSettingsTranscriptionModelChoices \
@@ -90,6 +105,7 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testFirstRun \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSearchBoardFiltersAndOpeningTheHit \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testReceivedBoard \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testOpenAndFinderRoutingWithLibraryClosed \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testExportBoardAndKeyboardChoices \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testExportReceivedAudioThroughAFileOnlySaveGrant \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingBoard \
@@ -97,7 +113,7 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingBoard \
           -resultBundlePath build/UXBoardsDark.xcresult \
           2>&1 | tee build/ux-boards-dark.log
-        echo "Dark Library boards: 22 tests (27 boards), $((SECONDS - dark_start)) s wall" >> "$GITHUB_STEP_SUMMARY"
+        echo "Dark Library boards: 23 tests (28 boards), $((SECONDS - dark_start)) s wall" >> "$GITHUB_STEP_SUMMARY"
     - name: Library boards test durations
       if: always()
       run: |
@@ -176,6 +192,8 @@ jobs:
         retention-days: 14
         name: ux-boards-diagnostics
         path: |
+          build/UXSpeakers.xcresult
+          build/ux-speakers.log
           build/UXBoards.xcresult
           build/UXBoardsDark.xcresult
           build/ux-boards.log

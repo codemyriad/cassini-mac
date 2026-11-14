@@ -112,10 +112,12 @@ import Observation
         report["mergedPreparationRecovers"] = detail.turns.allSatisfy { $0.speaker == "b" } && detail.timelineReadout.speaker(at:0) == "b" && detail.speakerName("b") == "Marta Cole"
         await runSessionModelProof(into: &report)
         for (key,value) in MeetingPositionSlider.nativeSelfTest() { report[key] = value }
+        for (key,value) in SpeakerEditorChrome.nativeSelfTest() { report[key] = value }
         for (key,value) in MeetingTranscriptText.nativeSelfTest() { report[key] = value }
         for (key,value) in MeetingTitleAlignment.nativeSelfTest() { report[key] = value }
         for (key,value) in SpeakerSidebarRow.nativeSelfTest(baseSpeaker:fixture.speakers[0]) { report[key] = value }
         for (key,value) in CassiniTokens.nativeSelfTest() { report[key] = value }
+        for (key,value) in MeetingCardPaint.nativeSelfTest() { report[key] = value }
         for (key,value) in ScrollEdgeChrome.nativeSelfTest() { report[key] = value }
         var asideMeeting = fixture
         asideMeeting.transcriptItems = [.init(speaker:"claire",startMs:0,endMs:800,text:"We agree."),
@@ -130,7 +132,17 @@ import Observation
             report["explicitReplayResumesTranscriptFollow"] = preview.followRevision > revision && preview.canFollowTranscript
         } else { report["asideActionSelectsOwnRunAndHost"] = false }
         preview.close()
-        guard report.filter({ $0.key != "audioDevicesOpened" }).allSatisfy({ $0.value as? Bool == true }) else { fail("native scrubber or preparation regression: \(report)") }
+        let skippedKeys = ScrollEdgeChrome.nativeCoverageKeys
+        let reportValid = report.filter({ $0.key != "audioDevicesOpened" }).allSatisfy { key, value in
+            if key == "scrollEdgeNativeMacOS26Available" {
+                return (value as? Bool) == ScrollEdgeChrome.isNativeMacOS26Available
+            }
+            if skippedKeys.contains(key) && !ScrollEdgeChrome.isNativeMacOS26Available {
+                return (value as? String) == "skipped"
+            }
+            return (value as? Bool) == true
+        }
+        guard reportValid else { fail("native scrubber or preparation regression: \(report)") }
         report["audioDevicesOpened"] = false
 
         MeetingDetailModel.preparerForSelfTest = nil

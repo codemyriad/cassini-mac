@@ -24,10 +24,10 @@ import Foundation
     static var directory: URL? {
         let native = RecordingController.shared
         if native.isRecording, native.elapsedMs >= (CaptureCollection.shared.first?.elapsedMs ?? 0) { return native.directory }
-        return CaptureCollection.shared.first?.snapshot.directory ?? native.directory
+        return CaptureCollection.shared.first?.presentation.directory ?? native.directory
     }
     static var title: String {
-        if let browser = CaptureCollection.shared.first, !RecordingController.shared.isRecording || browser.elapsedMs > RecordingController.shared.elapsedMs { return browser.displayTitle ?? browser.snapshot.manifest.title }
+        if let browser = CaptureCollection.shared.first, !RecordingController.shared.isRecording || browser.elapsedMs > RecordingController.shared.elapsedMs { return browser.displayTitle ?? browser.presentation.title }
         return RecordingController.shared.title
     }
     static var levels: [String:Float] {

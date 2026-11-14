@@ -7,7 +7,7 @@ struct SidebarView: View {
     var body: some View {
         List {
             if !session.speakers.isEmpty {
-                Section("Speakers") {
+                Section(UXText.text("common.speakers")) {
                     ForEach(session.speakers) { speaker in
                         Toggle(isOn: binding(for: speaker.id)) {
                             HStack(spacing: 8) {
@@ -20,7 +20,7 @@ struct SidebarView: View {
                                 if session.speakingNow.contains(speaker.id), !session.hiddenSpeakers.contains(speaker.id) {
                                     Image(systemName: "speaker.wave.2.fill")
                                         .foregroundStyle(CassiniTheme.accentInk)
-                                        .accessibilityLabel("Speaking now")
+                                        .accessibilityLabel(UXText.mac("speakers.speakingNow"))
                                 }
                             }
                         }

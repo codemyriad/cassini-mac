@@ -439,7 +439,7 @@ import Darwin
                 guard FileManager.default.fileExists(atPath:root.appendingPathComponent(name + "/meeting.json").path) else { throw POSIXError(.EINVAL) }
             }
             try FileManager.default.removeItem(at:root.deletingLastPathComponent())
-            let report = ["queueMetadataOffMain":true,"enqueueReturnedBeforeLockRelease":true,"shutdownStartedBeforeLockRelease":true,"metadataBeforeWorker":true,"repeatedWriteDownImportsOnce":true,"shutdownWaitsForImport":true,"queuedIntentSurvivesQuit":true,"concurrentImportKeepsExportProgressAndCancel":true,"bannerRemovalPreservesSharedExportReceipt":true,"userStopPreservesAndResumesWithoutAutoRestart":true,"lockContentionRetryPreservesCompletedTranscript":true,"stopCommitsBeforeShutdownMoveAndTrash":true,"audioDevicesOpened":false]
+            let report = ["queueMetadataOffMain":true,"enqueueReturnedBeforeLockRelease":true,"shutdownStartedBeforeLockRelease":true,"metadataBeforeWorker":true,"repeatedWriteDownImportsOnce":true,"shutdownWaitsForImport":true,"queuedIntentSurvivesQuit":true,"concurrentImportKeepsExportProgressAndCancel":true,"bannerRemovalPreservesSharedExportReceipt":true,"singleImportConfirmationAndSilentReopen":true,"userStopPreservesAndResumesWithoutAutoRestart":true,"lockContentionRetryPreservesCompletedTranscript":true,"stopCommitsBeforeShutdownMoveAndTrash":true,"audioDevicesOpened":false]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch {
             importer.beginShutdown(); queue.beginShutdown()
@@ -814,6 +814,23 @@ import Darwin
             noticeClosingMount.isMounted = false
             noticeClosingWin.contentView = nil
             noticeClosingWin.close()
+        }
+
+        // A fresh single-file open shows the one-time confirmation. Reopening
+        // the same file must clear it without creating another Library entry.
+        let firstOpenURL = scratch.appendingPathComponent("FirstOpenConfirmation.opus")
+        _ = try OpusStreamFile.rewrite(Data(contentsOf:singleURL), tags:PortableMeetingTags.packet(comments:[Comment(name:"TITLE",value:"First open confirmation")]), to:firstOpenURL)
+        importer.open(firstOpenURL)
+        await importer.waitForShutdown()
+        let firstNotice = try require(importer.notice)
+        guard firstNotice.message == UXText.text("received.importedToast",["folder":scratch.lastPathComponent]),
+              !firstNotice.isWarning, firstNotice.autoDismiss else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:27,userInfo:[NSLocalizedDescriptionKey:"Single import did not show its first-open confirmation"])
+        }
+        importer.open(firstOpenURL)
+        await importer.waitForShutdown()
+        guard importer.notice == nil else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:28,userInfo:[NSLocalizedDescriptionKey:"Duplicate single-file open showed an import confirmation"])
         }
 
         importer.openBatch([singleURL, singleURL])

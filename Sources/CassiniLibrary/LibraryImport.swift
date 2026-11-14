@@ -8,6 +8,15 @@ public enum LibraryImportOutcome: Sendable {
     case imported(LibraryMeeting)
     case duplicate(LibraryMeeting)
 
+    /// Only a newly committed copy announces an import; reopening a duplicate is silent.
+    public func confirmation(language: CassiniLanguage, locale: Locale) -> String? {
+        guard case .imported(let meeting) = self else { return nil }
+        if let folder = meeting.received?.originalFolderName, !folder.isEmpty {
+            return LibraryLocalization.shared.text("received.importedToast", ["folder": folder], language: language, locale: locale)
+        }
+        return LibraryLocalization.shared.text("received.importedToast.noFolder", language: language, locale: locale)
+    }
+
     public var meeting: LibraryMeeting {
         switch self {
         case .imported(let meeting), .duplicate(let meeting): return meeting

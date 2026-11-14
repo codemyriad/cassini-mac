@@ -87,27 +87,6 @@
       }
     },
     {
-      "id": "mac.recording.micDenied",
-      "en": "Allow microphone access in System Settings → Privacy & Security → Microphone, then try again.",
-      "l10n": {
-        "it": {
-          "text": "Consenti l’accesso al microfono in Impostazioni di Sistema → Privacy e sicurezza → Microfono, poi riprova."
-        },
-        "fr": {
-          "text": "Autorisez l’accès au microphone dans Réglages Système → Confidentialité et sécurité → Microphone, puis réessayez."
-        },
-        "es": {
-          "text": "Permite el acceso al micrófono en Ajustes del Sistema → Privacidad y seguridad → Micrófono y vuelve a intentarlo."
-        },
-        "pt-BR": {
-          "text": "Permita o acesso ao microfone em Ajustes do Sistema → Privacidade e Segurança → Microfone e tente novamente."
-        },
-        "pt-PT": {
-          "text": "Permita o acesso ao microfone em Definições do Sistema → Privacidade e segurança → Microfone e tente novamente."
-        }
-      }
-    },
-    {
       "id": "mac.recording.outputChanged",
       "en": "The output audio format changed. Start a new recording with the current device.",
       "l10n": {
@@ -381,44 +360,23 @@
       }
     },
     {
-      "id": "mac.transcription.stop",
-      "en": "Stop transcription",
+      "id": "mac.speakers.speakingNow",
+      "en": "Speaking now",
       "l10n": {
         "it": {
-          "text": "Interrompi trascrizione"
+          "text": "Sta parlando"
         },
         "fr": {
-          "text": "Arrêter la transcription"
+          "text": "Parle en ce moment"
         },
         "es": {
-          "text": "Detener transcripción"
+          "text": "Hablando ahora"
         },
         "pt-BR": {
-          "text": "Parar transcrição"
+          "text": "Falando agora"
         },
         "pt-PT": {
-          "text": "Parar transcrição"
-        }
-      }
-    },
-    {
-      "id": "mac.transcription.resume",
-      "en": "Resume transcription",
-      "l10n": {
-        "it": {
-          "text": "Riprendi trascrizione"
-        },
-        "fr": {
-          "text": "Reprendre la transcription"
-        },
-        "es": {
-          "text": "Reanudar transcripción"
-        },
-        "pt-BR": {
-          "text": "Retomar transcrição"
-        },
-        "pt-PT": {
-          "text": "Retomar transcrição"
+          "text": "A falar agora"
         }
       }
     }

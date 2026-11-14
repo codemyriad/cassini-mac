@@ -129,12 +129,15 @@ import Observation
                     // Only consume a fixture meter sample when its media was advanced.
                     if self.fixtureUptime != nil, self.fixtureStatus == nil { return }
                     #endif
-                    guard let status = self.sink?.status() else { return }
-                    self.levels = status.levels; self.warnings = status.warnings
+                    guard let status = self.sink?.statusIfAvailable() else { return }
+                    if self.levels != status.levels { self.levels = status.levels }
+                    if self.warnings != status.warnings { self.warnings = status.warnings }
                     let now = self.uptime
                     if status.levels["microphone",default:0] >= 0.01 { self.lastMicSound = now }
-                    self.microphoneSilent = now - self.lastMicSound >= 20
-                    self.waitingForAudio = Date().timeIntervalSince(self.startedAt ?? Date()) > 5 && ["microphone", "output"].contains { status.frames[$0, default: 0] == 0 }
+                    let silent = now - self.lastMicSound >= 20
+                    if self.microphoneSilent != silent { self.microphoneSilent = silent }
+                    let waiting = Date().timeIntervalSince(self.startedAt ?? Date()) > 5 && ["microphone", "output"].contains { status.frames[$0, default: 0] == 0 }
+                    if self.waitingForAudio != waiting { self.waitingForAudio = waiting }
                     #if DEBUG
                     if let waiter = self.fixtureStatus {
                         self.fixtureStatus = nil
