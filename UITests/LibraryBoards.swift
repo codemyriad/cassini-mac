@@ -217,7 +217,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(remember.isEnabled,"Unprepared voices cannot be remembered")
         let explanation=app.staticTexts["speaker-remember-explanation"]
         XCTAssertEqual(explanation.value as? String ?? explanation.label,"Cassini hasn’t prepared this meeting’s voices yet. You can still save the name.")
-        XCTAssertFalse(window.buttons["meeting-back"].isEnabled,"Native toolbar cannot act behind the dialog")
+        XCTAssertFalse(window.buttons["meeting-back"].exists,"The direct pane has no intermediate Back action")
         XCTAssertFalse(window.buttons["meeting-export"].isEnabled)
         capture(window,name:"speakers")
         // Tab must reach the dialog's merge menu, never an inline transcript button.
@@ -286,10 +286,9 @@ final class LibraryBoards: XCTestCase {
         let window=app.windows["cassini-library-window"]
         let budget=window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
         XCTAssertTrue(budget.waitForExistence(timeout:20));budget.click()
-        let read=window.buttons["preview-read-transcript"]
+        let read=window.textFields["meeting-find"]
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate {_,_ in read.exists && read.isEnabled},object:nil)],timeout:10),.completed)
-        read.click()
-        let names=window.buttons["name-the-speakers"]
+        let names=window.buttons["speaker-name-marta"]
         XCTAssertTrue(names.waitForExistence(timeout:10));names.click()
         let field=app.textFields["speaker-name-field"]
         XCTAssertTrue(field.waitForExistence(timeout:10))
@@ -1303,7 +1302,9 @@ final class LibraryBoards: XCTestCase {
         let play = window.buttons["meeting-play"]
         if play.label == "Pause" { play.click() }
         XCTAssertEqual(play.label, "Play")
-        let timestamp = window.links.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "00:31:10", "00:31:10")).firstMatch
+        // SwiftUI exposes an attributed Text link as StaticText on macOS 15.
+        // The long fixture puts the timestamp alone so clicking its centre hits the link.
+        let timestamp = window.staticTexts.matching(NSPredicate(format: "label == %@ OR value == %@", "00:31:10", "00:31:10")).firstMatch
         XCTAssertTrue(timestamp.waitForExistence(timeout: 10), window.debugDescription)
         timestamp.click()
         let target = window.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "turn-play-", "00:31:10")).firstMatch

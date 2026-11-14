@@ -216,7 +216,8 @@ final class LibraryStore {
                     let timestamp = LibraryLaunchContext.argument("-CassiniLongMeetingFixture") == "YES" ? "00:31:10" : "00:03:12"
                     result.meetings = result.meetings.map { meeting in
                         var meeting = meeting
-                        meeting.summaryMarkdown = "# Meeting summary\n\nReview the budget and agree on the next steps.\n\n- [ ] Share the updated figures.\n- Review the decision at \(timestamp)."
+                        let decision = LibraryLaunchContext.argument("-CassiniLongMeetingFixture") == "YES" ? "\n\n\(timestamp)" : "\n- Review the decision at \(timestamp)."
+                        meeting.summaryMarkdown = "# Meeting summary\n\nReview the budget and agree on the next steps.\n\n- [ ] Share the updated figures." + decision
                         return meeting
                     }
                 }
