@@ -232,25 +232,60 @@ struct LibraryWindowDropDestination: NSViewRepresentable {
             return objects.filter { $0.isFileURL && !$0.hasDirectoryPath }
         }
 
+        /// Off-main header probe cached per drag session; hover handlers only read it.
+        private lazy var probeSession: ImportDropProbeSession = {
+            let session = ImportDropProbeSession(
+                probe: ImportDropProbeSession.blockingProbe { LibraryImportCoordinator.isSupportedDropURL($0) }
+            )
+            session.onResolved = { [weak self] in self?.probeDidResolve() }
+            return session
+        }()
+        /// Last hover snapshot, so a late probe result can refresh the overlay without new drag events.
+        private var lastHover: (files: [URL], point: NSPoint)?
+
+        /// Supported files from in-memory state only: the cached probe result when the session's
+        /// probe has finished, otherwise extension-only classification (the importer revalidates
+        /// content off-main, so an early drop of a disguised file lands in `Needs attention`).
+        private func supportedFiles(in files: [URL]) -> [URL] {
+            let candidates = files.filter(LibraryImportCoordinator.isSupportedDropExtension)
+            guard !candidates.isEmpty else {
+                probeSession.reset()
+                return []
+            }
+            switch probeSession.resolution(for: candidates) {
+            case .pending:
+                return candidates
+            case .resolved(let supported):
+                return supported
+            }
+        }
+
+        private func isOverTarget(_ point: NSPoint) -> Bool {
+            if let width = sidebarDropWidth {
+                return point.x >= 0 && point.x <= width && bounds.contains(point)
+            }
+            return bounds.contains(point)
+        }
+
         private func evaluate(_ sender: NSDraggingInfo) -> NSDragOperation {
             let files = draggedFiles(from: sender)
+            let point = convert(sender.draggingLocation, from: nil)
+            lastHover = files.isEmpty ? nil : (files: files, point: point)
+            return evaluate(files: files, point: point)
+        }
+
+        private func evaluate(files: [URL], point: NSPoint) -> NSDragOperation {
             guard !files.isEmpty else {
+                probeSession.reset()
                 onStateChange?(.idle)
                 return []
             }
-            let supported = files.filter(LibraryImportCoordinator.isSupportedDropURL)
+            let supported = supportedFiles(in: files)
             guard showsVisualStates else {
                 onStateChange?(.idle)
                 return !supported.isEmpty || files.count > 1 ? .copy : []
             }
-            let point = convert(sender.draggingLocation, from: nil)
-            let overTarget: Bool
-            if let width = sidebarDropWidth {
-                overTarget = point.x >= 0 && point.x <= width && bounds.contains(point)
-            } else {
-                overTarget = bounds.contains(point)
-            }
-            if !overTarget {
+            if !isOverTarget(point) {
                 onStateChange?(.enteredWindow)
                 return []
             }
@@ -262,6 +297,19 @@ struct LibraryWindowDropDestination: NSViewRepresentable {
             return .copy
         }
 
+        /// Main-actor delivery of the current session's probe result. The returned
+        /// `NSDragOperation` follows on AppKit's next periodic `draggingUpdated`.
+        private func probeDidResolve() {
+            guard let lastHover else { return }
+            _ = evaluate(files: lastHover.files, point: lastHover.point)
+        }
+
+        private func endDragSession() {
+            probeSession.reset()
+            lastHover = nil
+            onStateChange?(.idle)
+        }
+
         override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
             MainActor.assumeIsolated { evaluate(sender) }
         }
@@ -271,22 +319,27 @@ struct LibraryWindowDropDestination: NSViewRepresentable {
         }
 
         override func draggingExited(_ sender: NSDraggingInfo?) {
-            MainActor.assumeIsolated { onStateChange?(.idle) }
+            MainActor.assumeIsolated { endDragSession() }
         }
 
         override func draggingEnded(_ sender: NSDraggingInfo) {
-            MainActor.assumeIsolated { onStateChange?(.idle) }
+            MainActor.assumeIsolated { endDragSession() }
         }
 
+        override func concludeDragOperation(_ sender: NSDraggingInfo?) {
+            MainActor.assumeIsolated { endDragSession() }
+        }
+
+        /// Decides from in-memory state only, so it is deterministic even when the hover
+        /// probe has not finished (or is stalled on a network mount).
         override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
             MainActor.assumeIsolated {
-                defer { onStateChange?(.idle) }
+                defer { endDragSession() }
                 let files = draggedFiles(from: sender)
                 guard !files.isEmpty else { return false }
-                let supported = files.filter(LibraryImportCoordinator.isSupportedDropURL)
-                if showsVisualStates, let width = sidebarDropWidth {
-                    let point = convert(sender.draggingLocation, from: nil)
-                    guard point.x >= 0 && point.x <= width && bounds.contains(point) else { return false }
+                let supported = supportedFiles(in: files)
+                if showsVisualStates, sidebarDropWidth != nil {
+                    guard isOverTarget(convert(sender.draggingLocation, from: nil)) else { return false }
                 }
                 guard !supported.isEmpty || (!showsVisualStates && files.count > 1) else { return false }
                 onDropFiles?(files)

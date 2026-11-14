@@ -32,15 +32,21 @@ import Observation
         var state: State
     }
 
-    static func isSupportedDropURL(_ url: URL) -> Bool {
+    /// Pure in-memory classification from the URL's extension; no filesystem I/O, so it is
+    /// safe on the main actor during `draggingEntered` / `draggingUpdated`.
+    nonisolated static func isSupportedDropExtension(_ url: URL) -> Bool {
         guard url.isFileURL, !url.hasDirectoryPath else { return false }
         let dottedExt = ImportTypesContract.dottedExtension(for: url.lastPathComponent)
         if dottedExt == ".zip" { return true }
-        let contract = ImportTypesContract.shared
-        guard contract.decidedEntries.contains(where: { $0.extensions.contains(dottedExt) }) else {
-            return false
-        }
-        return !contract.isDisguisedUnsupportedContainer(at: url)
+        return ImportTypesContract.shared.decidedEntries.contains { $0.extensions.contains(dottedExt) }
+    }
+
+    /// Extension check plus a header probe (`open`/`fstat`/`fstatfs`/`read`). Blocking I/O:
+    /// never call on the main actor; drag hover runs it via `ImportDropProbeSession.blockingProbe`.
+    nonisolated static func isSupportedDropURL(_ url: URL) -> Bool {
+        guard isSupportedDropExtension(url) else { return false }
+        if ImportTypesContract.dottedExtension(for: url.lastPathComponent) == ".zip" { return true }
+        return !ImportTypesContract.shared.isDisguisedUnsupportedContainer(at: url)
     }
 
     private static func createsTransientCard(_ url: URL) -> Bool {
