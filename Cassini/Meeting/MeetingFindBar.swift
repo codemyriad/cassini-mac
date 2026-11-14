@@ -4,6 +4,7 @@ import CassiniLibrary
 
 struct MeetingFindBar: View {
     @Bindable var model: MeetingFindModel
+    var onFocus: () -> Void = {}
     @FocusState private var focused: Bool
     var body: some View {
         HStack(spacing: 8) {
@@ -34,9 +35,16 @@ struct MeetingFindBar: View {
             .padding(.horizontal, 9).frame(height: 28)
             .background(CassiniTheme.field, in: RoundedRectangle(cornerRadius: 6))
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(CassiniTheme.fieldLine, lineWidth: 1))
-            .onChange(of: model.focusRequest) { _, _ in focused = true }
-            .onAppear { if model.focusRequest > 0 { focused = true } }
-            .onChange(of: focused) { _, value in model.focused = value }
+            .onChange(of: model.focusRequest) { _, _ in handleFocusRequest() }
+            .onAppear { handleFocusRequest() }
+            .onChange(of: focused) { _, value in
+                model.focused = value
+                if value { onFocus() }
+            }
+            .onChange(of: model.query) { _, query in if !query.isEmpty { onFocus() } }
             .onDisappear { model.focused = false }
+    }
+    private func handleFocusRequest() {
+        if model.consumeFocusRequest() { focused = true }
     }
 }

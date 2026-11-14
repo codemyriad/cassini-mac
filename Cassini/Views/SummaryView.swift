@@ -25,7 +25,10 @@ struct SummaryView: View {
     }
 
     var body: some View {
-        ScrollView { content }
+        ScrollView {
+            content.frame(maxWidth: 640, alignment: .leading)
+                .frame(maxWidth: .infinity).padding(.horizontal, 20).padding(.vertical, 28)
+        }
     }
 
     var content: some View {
@@ -48,10 +51,7 @@ struct SummaryView: View {
                     }
                 }
             }
-            .frame(maxWidth: 640, alignment: .leading)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 28)
+            .frame(maxWidth: .infinity, alignment: .leading)
         .environment(\.openURL, OpenURLAction { url in
             guard url.scheme == "cassini", url.host == "seek", let ms = Int(url.lastPathComponent) else { return .systemAction }
             goToTranscript(ms)

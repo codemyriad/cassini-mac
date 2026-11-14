@@ -51,6 +51,7 @@ assert all(report[name] is True for name in ('preparedOffMain','mainActorProgres
     'titleAlignmentWideLeadingControlsClampToZero','titleAlignmentPassThroughHitTesting','titleAlignmentRejectsStaleAndInvalidProposals',
     'speakerRowReadOnlyKeepsPrimaryInk','speakerRowCaptionUsesFullRowWidth',
     'brandTokensSynced','brandTokensRejectsDrift',
+    'findDoesNotFocusOnInitialMount','findConsumesFocusOnce','findHandlesLaterFocusRequest',
     'sessionPreparedOffMain','sessionMainActorProgressed','sessionSwitchCancelled',
     'sessionCachedSwitchSkipsPreparation','sessionSpeakerSlotsMatchFirstSpeech')),report
 assert report['audioDevicesOpened'] is False

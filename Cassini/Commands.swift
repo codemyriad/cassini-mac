@@ -58,7 +58,7 @@ struct AppCommands: Commands {
                 .keyboardShortcut("[", modifiers: .command).disabled(detail == nil && !LibrarySearchModel.shared.visible)
         }
         CommandGroup(replacing:.textEditing) {
-            Button(UXText.text(detail == nil ? "search.field.a11y" : "meeting.find.placeholder")) {
+            Button(UXText.text(detail?.meeting.state.lifecycle == .saved ? "meeting.find.placeholder" : "search.field.a11y")) {
                 if let detail, detail.meeting.state.lifecycle == .saved { detail.focusFind() }
                 else { LibrarySearchModel.shared.open() }
             }.keyboardShortcut("f",modifiers:.command)

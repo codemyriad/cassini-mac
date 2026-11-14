@@ -907,6 +907,8 @@ final class LibraryBoards: XCTestCase {
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"received-folder-card").firstMatch.waitForExistence(timeout:20),window.debugDescription)
         XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
+        XCTAssertFalse(window.descendants(matching: .any)["meeting-status-badge"].exists)
+        XCTAssertTrue(window.staticTexts["meeting-subtitle"].label.contains("Received"))
         XCTAssertTrue(text("Record your own meetings with the button above.",in:window))
         capture(window,name:"received")
     }
@@ -1022,6 +1024,12 @@ final class LibraryBoards: XCTestCase {
         title.click(); app.typeKey("a",modifierFlags:.command); title.typeText("Title from the live page")
         XCTAssertFalse(window.textViews["recording-notes"].exists)
         window.buttons.matching(identifier:"recording-back").firstMatch.click()
+        // Back flushes the edited title. Seeing it on the Library row proves a
+        // subsequent scan published, rather than reopening before the refresh.
+        let renamedRow = window.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "meeting-", "Title from the live page")).firstMatch
+        XCTAssertTrue(renamedRow.waitForExistence(timeout: 10), window.debugDescription)
+        XCTAssertFalse(title.exists, "A live-recording refresh must leave Back on the Library")
         window.buttons["recording-open-current"].click()
         XCTAssertTrue(waitForPresent(title,timeout:10))
         XCTAssertEqual(title.value as? String,"Title from the live page")
@@ -1209,7 +1217,8 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(summary.waitForExistence(timeout: 20), app.debugDescription)
         XCTAssertTrue(text("Meeting summary", in: window))
         XCTAssertTrue(window.descendants(matching: .any)["meeting-tabs"].exists)
-        XCTAssertFalse(window.textFields["meeting-find"].exists)
+        XCTAssertTrue(window.textFields["meeting-find"].isHittable)
+        XCTAssertTrue(window.descendants(matching: .any)["meeting-transcribing"].exists)
         XCTAssertTrue(window.buttons["meeting-play"].isHittable)
         capture(window, name: "meeting-summary")
         app.typeKey("f", modifierFlags: .command)
@@ -1218,6 +1227,31 @@ final class LibraryBoards: XCTestCase {
         app.typeText("figures")
         XCTAssertEqual(find.value as? String, "figures")
         XCTAssertFalse(summary.exists)
+        app.typeKey(.escape, modifierFlags: [])
+        let tabs = window.descendants(matching: .any)["meeting-tabs"]
+        tabs.radioButtons["Summary"].click()
+        XCTAssertTrue(summary.waitForExistence(timeout: 5))
+        tabs.radioButtons["Transcript"].click()
+        let before = window.buttons["meeting-play"].label
+        app.typeKey(.space, modifierFlags: [])
+        XCTAssertNotEqual(window.buttons["meeting-play"].label, before, "Switching tabs must not refocus an old Find request")
+        XCTAssertEqual(find.value as? String, "")
+    }
+    @MainActor func testSummaryTimestampRevealsOffscreenTranscriptWhilePaused() throws {
+        let app = try launch("library", fixture: "main", extra: ["-CassiniLongMeetingFixture", "YES", "-CassiniSummaryFixture", "YES"])
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.descendants(matching: .any)["meeting-summary"].waitForExistence(timeout: 20))
+        let play = window.buttons["meeting-play"]
+        if play.label == "Pause" { play.click() }
+        XCTAssertEqual(play.label, "Play")
+        let timestamp = window.links.matching(NSPredicate(format: "label CONTAINS %@", "00:31:10")).firstMatch
+        XCTAssertTrue(timestamp.waitForExistence(timeout: 10), window.debugDescription)
+        timestamp.click()
+        let target = window.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "turn-play-", "00:31:10")).firstMatch
+        let revealed = NSPredicate { _, _ in target.exists && target.isHittable }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: revealed, object: nil)], timeout: 10), .completed, window.debugDescription)
+        XCTAssertEqual(play.label, "Play", "Revealing a timestamp preserves paused playback")
     }
     @MainActor func testMeetingBoard() throws {
         let app = try launch("meeting", fixture: "main"); defer { app.terminate() }

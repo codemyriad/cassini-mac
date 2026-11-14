@@ -11,10 +11,16 @@ import Observation
     private(set) var ranges: [Int:[NSRange]] = [:]
     private(set) var selectedIndex: Int?
     private(set) var focusRequest = 0
+    private(set) var handledFocusRequest = 0
     private(set) var searching = false
     @ObservationIgnored private var revision = 0
 
     func requestFocus() { focusRequest &+= 1 }
+    func consumeFocusRequest() -> Bool {
+        guard handledFocusRequest != focusRequest else { return false }
+        handledFocusRequest = focusRequest
+        return true
+    }
     func step(_ direction: TranscriptFind.Direction) {
         selected = TranscriptFind.adjacent(to: selected, direction: direction, in: matches)
         selectedIndex = selected.flatMap { matches.firstIndex(of: $0) }

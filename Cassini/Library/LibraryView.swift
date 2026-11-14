@@ -606,6 +606,7 @@ struct LibraryView: View {
         guard !search.visible, store.loaded, !LibraryMoveCoordinator.shared.busy, !trash.busy else { return }
         if navigation.detail?.fileURL != nil && !userInitiated { return }
         if let meeting = store.selected {
+            guard userInitiated || meeting.state.lifecycle == .saved else { return }
             #if DEBUG
             if store.context.screenshot, navigation.detail == nil,
                ["meeting", "export", "recording"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? "") { return }

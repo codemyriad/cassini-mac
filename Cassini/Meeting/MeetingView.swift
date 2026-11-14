@@ -124,8 +124,8 @@ struct MeetingView: View {
                                       if model.canUseTranscriptShortcuts { model.playFrom(Int(turn.startMs)) }
                                   })
     }
-    private var transcriptContent: some View {
-        LazyVStack(alignment: .leading, spacing: 22) {
+    private var meetingNotices: some View {
+        VStack(alignment: .leading, spacing: 22) {
             if let line = RecordingOverview.libraryDiskLine { Text(line).foregroundStyle(CassiniTheme.warningNotice) }
             if [.queued, .running].contains(meeting.state.transcript), let badge = meeting.state.badge {
                 HStack(spacing: 8) {
@@ -141,12 +141,16 @@ struct MeetingView: View {
                     .background(CassiniTheme.chipFill, in: RoundedRectangle(cornerRadius: 8))
                     .accessibilityIdentifier("received-folder-card")
             }
+            if let line = issueLine { InlineMeetingLine(id: line, actionID: meeting.state.transcript == .failed ? "common.tryAgain" : nil, action: meeting.state.transcript == .failed ? { TranscriptionQueue.shared.writeDown(model) } : nil).disabled(LibraryMoveCoordinator.shared.busy) }
+        }
+    }
+    private var transcriptContent: some View {
+        LazyVStack(alignment: .leading, spacing: 22) {
             if meeting.hasNoSpeech {
                 // A Library move disables Write down again only (the line disables it); the
                 // permission hint's Open System Settings stays available, as in Recording details.
                 NoSpeechTranscriptLine(action:meeting.canWriteDown ? { TranscriptionQueue.shared.writeDown(model) } : nil,meeting:meeting)
             }
-            if let line = issueLine { InlineMeetingLine(id: line, actionID: meeting.state.transcript == .failed ? "common.tryAgain" : nil, action: meeting.state.transcript == .failed ? { TranscriptionQueue.shared.writeDown(model) } : nil).disabled(LibraryMoveCoordinator.shared.busy) }
             if showsCompanionSuggestion { companionCard }
             ForEach(visibleTurns) { turn in turnRow(turn) }
         }
@@ -158,23 +162,22 @@ struct MeetingView: View {
                         MeetingPaneHeader(model: model, format: format)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headingHeight = $0 }
                         Section {
+                            meetingNotices
                             if model.tab == .summary, let markdown = meeting.summaryMarkdown {
                                 SummaryView(markdown: markdown, meeting: model).content
                                     .accessibilityElement(children: .contain)
                                     .accessibilityIdentifier("meeting-summary")
                             } else { transcriptContent }
                         } header: {
-                            VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 10) {
                                 if meeting.summaryMarkdown != nil {
                                     Picker("", selection: $model.tab) {
                                         Text(UXText.text("mac.legacy.summary")).tag(MeetingDetailModel.Tab.summary)
                                         Text(UXText.text("library.preview.transcriptHeading")).tag(MeetingDetailModel.Tab.transcript)
-                                    }.pickerStyle(.segmented).labelsHidden()
+                                    }.pickerStyle(.segmented).labelsHidden().fixedSize()
                                         .accessibilityIdentifier("meeting-tabs")
                                 }
-                                if model.tab == .transcript {
-                                    MeetingFindBar(model: model.find)
-                                }
+                                MeetingFindBar(model: model.find) { model.tab = .transcript }
                             }.padding(.vertical, 8).background(CassiniTheme.surface)
                         }
                     }.padding(.horizontal, 44).padding(.top, 12).padding(.bottom, controlsHeight + 36)
@@ -189,16 +192,14 @@ struct MeetingView: View {
                     .onChange(of: model.find.selected) { _, match in
                         if let match { model.handScrolledTranscript(); proxy.scrollTo(match.paragraph, anchor: .center) }
                     }
-                    .onChange(of: model.turnsRevision) { _, _ in revealSearchHit(in: proxy) }
-                    .onChange(of: model.revealTurnID) { _, _ in revealSearchHit(in: proxy) }
-                    .onChange(of: model.revealPositionMs) { _, _ in revealSearchHit(in: proxy) }
-                    .onChange(of: model.tab) { _, tab in
-                        if tab == .transcript { revealSearchHit(in: proxy) }
-                    }
-                    .task {
+                    .task(id: RevealRequest(tab: model.tab, revision: model.turnsRevision,
+                                            turn: model.revealTurnID, position: model.revealPositionMs)) {
+                        guard model.tab == .transcript else { return }
+                        // A tab switch inserts lazy transcript rows; reveal only after they mount.
                         await Task.yield()
-                        if let turn = model.listeningHost { proxy.scrollTo(turn,anchor:.center) }
-                        else { revealSearchHit(in: proxy) }
+                        guard !Task.isCancelled else { return }
+                        if model.revealTurnID != nil || model.revealPositionMs != nil { revealSearchHit(in: proxy) }
+                        else if let turn = model.listeningHost { proxy.scrollTo(turn, anchor: .center) }
                     }
                     .onChange(of:model.followRevision) { _,_ in
                         if let host = model.listeningHost {
@@ -246,6 +247,12 @@ struct MeetingView: View {
         guard let target = exact ?? fallback else { return }
         proxy.scrollTo(target.id, anchor: .center)
         model.revealTurnID = nil; model.revealPositionMs = nil
+    }
+    private struct RevealRequest: Equatable {
+        let tab: MeetingDetailModel.Tab
+        let revision: Int
+        let turn: Int?
+        let position: Int64?
     }
     private struct FindRequest: Hashable {
         let query: String

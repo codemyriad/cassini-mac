@@ -130,6 +130,12 @@ import Observation
         } else { report["asideActionSelectsOwnRunAndHost"] = false }
         preview.close()
         guard report.filter({ $0.key != "audioDevicesOpened" }).allSatisfy({ $0.value as? Bool == true }) else { fail("native scrubber or preparation regression: \(report)") }
+        let find = MeetingFindModel()
+        report["findDoesNotFocusOnInitialMount"] = !find.consumeFocusRequest()
+        find.requestFocus()
+        report["findConsumesFocusOnce"] = find.consumeFocusRequest() && !find.consumeFocusRequest()
+        find.requestFocus()
+        report["findHandlesLaterFocusRequest"] = find.consumeFocusRequest() && !find.consumeFocusRequest()
         report["audioDevicesOpened"] = false
 
         MeetingDetailModel.preparerForSelfTest = nil

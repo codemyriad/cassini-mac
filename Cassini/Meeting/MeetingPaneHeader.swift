@@ -25,7 +25,7 @@ struct MeetingPaneHeader: View {
             Text(format.previewSubtitle(meeting.meetingTime, durationMs: meeting.durationMs, received: meeting.state.origin == .received))
                 .foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("meeting-subtitle")
             if let badge = LibraryBadgeCatalog.presentation(for: meeting),
-               ["needsAttention", "interrupted", "received"].contains(badge.kind) {
+               ["needsAttention", "interrupted"].contains(badge.kind) {
                 CatalogStatusBadge(presentation: badge, isAnimating: false).accessibilityIdentifier("meeting-status-badge")
             }
             ScrollView(.horizontal) {

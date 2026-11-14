@@ -96,6 +96,7 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordFirstBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingSummaryIsFirstAndFindOpensTranscript \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testSummaryTimestampRevealsOffscreenTranscriptWhilePaused \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingFindIsLocalAndKeepsTransportAndSidebar \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingScrolledHeaderKeepsFindAndFloatingPlayerReachable \
           -resultBundlePath build/UXBoardsDark.xcresult \

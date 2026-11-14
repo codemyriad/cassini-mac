@@ -220,7 +220,7 @@ final class LibraryStore {
                 let validKeys = Set(meetings.map(\.libraryKey))
                 let surviving = selectedKeys.intersection(validKeys)
                 if surviving.isEmpty {
-                    let initial = context.screenshot ? (meetings.first(where:{ $0.title == "Budget review" })?.libraryKey ?? meetings.first?.libraryKey) : meetings.first?.libraryKey
+                    let initial = context.screenshot ? (meetings.first(where:{ $0.title == "Budget review" })?.libraryKey ?? meetings.first?.libraryKey) : (meetings.first(where: { $0.state.lifecycle == .saved }) ?? meetings.first)?.libraryKey
                     selectedKeys = initial.map { [$0] } ?? []
                 } else if surviving != selectedKeys {
                     selectedKeys = surviving
@@ -252,7 +252,7 @@ final class LibraryStore {
         var newestOwner: URL?
         if recorder.isRecording, let folder = recorder.directory, let id = UUID(uuidString:String(folder.lastPathComponent.dropFirst("Recording-".count))),newlyRecording.contains(id) { newestOwner = folder }
         if let owned = CaptureCollection.shared.captures.values.filter({ newlyRecording.contains($0.snapshot.manifest.id) }).min(by:{ $0.originUptime < $1.originUptime }) { newestOwner = owned.snapshot.directory }
-        if let folder = newestOwner {
+        if let folder = newestOwner, selected?.state.lifecycle != .saved {
             selectedKey = folder.lastPathComponent; selectionFolderWhenAvailable = LibraryLocation.canonical(folder)
         }
         for id in changedIDs {
