@@ -11,6 +11,7 @@ import CassiniLibrary
     private(set) var speakerID:String?
     private(set) var speakerChangeFailed=false
     private(set) var speakerTalkTime:Int64=0
+    private(set) var speakerQuote:String?
     private(set) var speakerSampleRange:Range<Int64>?
     private(set) var speakerPreparing=false
     @ObservationIgnored private var speakerPreparation:Task<Void,Never>?
@@ -66,17 +67,32 @@ import CassiniLibrary
     func showSpeaker(_ meeting:LibraryMeeting,id:String? = nil) {
         guard canEditSpeakers(meeting),presentation==nil,
               let speaker=id.flatMap({meeting.speaker(for:$0)}) ?? meeting.speakers.first else {return}
+        presentSpeaker(meeting,speaker:speaker)
+    }
+    #if DEBUG
+    /// Local bitmap evidence uses the sealed, read-only meeting fixture. All save
+    /// and merge paths still pass canEditSpeakers, so preview cannot write it.
+    func previewSpeaker(_ meeting:LibraryMeeting) async {
+        guard LibraryStore.shared.context.screenshot,
+              ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1",
+              presentation == nil,
+              let speaker=meeting.speakers.first(where: {$0.provenance == .unnamed}) ?? meeting.speakers.first else {return}
+        presentSpeaker(meeting,speaker:speaker)
+        await speakerPreparation?.value
+    }
+    #endif
+    private func presentSpeaker(_ meeting:LibraryMeeting,speaker:MeetingSpeaker) {
         self.meeting=meeting;speakerID=speaker.id;name=speaker.name ?? ""
         if let detail=MeetingNavigation.shared.detail,detail.meeting.folder==meeting.folder {detail.namingSpeakerID=speaker.id}
         speakerChangeFailed=false;speakerRetry=nil;presentation = .speakers
-        stopSpeakerPreparation();speakerPreparing=true;speakerSampleRange=nil
+        stopSpeakerPreparation();speakerPreparing=true;speakerSampleRange=nil;speakerQuote=nil
         let id=speaker.id
         speakerPreparation=Task {
             let facts=await Task.detached(priority:.userInitiated) {
-                (SpeakerEdits.talkTime(meeting,speaker:id),SpeakerEdits.sample(meeting,speaker:id))
+                (SpeakerEdits.talkTime(meeting,speaker:id),SpeakerEdits.sample(meeting,speaker:id),SpeakerEdits.quote(meeting,speaker:id))
             }.value
             guard !Task.isCancelled,!closing,presentation == .speakers,speakerID==id else {return}
-            speakerTalkTime=facts.0;speakerSampleRange=facts.1;speakerPreparing=false;speakerPreparation=nil
+            speakerTalkTime=facts.0;speakerSampleRange=facts.1;speakerQuote=facts.2;speakerPreparing=false;speakerPreparation=nil
         }
     }
     private func stopSpeakerPreparation() {speakerPreparation?.cancel();speakerPreparation=nil;speakerPreparing=false}

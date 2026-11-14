@@ -165,12 +165,29 @@ struct LibraryView: View {
             window.toolbarStyle = .unified
             window.titleVisibility = .hidden
             RecordingConfirmation.attach(to: window)
+            SpeakerEditorChrome.update(window,visible:rename.presentation == .speakers)
             #if DEBUG
             if store.loaded { ScreenshotFixture.prepareLibrary(window) }
             #endif
         })
-         .sheet(isPresented:Binding(get:{ rename.presentation == .sheet || rename.presentation == .speakers },set:{ if !$0 { rename.cancel() } })) {
-            if rename.presentation == .speakers { SpeakerEditorView() } else { MeetingRenameView() }
+        .disabled(rename.presentation == .speakers)
+        .accessibilityHidden(rename.presentation == .speakers)
+        .overlay {
+            if rename.presentation == .speakers {
+                ZStack {
+                    CassiniTheme.scrim.ignoresSafeArea().contentShape(Rectangle())
+                    GeometryReader { geometry in
+                        ScrollView {
+                            SpeakerEditorView().padding(24)
+                                .frame(maxWidth:.infinity)
+                                .frame(minHeight:geometry.size.height)
+                        }
+                    }
+                }
+            }
+        }
+         .sheet(isPresented:Binding(get:{ rename.presentation == .sheet },set:{ if !$0 { rename.cancel() } })) {
+            MeetingRenameView()
         }
         .sheet(isPresented:$exporter.showing) { if let meeting = exporter.meeting { MeetingExportSheet(meeting:meeting) } }
         .sheet(isPresented:$recordingDetails.showing) { RecordingDetailsSheet() }
@@ -191,7 +208,7 @@ struct LibraryView: View {
             sessionPlayback.onFailure = { NSApp.presentError($0) }
             store.start()
         }
-        .onDisappear { sessionPlayback.stop(); navigation.back(); search.close() }
+        .onDisappear { rename.cancel(); sessionPlayback.stop(); navigation.back(); search.close() }
         .onChange(of: recorder.isSaving) { _,saving in
             if saving, let folder = recorder.directory { navigation.captureBeganSaving(at:folder) }
         }
@@ -668,7 +685,11 @@ struct LibraryToolbarAction: NSViewRepresentable {
     #endif
     let action: () -> Void
     func makeNSView(context: Context) -> LibraryToolbarActionView { LibraryToolbarActionView() }
-    func updateNSView(_ view: LibraryToolbarActionView, context: Context) { view.update(self) }
+    func updateNSView(_ view: LibraryToolbarActionView, context: Context) {
+        var effective=self
+        effective.enabled = enabled && MeetingRenameCoordinator.shared.presentation != .speakers
+        view.update(effective)
+    }
     struct MenuEntry {
         let title: String, identifier: String
         var enabled = true
@@ -809,6 +830,7 @@ final class LibraryToolbarActionView: NSView {
     }
     #endif
     @objc private func invoke(_ sender: Any?) {
+        guard MeetingRenameCoordinator.shared.presentation != .speakers else {return}
         if let makeMenu { makeMenu().popUp(positioning:nil,at:NSPoint(x:0,y:0),in:self) }
         else { action?() }
     }

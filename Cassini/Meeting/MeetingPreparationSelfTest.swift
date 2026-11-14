@@ -112,6 +112,7 @@ import Observation
         report["mergedPreparationRecovers"] = detail.turns.allSatisfy { $0.speaker == "b" } && detail.timelineReadout.speaker(at:0) == "b" && detail.speakerName("b") == "Marta Cole"
         await runSessionModelProof(into: &report)
         for (key,value) in MeetingPositionSlider.nativeSelfTest() { report[key] = value }
+        for (key,value) in SpeakerEditorChrome.nativeSelfTest() { report[key] = value }
         for (key,value) in MeetingTranscriptText.nativeSelfTest() { report[key] = value }
         for (key,value) in MeetingTitleAlignment.nativeSelfTest() { report[key] = value }
         for (key,value) in SpeakerSidebarRow.nativeSelfTest(baseSpeaker:fixture.speakers[0]) { report[key] = value }

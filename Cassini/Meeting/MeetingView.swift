@@ -7,6 +7,7 @@ struct MeetingView: View {
     let format: LibraryFormat
     @AppStorage("CassiniCompanionSuggestionDismissed", store: RecordingPreferences.defaults) private var suggestionDismissed = false
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var handScrolling = false
     @State private var headingHeight: CGFloat = 110
@@ -67,7 +68,7 @@ struct MeetingView: View {
                     Rectangle().fill(CassiniTheme.accent).frame(width:3).padding(.leading,-8).accessibilityHidden(true)
                 }
             }
-            .focusable()
+            .focusable(isEnabled)
             .focusedValue(\.playTranscriptTurn,{
                 if model.canUseTranscriptShortcuts { model.playFrom(Int(turn.startMs)) }
             })
@@ -91,7 +92,7 @@ struct MeetingView: View {
                         .help(UXText.text("listen.speakerName.tooltip",["name":name(turn.speaker)]))
                         .accessibilityLabel(UXText.text("listen.speakerName.tooltip",["name":name(turn.speaker)]))
                         .accessibilityIdentifier("turn-listen-\(turn.id)")
-                        .focusable()
+                        .focusable(isEnabled)
                         .onKeyPress(keys:[.return,KeyEquivalent("\u{03}")],phases:.down) { event in
                             guard event.modifiers.isEmpty, model.canUseTranscriptShortcuts else { return .ignored }
                             model.listenFromReadingTurn(turn.id); return .handled
@@ -104,7 +105,7 @@ struct MeetingView: View {
                     .help(UXText.text("player.playFromHere"))
                     .accessibilityLabel(UXText.text("player.playFromHere") + ", " + LibraryFormat.position(turn.startMs))
                     .accessibilityIdentifier("turn-play-\(turn.id)")
-                    .focusable()
+                    .focusable(isEnabled)
                     .onKeyPress(keys:[.return,KeyEquivalent("\u{03}")],phases:.down) { event in
                         guard event.modifiers.isEmpty, model.canUseTranscriptShortcuts else { return .ignored }
                         model.playFrom(Int(turn.startMs)); return .handled
