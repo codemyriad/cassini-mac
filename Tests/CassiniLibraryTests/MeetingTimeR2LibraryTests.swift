@@ -77,7 +77,7 @@ struct MeetingTimeR2LibraryTests {
             #expect(LibraryScanner.ordered(meeting,known) && !LibraryScanner.ordered(known,meeting))
             #expect(LibraryScan(meetings:[meeting],issues:[]).groups(format:format).first?.title=="Date unknown")
             let subtitle=format.previewSubtitle(meeting.meetingTime,durationMs:meeting.durationMs,received:true)
-            #expect(subtitle.contains("Date unknown") && subtitle.contains("Received") && !subtitle.contains(label))
+            #expect(subtitle.contains("Date unknown") && subtitle.contains("Imported") && !subtitle.contains(label))
         }
     }
     @Test func quickLookDateAssemblyUsesTheSharedRecordingTime() throws {

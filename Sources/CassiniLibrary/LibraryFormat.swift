@@ -90,8 +90,11 @@ public struct LibraryFormat: Sendable {
         formatter.locale=wordLocale
         return formatter.string(from:values) ?? values.joined(separator:", ")
     }
-    public func previewSubtitle(_ at:Date,durationMs:Int64?,received:Bool=false)->String {
-        Self.text(received ? "format.previewSubtitle.received" : "format.previewSubtitle",
+    static func subtitleID(received: Bool, transcribedOnAnotherDevice: Bool) -> String {
+        received ? (transcribedOnAnotherDevice ? "format.previewSubtitle.importedOtherDevice" : "format.previewSubtitle.received") : "format.previewSubtitle"
+    }
+    public func previewSubtitle(_ at:Date,durationMs:Int64?,received:Bool=false,transcribedOnAnotherDevice:Bool=false)->String {
+        Self.text(Self.subtitleID(received: received, transcribedOnAnotherDevice: transcribedOnAnotherDevice),
             ["day":dayGroup(at),"time":rowTime(at),"duration":durationMs.map {Self.meetingDuration($0,locale:locale,language:language)} ?? ""],
             locale:locale,language:language,omitting:durationMs == nil ? ["duration"] : [])
     }

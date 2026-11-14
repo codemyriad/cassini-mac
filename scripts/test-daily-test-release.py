@@ -5,6 +5,7 @@ from datetime import datetime,timedelta,timezone
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -801,6 +802,35 @@ class BuildPhaseRuntime(unittest.TestCase):
         with patch.object(companion.subprocess,'run',side_effect=Reached) as verify:
             with self.assertRaises(Reached):companion.reviewed_files()
         self.assertEqual(verify.call_args.args[0][0],companion.sys.executable)
+
+    def companion_checkout(self):
+        # A private copy of the reviewed inputs so a test can add drift without touching the repo.
+        companion=load('bundle_companion','bundle-browser-companion.py')
+        directory=tempfile.TemporaryDirectory();self.addCleanup(directory.cleanup);root=Path(directory.name)
+        shutil.copytree(ROOT/'BrowserExtension',root/'BrowserExtension');shutil.copytree(ROOT/'browser-protocol',root/'browser-protocol')
+        shutil.copy2(ROOT/'COPYING',root/'COPYING')
+        for item in [patch.object(companion,'ROOT',root),patch.object(companion.subprocess,'run')]:
+            item.start();self.addCleanup(item.stop)
+        return companion,root
+
+    def test_bundle_holds_every_runtime_file_the_checkout_ships(self):
+        companion,root=self.companion_checkout()
+        files=companion.reviewed_files()
+        runtime={p.relative_to(root/'BrowserExtension') for p in (root/'BrowserExtension').rglob('*') if p.is_file() and 'tests' not in p.relative_to(root/'BrowserExtension').parts[:1]}
+        self.assertEqual(set(files)-{Path('COPYING'),Path('PROTOCOL_COMMIT.txt')},runtime)
+        manifest=json.loads((root/'BrowserExtension/manifest.json').read_text())
+        self.assertLessEqual(companion.manifest_references(manifest),{n.as_posix() for n in files})
+        self.assertIn('background.js',companion.manifest_references(manifest))
+
+    def test_unreviewed_runtime_file_is_refused_not_skipped(self):
+        companion,root=self.companion_checkout()
+        (root/'BrowserExtension/new-runtime.js').write_text('// vendored without a SHA256SUMS line\n')
+        with self.assertRaisesRegex(AssertionError,'Unreviewed companion runtime: new-runtime.js'):companion.reviewed_files()
+
+    def test_manifest_reference_outside_the_bundle_is_refused(self):
+        companion,root=self.companion_checkout()
+        with patch.object(companion,'manifest_references',return_value={'background.js','missing-worker.js'}):
+            with self.assertRaisesRegex(AssertionError,'Manifest references unbundled files: missing-worker.js'):companion.reviewed_files()
 
 
 external=load('external','external-derived-build.py')
