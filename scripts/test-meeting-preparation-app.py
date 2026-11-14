@@ -6,6 +6,7 @@ import base64
 import json
 import os
 from pathlib import Path
+import platform
 import subprocess
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -52,8 +53,22 @@ assert all(report[name] is True for name in ('queuedSkipsTranscriptPresentation'
     'speakerRowReadOnlyKeepsPrimaryInk','speakerRowCaptionUsesFullRowWidth',
     'brandTokensSynced','brandTokensRejectsDrift',
     'meetingCardRestLightIsCardRest','meetingCardRestDarkIsCardRest','meetingCardSelectedDarkLiftsAboveRest',
+    'scrollEdgeWindowSuppressesTitlebarHairline','scrollEdgeLegacyFallbackHasNoHeaderHairline',
     'sessionPreparedOffMain','sessionMainActorProgressed','sessionSwitchCancelled',
     'sessionCachedSwitchSkipsPreparation','sessionSpeakerSlotsMatchFirstSpeech')),report
+native_scroll_keys = ('scrollEdgeNativeUnifiedToolbarChrome','scrollEdgeNativeSoftPocketsAndHitTesting')
+mac_ver = platform.mac_ver()[0]
+mac_major = int(mac_ver.split('.')[0]) if mac_ver and mac_ver.split('.')[0].isdigit() else 0
+native_available = report.get('scrollEdgeNativeMacOS26Available')
+assert isinstance(native_available, bool), report
+if mac_major < 26:
+    assert native_available is False, report
+if native_available:
+    assert all(report.get(name) is True for name in native_scroll_keys), report
+else:
+    assert all(report.get(name) == 'skipped' for name in native_scroll_keys), report
 assert report['audioDevicesOpened'] is False
 args.output.write_text(json.dumps(report,indent=2)+'\n')
+if report['scrollEdgeNativeUnifiedToolbarChrome'] == 'skipped':
+    print('SKIP native macOS 26 unified toolbar and soft scroll-edge coverage (unavailable on this SDK/OS)')
 print('PASS production meeting preparation/readout, native scrubber snapping, drag readout and VoiceOver seeks')

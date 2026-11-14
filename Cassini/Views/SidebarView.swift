@@ -30,6 +30,7 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .cassiniTopScrollEdge()
         .safeAreaInset(edge: .bottom) {
             if !session.fileName.isEmpty {
                 Label(session.fileName, systemImage: "doc")

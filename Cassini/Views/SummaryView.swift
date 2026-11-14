@@ -33,6 +33,7 @@ struct SummaryView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 28)
         }
+        .cassiniTopScrollEdge()
         .environment(\.openURL, OpenURLAction { url in
             guard url.scheme == "cassini", url.host == "seek", let ms = Int(url.lastPathComponent) else { return .systemAction }
             session.goToTranscript(ms: ms)

@@ -126,14 +126,25 @@ struct MeetingView: View {
     }
     /// The speakers column, kept out of `body` for the Xcode 16.4 type checker.
     private var speakersPane: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text(UXText.text("common.speakers")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.secondaryInk)
+        VStack(alignment: .leading, spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         ForEach(meeting.speakers, id: \.id) { speaker in speakerRow(speaker).id(speaker.id) }
                     }
-                }.onChange(of: model.listen.speaker) { _, speaker in
+                    .padding(.horizontal, 19)
+                }
+                .cassiniTopScrollEdge()
+                .cassiniPinnedTopBar(alignment: .leading) {
+                    Text(UXText.text("common.speakers"))
+                        .font(.system(size: 11.5, weight: .bold))
+                        .foregroundStyle(CassiniTheme.secondaryInk)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 19)
+                        .padding(.top, 14)
+                        .padding(.bottom, 18)
+                }
+                .onChange(of: model.listen.speaker) { _, speaker in
                     if let speaker = speaker.flatMap({ meeting.speaker(for:$0) }) {
                         if reduceMotion { proxy.scrollTo(speaker.id,anchor:.center) }
                         else { withAnimation { proxy.scrollTo(speaker.id,anchor:.center) } }
@@ -144,10 +155,11 @@ struct MeetingView: View {
                 MeetingRenameCoordinator.shared.showSpeaker(meeting,id:model.listen.speaker ?? model.namingSpeakerID)
             }.buttonStyle(.borderless).disabled(!MeetingRenameCoordinator.shared.canEditSpeakers(meeting) || meeting.speakers.isEmpty)
                 .accessibilityIdentifier("name-the-speakers")
-            Spacer(minLength: 0)
-        }.padding(.horizontal, 19).padding(.top, 14)
+                .padding(.horizontal, 19)
+                .padding(.vertical, 18)
+        }
             .frame(width: 260).frame(maxHeight: .infinity)
-            .background(NativeSidebarMaterial())
+            .cassiniSidebarBackground()
             .accessibilityElement(children: .contain).accessibilityLabel(UXText.text("meeting.speakersPane.a11y"))
     }
     var body: some View {
@@ -159,7 +171,7 @@ struct MeetingView: View {
             HStack(spacing: 0) {
                 if !isTranscribing {
                     speakersPane
-                    Divider()
+                    CassiniColumnDivider()
                 }
                 ScrollViewReader { proxy in ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
@@ -174,7 +186,8 @@ struct MeetingView: View {
                             ForEach(visibleTurns) { turn in turnRow(turn) }
                         }
                     }.padding(.horizontal, 48).padding(.vertical, 22)
-                }.accessibilityIdentifier("meeting-transcript")
+                }.cassiniTopScrollEdge()
+                    .accessibilityIdentifier("meeting-transcript")
                     .onScrollPhaseChange { _,phase in
                         handScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
                     }
