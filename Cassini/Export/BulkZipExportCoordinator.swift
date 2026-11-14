@@ -83,7 +83,7 @@ import Observation
     var isBusy: Bool { busy }
 
     var hasSelection: Bool {
-        MeetingNavigation.shared.savedDetail == nil &&
+        MeetingNavigation.shared.detail?.fileURL == nil &&
         !LibrarySearchModel.shared.visible &&
         !LibraryStore.shared.selectedKeys.isEmpty
     }

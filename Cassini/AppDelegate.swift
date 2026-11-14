@@ -300,7 +300,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         MainActor.assumeIsolated {
             LibrarySearchModel.shared.close()
-            MeetingNavigation.shared.back()
+            if MeetingNavigation.shared.detail?.fileURL != nil {
+                MeetingNavigation.shared.back()
+                NotificationCenter.default.post(name: MeetingNavigation.returnToLibrarySelection, object: nil)
+            }
             MeetingNavigation.shared.openLibrary?()
             sender.activate(ignoringOtherApps:true)
         }

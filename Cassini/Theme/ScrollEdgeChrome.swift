@@ -40,6 +40,7 @@ private struct CassiniTopScrollEdgeState: Equatable {
 private struct CassiniTopScrollEdgeModifier: ViewModifier {
     var pinnedHeaderActive = false
     var pinnedHeaderHeight: CGFloat = 44
+    var headerApproaching = false
     #if compiler(>=6.2)
     @State private var edgeState = CassiniTopScrollEdgeState()
     #if DEBUG
@@ -60,7 +61,7 @@ private struct CassiniTopScrollEdgeModifier: ViewModifier {
         if #available(macOS 26.0, *), !usesLegacyFallback {
             content
                 .scrollEdgeEffectStyle(.soft, for: .top)
-                .scrollEdgeEffectHidden(pinnedHeaderActive, for: .top)
+                .scrollEdgeEffectHidden(pinnedHeaderActive || headerApproaching, for: .top)
                 .onScrollGeometryChange(for: CassiniTopScrollEdgeState.self) { geometry in
                     CassiniTopScrollEdgeState(
                         scrolled: geometry.contentOffset.y + geometry.contentInsets.top > 0.5,
@@ -79,9 +80,16 @@ private struct CassiniTopScrollEdgeModifier: ViewModifier {
                             if pinnedHeaderActive {
                                 // The controls stay opaque; only the transcript beneath them fades.
                                 VStack(spacing: 0) {
-                                    Rectangle().frame(height: headerEnd)
+                                    Color.clear.frame(height: edgeState.topInset)
+                                    Rectangle().frame(height: max(0, headerEnd - edgeState.topInset))
                                     LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
                                         .frame(height: max(0, fadeEnd - headerEnd))
+                                    Rectangle()
+                                }
+                            } else if headerApproaching {
+                                // Keep the approaching controls opaque without exposing content in the toolbar.
+                                VStack(spacing: 0) {
+                                    Color.clear.frame(height: edgeState.topInset)
                                     Rectangle()
                                 }
                             } else {
@@ -261,8 +269,8 @@ private struct CassiniPinnedTopBarModifier<Bar: View>: ViewModifier {
 
 extension View {
     /// Applies the macOS 26 soft top scroll-edge effect when available; no-op on macOS <26.
-    func cassiniTopScrollEdge(pinnedHeaderActive: Bool = false, pinnedHeaderHeight: CGFloat = 44) -> some View {
-        modifier(CassiniTopScrollEdgeModifier(pinnedHeaderActive: pinnedHeaderActive, pinnedHeaderHeight: pinnedHeaderHeight))
+    func cassiniTopScrollEdge(pinnedHeaderActive: Bool = false, pinnedHeaderHeight: CGFloat = 44, headerApproaching: Bool = false) -> some View {
+        modifier(CassiniTopScrollEdgeModifier(pinnedHeaderActive: pinnedHeaderActive, pinnedHeaderHeight: pinnedHeaderHeight, headerApproaching: headerApproaching))
     }
 
     /// Suppresses the unified window toolbar's permanent thin-film separator on macOS 26+ while
@@ -407,15 +415,18 @@ private struct SelfTestUnifiedToolbarModifier: ViewModifier {
 /// Mirrors MeetingView's single scroll, heading, and sticky Summary/Find row.
 private struct StickyMeetingScrollFixture: View {
     @State private var pinned = false
+    @State private var approaching = false
     @State private var query = ""
     @State private var tab = 0
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+            LazyVStack(spacing: 18, pinnedViews: [.sectionHeaders]) {
                 Text("Meeting heading").frame(height: 96)
                 Section {
-                    ForEach(0..<40, id: \.self) { _ in
-                        CassiniTheme.ink.opacity(0.22).frame(height: 30)
+                    VStack(spacing: 0) {
+                        ForEach(0..<40, id: \.self) { _ in
+                            CassiniTheme.ink.opacity(0.22).frame(height: 30)
+                        }
                     }
                 } header: {
                     HStack(spacing: 10) {
@@ -428,11 +439,12 @@ private struct StickyMeetingScrollFixture: View {
                     }.frame(height: 28).padding(.vertical, 8)
                         .background(CassiniTheme.paneGround)
                 }
-            }
+            }.padding(.top, 12)
         }
-        .cassiniTopScrollEdge(pinnedHeaderActive: pinned)
-        .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top > 96 } action: { _, value in
-            pinned = value
+        .cassiniTopScrollEdge(pinnedHeaderActive: pinned, headerApproaching: approaching)
+        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
+            pinned = offset >= 96 + 30
+            approaching = offset > 96 + 12 && !pinned
         }
         .background(CassiniTheme.paneGround)
     }
@@ -1248,6 +1260,35 @@ extension ScrollEdgeChrome {
             }
 
             let scrollViews = allViews.compactMap { $0 as? NSScrollView }.filter { $0.bounds.height > 120 }
+            if hasStickyMeetingHeader, expectNativeScrollFadeOnMacOS26,
+               let meetingScroll = scrollViews.first(where: {
+                   let rect = $0.convert($0.bounds, to: nil)
+                   return rect.minX <= CGFloat(rightSampleX) && rect.maxX >= CGFloat(rightSampleX)
+               }) {
+                // Exercise the approach gap and both sides of the actual pin threshold (96 + 12 + 18).
+                let expected = luminance(in: restBitmap, x: rightSampleX, y: max(1, toolbarBoundaryY - 4))
+                for offset: CGFloat in [110, 120, 125, 126, 127] {
+                    meetingScroll.contentView.scroll(to: NSPoint(x: 0, y: offset - meetingScroll.contentInsets.top))
+                    meetingScroll.reflectScrolledClipView(meetingScroll.contentView)
+                    pumpWindowLayout(window)
+                    guard let bitmap = renderBitmap(of: themeFrame) else { return false }
+                    let rect = meetingScroll.convert(meetingScroll.bounds, to: nil)
+                    let top = Int((windowHeight - rect.maxY + meetingScroll.contentInsets.top).rounded())
+                    let headerTop = top + Int(max(0, 126 - offset))
+                    for sample in [2, 8, 18, 30, 42] {
+                        let actual = luminance(in: bitmap, x: rightSampleX, y: headerTop + sample)
+                        if abs(actual - expected) > 0.01 {
+                            logFailure("\(label): approaching Find header faded at offset \(offset), y=\(sample): \(actual), expected \(expected)")
+                            return false
+                        }
+                    }
+                    let toolbarLuma = luminance(in: bitmap, x: rightSampleX, y: max(1, toolbarBoundaryY - 4))
+                    if abs(toolbarLuma - expected) > 0.01 {
+                        logFailure("\(label): approaching meeting header bleeds into toolbar at offset \(offset)")
+                        return false
+                    }
+                }
+            }
             for sv in scrollViews {
                 sv.contentView.scroll(to: NSPoint(x: 0, y: 160))
                 sv.reflectScrolledClipView(sv.contentView)
@@ -1280,9 +1321,14 @@ extension ScrollEdgeChrome {
                     return false
                 }
             }
-            let aboveToolbarLuma = hasStickyMeetingHeader
-                ? luminance(in: restBitmap, x: rightSampleX, y: scrollTopY + 98)
-                : luminance(in: scrolledBitmap, x: rightSampleX, y: max(1, toolbarBoundaryY - 4))
+            let aboveToolbarLuma = luminance(in: scrolledBitmap, x: rightSampleX, y: max(1, toolbarBoundaryY - 4))
+            if hasStickyMeetingHeader, expectNativeScrollFadeOnMacOS26 {
+                let expected = luminance(in: restBitmap, x: rightSampleX, y: max(1, toolbarBoundaryY - 4))
+                if abs(aboveToolbarLuma - expected) > 0.01 {
+                    logFailure("\(label): scrolled meeting bleeds into toolbar: \(aboveToolbarLuma), expected \(expected)")
+                    return false
+                }
+            }
             let nearTopLuma = luminance(in: scrolledBitmap, x: rightSampleX, y: max(1, topEdgeY + 2))
             let midFadeLuma = luminance(in: scrolledBitmap, x: rightSampleX, y: min(Int(windowHeight) - 2, topEdgeY + 10))
             let midPaneLuma = luminance(in: scrolledBitmap, x: rightSampleX, y: min(Int(windowHeight) - 2, topEdgeY + 45))

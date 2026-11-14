@@ -199,6 +199,7 @@ struct LibraryView: View {
             search.update(store.meetings)
             sessionPlayback.onFailure = { NSApp.presentError($0) }
             store.start()
+            if navigation.detail == nil { openSelection() }
         }
         .onDisappear { rename.cancel(); sessionPlayback.stop(); navigation.back(); search.close() }
         .onChange(of: recorder.isSaving) { _,saving in

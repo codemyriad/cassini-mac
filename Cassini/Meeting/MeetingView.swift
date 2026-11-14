@@ -10,6 +10,8 @@ struct MeetingView: View {
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var handScrolling = false
+    @State private var findBarPinned = false
+    @State private var findBarApproaching = false
     @State private var pinnedHeaderHeight: CGFloat = 44
     @State private var headingHeight: CGFloat = 110
     @State private var controlsHeight: CGFloat = 40
@@ -174,12 +176,15 @@ struct MeetingView: View {
                                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pinnedHeaderHeight = $0 }
                         }
                     }.padding(.horizontal, 44).padding(.top, 12).padding(.bottom, controlsHeight + 36)
-                }.cassiniTopScrollEdge(pinnedHeaderActive: model.compactHeader, pinnedHeaderHeight: pinnedHeaderHeight).accessibilityIdentifier("meeting-transcript")
+                }.cassiniTopScrollEdge(pinnedHeaderActive: findBarPinned, pinnedHeaderHeight: pinnedHeaderHeight, headerApproaching: findBarApproaching).accessibilityIdentifier("meeting-transcript")
                     .onScrollPhaseChange { _,phase in
                         handScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
                     }
                     .onScrollGeometryChange(for:CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
                         model.compactHeader = offset > headingHeight
+                        // The heading clears after the top padding; the Find bar pins after the stack spacing.
+                        findBarPinned = offset >= headingHeight + 30
+                        findBarApproaching = offset > headingHeight + 12 && !findBarPinned
                         if handScrolling { model.handScrolledTranscript() }
                     }
                     .onChange(of: model.find.selected) { _, match in

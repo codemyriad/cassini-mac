@@ -65,6 +65,7 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingEditedTitleSurvivesSavedSelection \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testKeyboardSelectionOfRecordingRetiresSavedCommands \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testLibraryWindowReopensSelectedMeetingWithBulkExport \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testActiveTranscribingStatusDetailsAndStopKeepsProgress \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testFrenchLibraryPhrasesWithAmericanRegionalSettings \
           -resultBundlePath build/UXSpeakers.xcresult \

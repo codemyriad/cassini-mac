@@ -74,7 +74,6 @@ import CassiniRecording
     }
     func confirm() { showingFirst = false; DispatchQueue.main.async { self.begin() } }
     private func begin() {
-        MeetingNavigation.shared.back()
         let parent = LibraryLocationModel.shared.roots[0]
         Task {
             #if DEBUG

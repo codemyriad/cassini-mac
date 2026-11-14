@@ -1504,6 +1504,32 @@ final class LibraryBoards: XCTestCase {
         window.buttons["Back 10 seconds"].click()
         XCTAssertTrue(text("00:03:12", in: window))
     }
+    @MainActor func testLibraryWindowReopensSelectedMeetingWithBulkExport() throws {
+        let app = try launch("library", fixture: "main")
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let client = window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch
+        XCTAssertTrue(client.waitForExistence(timeout:20))
+        client.click()
+        let selected = NSPredicate { _, _ in
+            self.visibleText(window.staticTexts["meeting-title"]) == "Client call, Rossi & Partners"
+        }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:selected,object:nil)],timeout:10),.completed)
+        app.menuBars.menuBarItems["File"].click()
+        let exportSelected = app.menuItems["Export Selected as ZIP…"]
+        XCTAssertTrue(exportSelected.exists, app.debugDescription)
+        XCTAssertTrue(exportSelected.isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
+        window.buttons["_XCUI:CloseWindow"].click()
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:window)],timeout:5),.completed)
+        app.menuBars.menuBarItems["Window"].click()
+        app.menuItems["Cassini talk"].click()
+        XCTAssertTrue(window.waitForExistence(timeout:10))
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:selected,object:nil)],timeout:10),.completed)
+        XCTAssertTrue(window.textFields["meeting-find"].exists)
+        XCTAssertTrue(window.buttons["meeting-export"].exists)
+        XCTAssertFalse(window.staticTexts["meeting-empty-selection"].exists)
+    }
     @MainActor func testTranscriptCanBeClosedAndReopened() throws {
         let app = try launch("library", fixture: "main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
