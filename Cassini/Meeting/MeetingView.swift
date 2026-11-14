@@ -172,7 +172,7 @@ struct MeetingView: View {
                             }.padding(.vertical, 8).background(CassiniTheme.surface)
                         }
                     }.padding(.horizontal, 44).padding(.top, 12).padding(.bottom, controlsHeight + 36)
-                }.accessibilityIdentifier("meeting-transcript")
+                }.cassiniTopScrollEdge().accessibilityIdentifier("meeting-transcript")
                     .onScrollPhaseChange { _,phase in
                         handScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
                     }

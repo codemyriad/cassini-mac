@@ -28,7 +28,7 @@ struct SummaryView: View {
         ScrollView {
             content.frame(maxWidth: 640, alignment: .leading)
                 .frame(maxWidth: .infinity).padding(.horizontal, 20).padding(.vertical, 28)
-        }
+        }.cassiniTopScrollEdge()
     }
 
     var content: some View {
