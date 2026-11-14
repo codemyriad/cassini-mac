@@ -72,7 +72,9 @@ struct AlignedExportTests {
         meeting.transcriptItems.append(.init(speaker: "raw-secret-id", startMs: 9000, endMs: 10000, text: "<safe> & sound"))
         let srt = try MeetingTextExport.render(meeting, kind: .srt)
         #expect(srt.contains("2\n00:00:09,000 --> 00:00:10,000\n"))
-        #expect(srt.contains("&lt;safe&gt; &amp; sound"))
+        #expect(srt.contains("Speaker 1: <safe> & sound\n"))
+        let escapedVtt = try MeetingTextExport.render(meeting, kind: .vtt)
+        #expect(escapedVtt.contains("<v Speaker 1>&lt;safe&gt; &amp; sound</v>\n"))
         meeting.transcriptItems = [
             .init(speaker: "later", startMs: 4000, endMs: 4100, text: "Later"),
             .init(speaker: "earlier", startMs: 1000, endMs: 1000, text: "."),

@@ -50,7 +50,7 @@ public enum MeetingTextExport {
                 blocks.append("\(name) · \(clock(segment.start))\n\(words)")
             } else {
                 let caption = wrap(kind == .srt ? "\(name): \(words)" : words)
-                let cue = kind == .srt ? escaped(caption) : "<v \(escaped(name))>\(escaped(caption))</v>"
+                let cue = kind == .srt ? caption : "<v \(escaped(name))>\(escaped(caption))</v>"
                 let delimiter = kind == .srt ? "," : "."
                 let times = "\(clock(segment.start, delimiter: delimiter)) --> \(clock(max(segment.start + 1, min(segment.end, segment.start + 7000)), delimiter: delimiter))"
                 blocks.append((kind == .srt ? "\(index + 1)\n" : "") + times + "\n" + cue)
