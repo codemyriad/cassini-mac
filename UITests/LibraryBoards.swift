@@ -1085,6 +1085,14 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(selected(sheet.radioButtons["Cassini file"]),true)
         XCTAssertFalse(sheet.radioButtons["Markdown"].isSelected)
         capture(window,name:"export")
+        XCTAssertFalse(sheet.radioButtons["Plain text"].exists)
+        sheet.disclosureTriangles.firstMatch.click()
+        for label in ["Plain text", "Subtitles (SRT)", "Subtitles (WebVTT)"] {
+            XCTAssertTrue(sheet.radioButtons[label].exists, app.debugDescription)
+            sheet.radioButtons[label].click()
+            XCTAssertEqual(selected(sheet.radioButtons[label]), true)
+            XCTAssertEqual(selected(sheet.radioButtons["Cassini file"]), false)
+        }
         sheet.radioButtons["Markdown"].click()
         XCTAssertEqual(selected(sheet.radioButtons["Markdown"]),true)
         app.typeKey(.escape,modifierFlags:[])

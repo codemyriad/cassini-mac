@@ -165,6 +165,8 @@ public struct LibraryMeeting: Sendable {
     /// No title of its own: `title` is the catalog's untitled fallback in the UI language.
     public var titleIsUntitled = false
     public var received: LibraryReceivedInfo? = nil
+    /// Set by the background scanner; plain imported audio has no portable Cassini payload.
+    public var hasCassiniFile = false
     /// The words as displayed: each speaker id is the final target of meeting.json's
     /// speakerMerges (D24), so every view, Search and Markdown group merged speakers together.
     public var transcriptItems: [LibraryTranscriptItem] = [] { didSet { transcriptTurns = [] } }
