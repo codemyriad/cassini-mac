@@ -5,6 +5,22 @@ import CassiniKit
 @testable import CassiniLibrary
 
 struct MeetingPresentationTests {
+    @Test func timestampRevelationUsesSoundingWordsAndAsideHostsRatherThanReadingOrder() throws {
+        let turns = MeetingPresentation.turns([
+            .init(speaker: "host", startMs: 0, endMs: 800, text: "Agreed."),
+            .init(speaker: "guest", startMs: 750, endMs: 1100, text: "Yes."),
+            .init(speaker: "host", startMs: 1000, endMs: 1800, text: "Thanks."),
+            .init(speaker: "other", startMs: 2500, endMs: 3000, text: "Next."),
+            .init(speaker: "silent", startMs: 2000, endMs: 2000, text: ".")])
+        let aside = try #require(turns.first { $0.speaker == "guest" })
+        let host = try #require(aside.host)
+        let next = try #require(turns.first { $0.speaker == "other" })
+        let reordered = Array(turns.reversed())
+        #expect(MeetingPresentation.readingTurn(at: 900, in: reordered) == host)
+        #expect(MeetingPresentation.readingTurn(at: 2000, in: reordered) == next.id)
+        #expect(MeetingPresentation.readingTurn(at: 3500, in: reordered) == next.id)
+        #expect(MeetingPresentation.readingTurn(at: 0, in: []) == nil)
+    }
     @Test(arguments: [true, false]) func summariesRequireVerifiedAttachmentsForExternalAndImportedMeetings(trusted: Bool) throws {
         let f = try Fixture()
         let base = try Data(contentsOf: f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus"))

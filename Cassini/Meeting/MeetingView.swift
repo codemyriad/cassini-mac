@@ -241,7 +241,8 @@ struct MeetingView: View {
     private func revealSearchHit(in proxy: ScrollViewProxy) {
         guard model.tab == .transcript else { return }
         let exact = model.revealTurnID.flatMap { id in visibleTurns.first { $0.id == id } }
-        let fallback = model.revealPositionMs.flatMap { position in visibleTurns.first { $0.endMs > position } }
+        let fallbackID = model.revealPositionMs.flatMap { MeetingPresentation.readingTurn(at: $0, in: model.turns) }
+        let fallback = fallbackID.flatMap { id in visibleTurns.first { $0.id == id } }
         guard let target = exact ?? fallback else { return }
         proxy.scrollTo(target.id, anchor: .center)
         model.revealTurnID = nil; model.revealPositionMs = nil
