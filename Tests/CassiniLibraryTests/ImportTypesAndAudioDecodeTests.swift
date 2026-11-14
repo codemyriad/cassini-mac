@@ -397,24 +397,43 @@ import zlib
         #expect(try LibraryScanner(root: library).scan().meetings.isEmpty)
     }
 
-    @Test func nativeFlacDecodesIntoVerifiedOpusInLibrary() throws {
-        let f = try Fixture()
-        let source = f.root.appendingPathComponent("Native.flac")
-        let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 2, interleaved: false))
-        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 28_800))
-        buffer.frameLength = 28_800
-        for i in 0..<Int(buffer.frameLength) {
-            let sample = Float(sin(Double(i) * 2 * .pi * 440 / 48_000) * 0.3)
+    @Test func dropFormatsIncludesEveryDecidedLabelInEveryLocale() throws {
+        let entry = try #require(LibraryLocalization.shared.entries.first { $0.id == "mac.import.drop.formats" })
+        let translations = ["en": entry.mac ?? entry.en].merging(
+            (entry.l10n ?? [:]).mapValues { $0.mac ?? $0.text }, uniquingKeysWith: { _, value in value })
+        #expect(Set(translations.keys) == Set(CassiniLanguage.allCases.map(\.rawValue)))
+        let labels = ["Cassini", "ZIP"] + ImportTypesContract.shared.decidedEntries.map {
+            String($0.label.split(separator: "/")[0])
+        }
+        for (locale, text) in translations {
+            for label in labels {
+                #expect(text.contains(label), "Missing \(label) in \(locale): \(text)")
+            }
+        }
+    }
+
+    private static func makeNativeFlac(to source: URL, sampleRate: Double = 48_000) throws {
+        let frames = AVAudioFrameCount(sampleRate * 0.6)
+        let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 2, interleaved: false))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+        buffer.frameLength = frames
+        for i in 0..<Int(frames) {
+            let sample = Float(sin(Double(i) * 2 * .pi * 440 / sampleRate) * 0.3)
             buffer.floatChannelData![0][i] = sample
             buffer.floatChannelData![1][i] = sample * 0.5
         }
-        do {
-            let file = try AVAudioFile(forWriting: source, settings: [
-                AVFormatIDKey: kAudioFormatFLAC, AVSampleRateKey: 48_000,
-                AVNumberOfChannelsKey: 2, AVEncoderBitDepthHintKey: 16,
-            ], commonFormat: .pcmFormatFloat32, interleaved: false)
-            try file.write(from: buffer)
-        }
+        let file = try AVAudioFile(forWriting: source, settings: [
+            AVFormatIDKey: kAudioFormatFLAC, AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: 2, AVEncoderBitDepthHintKey: 16,
+        ], commonFormat: .pcmFormatFloat32, interleaved: false)
+        try file.write(from: buffer)
+    }
+
+    @Test(arguments: [44_100.0, 48_000.0])
+    func nativeFlacDecodesIntoVerifiedOpusInLibrary(sampleRate: Double) throws {
+        let f = try Fixture()
+        let source = f.root.appendingPathComponent("Native.flac")
+        try Self.makeNativeFlac(to: source, sampleRate: sampleRate)
         let input = try Data(contentsOf: source)
         #expect(input.starts(with: Data("fLaC".utf8)))
         #expect(ImportTypesContract.shared.validateFile(at: source).typeID == "flac")
@@ -430,7 +449,12 @@ import zlib
             return
         }
         #expect(digest.channels == 1)
-        #expect(digest.sampleCount == 28_800)
+        if sampleRate == 48_000 {
+            #expect(digest.sampleCount == 28_800)
+        } else {
+            // Core Audio's resampler drains a small filter tail (under 5 ms).
+            #expect(abs(digest.sampleCount - 28_800) <= 240)
+        }
         #expect((590...610).contains(meeting.durationMs ?? 0))
         #expect(meeting.received?.sha256 == SHA256.hash(data: input).map { String(format: "%02x", $0) }.joined())
         #expect(try LibraryScanner(root: library).scan().meetings.map(\.id) == [meeting.id])
@@ -443,6 +467,75 @@ import zlib
         #expect(summary.imported == 1)
         #expect(summary.failed == 0)
         #expect(try LibraryScanner(root: zipLibrary).scan().meetings.count == 1)
+    }
+
+    @Test func truncatedAndEmptyNativeFlacImportsLeaveLibraryClean() throws {
+        let f = try Fixture()
+        let source = f.root.appendingPathComponent("Complete.flac")
+        try Self.makeNativeFlac(to: source)
+        let complete = try Data(contentsOf: source)
+        var audioStart = 4
+        while true {
+            let last = complete[audioStart] & 0x80 != 0
+            let length = Int(complete[audioStart + 1]) << 16
+                | Int(complete[audioStart + 2]) << 8 | Int(complete[audioStart + 3])
+            audioStart += 4 + length
+            if last { break }
+        }
+        // Locate the next frame sync with a valid CRC-16 for the entire first
+        // frame, ensuring both cuts retain a decodable first frame.
+        var crc: UInt16 = 0
+        var firstFrameEnd: Int?
+        for index in audioStart..<(complete.count - 1) {
+            if index > audioStart, crc == 0, complete[index] == 0xff,
+               complete[index + 1] & 0xfe == 0xf8 {
+                firstFrameEnd = index
+                break
+            }
+            crc ^= UInt16(complete[index]) << 8
+            for _ in 0..<8 {
+                crc = crc & 0x8000 != 0 ? (crc &<< 1) ^ 0x8005 : crc &<< 1
+            }
+        }
+        let boundary = try #require(firstFrameEnd)
+        #expect(boundary > audioStart)
+        #expect(boundary + 16 < complete.count)
+        let library = f.root.appendingPathComponent("RejectedLibrary")
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+        for unknownSamples in [false, true] {
+            var input = complete
+            if unknownSamples {
+                input[21] &= 0xf0
+                for i in 22...25 { input[i] = 0 }
+                // A valid unknown-length stream with its PCM digest still imports.
+                let valid = f.root.appendingPathComponent("UnknownLength.flac")
+                try input.write(to: valid)
+                _ = try LibraryImport.copy(valid, into: f.root.appendingPathComponent("ValidUnknownLibrary"))
+            }
+            for (label, end) in [("boundary", boundary), ("mid-frame", boundary + 16), ("metadata-only", audioStart)] {
+                let url = f.root.appendingPathComponent("\(label)-\(unknownSamples).flac")
+                try input.prefix(end).write(to: url)
+                #expect(throws: (any Error).self) { _ = try LibraryImport.copy(url, into: library) }
+                var summary = LibraryImportSummary()
+                var failure: String?
+                _ = try LibraryBatchImport.importURLs([url], into: library, summary: &summary,
+                    onURLSettled: { _, reason in failure = reason })
+                #expect(summary.failed == 1)
+                #expect(summary.imported == 0)
+                #expect(!(try #require(failure)).isEmpty)
+                #expect(try LibraryScanner(root: library).scan().meetings.isEmpty)
+                #expect(try FileManager.default.contentsOfDirectory(atPath: library.path).isEmpty)
+            }
+        }
+        var unverifiable = complete
+        unverifiable[21] &= 0xf0
+        for i in 22..<42 { unverifiable[i] = 0 }
+        let noDigest = f.root.appendingPathComponent("UnknownWithoutDigest.flac")
+        try unverifiable.write(to: noDigest)
+        #expect(throws: DecodedAudioImportError.unreadableAudio) {
+            try DecodedAudioImport.transcodeToOpus(sourceURL: noDigest, typeID: "flac",
+                destinationURL: f.root.appendingPathComponent("Unverifiable.opus"))
+        }
     }
 
     // MARK: - 3. Offline MP3, M4A, and WAV Import & Duplicate / Archive Handling

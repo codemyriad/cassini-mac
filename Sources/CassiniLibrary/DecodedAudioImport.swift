@@ -2,6 +2,7 @@
 import AVFoundation
 import AudioToolbox
 import CassiniKit
+import CryptoKit
 import Darwin
 import Foundation
 
@@ -45,7 +46,7 @@ enum DecodedAudioImport {
         }
         if shouldCancel() { throw CancellationError() }
 
-        try validateContainerHeader(at: sourceURL, typeID: typeID)
+        let flacInfo = try validateContainerHeader(at: sourceURL, typeID: typeID, shouldCancel: shouldCancel)
 
         let inFile: AVAudioFile
         do {
@@ -64,7 +65,7 @@ enum DecodedAudioImport {
         guard channelCount >= 1,
               processingFormat.sampleRate > 0,
               processingFormat.sampleRate.isFinite,
-              inFile.length > 0 else {
+              (inFile.length > 0 || flacInfo != nil) else {
             throw DecodedAudioImportError.emptyAudio
         }
 
@@ -134,6 +135,7 @@ enum DecodedAudioImport {
         pending.reserveCapacity(opusFrameSamples * 4)
         var pendingOffset = 0
         var totalSamples48k: Int64 = 0
+        var decodedSourceFrames: Int64 = 0
 
         func encodeOneFrame(_ slice: ArraySlice<Float>) throws {
             if shouldCancel() { throw CancellationError() }
@@ -203,17 +205,22 @@ enum DecodedAudioImport {
         let scale = 1.0 / Float(channelCount)
         while true {
             if shouldCancel() { throw CancellationError() }
+            // Do not issue an extra EOF read: Core Audio throws eofErr even for
+            // valid FLAC. The packet scan supplies an independently checked end.
+            if let flacInfo, decodedSourceFrames == flacInfo.frameSamples { break }
+            let requested = flacInfo.map { AVAudioFrameCount(min(Int64(chunkCapacity), $0.frameSamples - decodedSourceFrames)) } ?? chunkCapacity
             readBuffer.frameLength = 0
             do {
-                try inFile.read(into: readBuffer, frameCount: chunkCapacity)
+                try inFile.read(into: readBuffer, frameCount: requested)
             } catch {
                 // If zero samples were decoded at all, fail; if we hit EOF on a normal MP3/AAC frame boundary after decoding audio, check position.
-                if totalSamples48k == 0 || inFile.framePosition < inFile.length {
+                if typeID == "flac" || totalSamples48k == 0 || inFile.framePosition < inFile.length {
                     throw DecodedAudioImportError.unreadableAudio
                 }
                 break
             }
             let framesRead = Int(readBuffer.frameLength)
+            decodedSourceFrames += Int64(framesRead)
             if framesRead == 0 {
                 break
             }
@@ -264,6 +271,23 @@ enum DecodedAudioImport {
                 }
             } else {
                 try emitSamples(monoDst, count: framesRead, countTowardDuration: true)
+            }
+        }
+
+        if let flacInfo {
+            guard decodedSourceFrames > 0, decodedSourceFrames == flacInfo.frameSamples else {
+                throw DecodedAudioImportError.unreadableAudio
+            }
+            if flacInfo.totalSamples > 0 {
+                guard decodedSourceFrames == flacInfo.totalSamples else {
+                    throw DecodedAudioImportError.unreadableAudio
+                }
+            } else {
+                guard inFile.framePosition >= inFile.length else {
+                    throw DecodedAudioImportError.unreadableAudio
+                }
+                try verifyUnknownLengthFlac(at: sourceURL, info: flacInfo,
+                    decodedFrames: decodedSourceFrames, shouldCancel: shouldCancel)
             }
         }
 
@@ -321,12 +345,152 @@ enum DecodedAudioImport {
         try writer.finish(sampleCount: Int(totalSamples48k))
     }
 
-    private static func validateContainerHeader(at url: URL, typeID: String) throws {
+    private struct FlacInfo {
+        let totalSamples: Int64
+        let frameSamples: Int64
+        let bitsPerSample: Int
+        let md5: Data
+    }
+
+    // FLAC has no end marker. CRC-16 detects a partial final frame; when the
+    // sample count is unknown, the PCM MD5 is also needed to detect whole-frame loss.
+    private static func validateFlac(at url: URL, shouldCancel: () -> Bool) throws -> FlacInfo {
+        let file = try FileHandle(forReadingFrom: url)
+        defer { try? file.close() }
+        let bytes = [UInt8](try file.read(upToCount: 42) ?? Data())
+        guard bytes.count == 42 else { throw DecodedAudioImportError.unreadableAudio }
+        let samples = (Int64(bytes[21] & 0x0F) << 32) | (Int64(bytes[22]) << 24)
+            | (Int64(bytes[23]) << 16) | (Int64(bytes[24]) << 8) | Int64(bytes[25])
+        var lastMetadata = bytes[4] & 0x80 != 0
+        while !lastMetadata {
+            if shouldCancel() { throw CancellationError() }
+            let header = [UInt8](try file.read(upToCount: 4) ?? Data())
+            guard header.count == 4 else { throw DecodedAudioImportError.unreadableAudio }
+            lastMetadata = header[0] & 0x80 != 0
+            var remaining = Int(header[1]) << 16 | Int(header[2]) << 8 | Int(header[3])
+            while remaining > 0 {
+                if shouldCancel() { throw CancellationError() }
+                let block = try file.read(upToCount: min(remaining, 65_536)) ?? Data()
+                guard !block.isEmpty else { throw DecodedAudioImportError.unreadableAudio }
+                remaining -= block.count
+            }
+        }
+        let audioStart = try file.offset()
+        let fileSize = try file.seekToEnd()
+        var audioFile: AudioFileID?
+        guard AudioFileOpenURL(url as CFURL, .readPermission, kAudioFileFLACType, &audioFile) == noErr,
+              let audioFile else { throw DecodedAudioImportError.unreadableAudio }
+        defer { AudioFileClose(audioFile) }
+        var packets: UInt64 = 0
+        var propertySize = UInt32(MemoryLayout<UInt64>.size)
+        guard AudioFileGetProperty(audioFile, kAudioFilePropertyAudioDataPacketCount, &propertySize, &packets) == noErr,
+              packets > 0, packets <= UInt64(Int64.max) else { throw DecodedAudioImportError.unreadableAudio }
+        var maxPacket: UInt32 = 0
+        propertySize = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioFileGetProperty(audioFile, kAudioFilePropertyPacketSizeUpperBound, &propertySize, &maxPacket) == noErr,
+              maxPacket > 0, maxPacket <= 4_194_304 else { throw DecodedAudioImportError.unreadableAudio }
+        var packet = [UInt8](repeating: 0, count: Int(maxPacket))
+        var audioBytes: UInt64 = 0
+        var frameSamples: Int64 = 0
+        for index in 0..<packets {
+            if shouldCancel() { throw CancellationError() }
+            var size = maxPacket
+            var count: UInt32 = 1
+            var description = AudioStreamPacketDescription()
+            guard AudioFileReadPacketData(audioFile, false, &size, &description, Int64(index), &count, &packet) == noErr,
+                  count == 1, size >= 8, size <= maxPacket,
+                  packet[0] == 0xff, packet[1] & 0xfe == 0xf8 else {
+                throw DecodedAudioImportError.unreadableAudio
+            }
+            var crc: UInt16 = 0
+            for byte in packet.prefix(Int(size)) {
+                crc = (crc &<< 8) ^ flacCRCTable[Int((crc >> 8) ^ UInt16(byte))]
+            }
+            guard crc == 0 else { throw DecodedAudioImportError.unreadableAudio }
+            let numberBytes = packet[4] < 0x80 ? 1 : (~packet[4]).leadingZeroBitCount
+            guard (1...7).contains(numberBytes) else { throw DecodedAudioImportError.unreadableAudio }
+            let blockOffset = 4 + numberBytes
+            guard blockOffset + 2 < Int(size) else { throw DecodedAudioImportError.unreadableAudio }
+            let blockSamples: Int64
+            switch packet[2] >> 4 {
+            case 1: blockSamples = 192
+            case 2...5: blockSamples = 576 << Int((packet[2] >> 4) - 2)
+            case 6: blockSamples = Int64(packet[blockOffset]) + 1
+            case 7: blockSamples = (Int64(packet[blockOffset]) << 8 | Int64(packet[blockOffset + 1])) + 1
+            case 8...15: blockSamples = 256 << Int((packet[2] >> 4) - 8)
+            default: throw DecodedAudioImportError.unreadableAudio
+            }
+            let (next, overflow) = frameSamples.addingReportingOverflow(blockSamples)
+            guard !overflow else { throw DecodedAudioImportError.unreadableAudio }
+            frameSamples = next
+            audioBytes += UInt64(size)
+        }
+        guard audioStart < fileSize, audioBytes == fileSize - audioStart,
+              samples == 0 || frameSamples == samples else { throw DecodedAudioImportError.unreadableAudio }
+        return FlacInfo(totalSamples: samples, frameSamples: frameSamples,
+            bitsPerSample: Int((bytes[20] & 1) << 4 | (bytes[21] >> 4)) + 1,
+            md5: Data(bytes[26..<42]))
+    }
+
+    private static let flacCRCTable: [UInt16] = (0..<256).map { byte in
+        var crc = UInt16(byte) << 8
+        for _ in 0..<8 { crc = crc & 0x8000 != 0 ? (crc &<< 1) ^ 0x8005 : crc &<< 1 }
+        return crc
+    }
+
+    private static func verifyUnknownLengthFlac(
+        at url: URL, info: FlacInfo, decodedFrames: Int64, shouldCancel: () -> Bool
+    ) throws {
+        // Without either a total or a digest, a boundary-truncated stream is
+        // indistinguishable from a complete stream. Fail closed in that case.
+        guard info.md5.contains(where: { $0 != 0 }) else {
+            throw DecodedAudioImportError.unreadableAudio
+        }
+        do {
+            // Integer PCM preserves all 32 FLAC bits; Float32 cannot do so.
+            let file = try AVAudioFile(forReading: url, commonFormat: .pcmFormatInt32, interleaved: false)
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: chunkCapacity) else {
+                throw DecodedAudioImportError.unreadableAudio
+            }
+            var hash = Insecure.MD5()
+            var frames: Int64 = 0
+            let channels = Int(file.processingFormat.channelCount)
+            let byteCount = (info.bitsPerSample + 7) / 8
+            while frames < decodedFrames {
+                if shouldCancel() { throw CancellationError() }
+                let requested = AVAudioFrameCount(min(Int64(chunkCapacity), decodedFrames - frames))
+                try file.read(into: buffer, frameCount: requested)
+                guard buffer.frameLength > 0 else { throw DecodedAudioImportError.unreadableAudio }
+                frames += Int64(buffer.frameLength)
+                guard let pcm = buffer.int32ChannelData else { throw DecodedAudioImportError.unreadableAudio }
+                var bytes = Data(capacity: Int(buffer.frameLength) * channels * byteCount)
+                for frame in 0..<Int(buffer.frameLength) {
+                    for channel in 0..<channels {
+                        let sample = pcm[channel][frame] >> (32 - info.bitsPerSample)
+                        for byte in 0..<byteCount {
+                            bytes.append(UInt8(truncatingIfNeeded: sample >> (byte * 8)))
+                        }
+                    }
+                }
+                hash.update(data: bytes)
+            }
+            guard frames == decodedFrames, frames > 0, file.framePosition >= file.length,
+                  Data(hash.finalize()) == info.md5 else { throw DecodedAudioImportError.unreadableAudio }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw DecodedAudioImportError.unreadableAudio
+        }
+    }
+
+    private static func validateContainerHeader(
+        at url: URL, typeID: String, shouldCancel: () -> Bool
+    ) throws -> FlacInfo? {
         if typeID == "flac" {
             guard ImportTypesContract.shared.validateFile(at: url, fileNameOverride: "source.flac").typeID == "flac" else {
                 throw DecodedAudioImportError.unsupportedFormat(typeID)
             }
-            return
+            return try validateFlac(at: url, shouldCancel: shouldCancel)
         }
         let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw DecodedAudioImportError.unreadableAudio }
@@ -368,6 +532,7 @@ enum DecodedAudioImport {
         default:
             throw DecodedAudioImportError.unsupportedFormat(typeID)
         }
+        return nil
     }
 
     private static func isAllowedAudioFormatID(_ formatID: AudioFormatID, for typeID: String) -> Bool {
