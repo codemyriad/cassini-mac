@@ -1,5 +1,6 @@
 import AppKit
 import CassiniKit
+import CassiniLibrary
 import SwiftUI
 
 /// Hosts the transcript text view and keeps it in step with the session: time, speakers, search.
@@ -327,7 +328,8 @@ struct TranscriptView: NSViewRepresentable {
             let names = layout.visibleTurns.filter { ids.contains($0.id) }.map { session.label(for: $0.speaker) }
             guard !names.isEmpty else { return }
             NSAccessibility.post(element: textView, notification: .announcementRequested, userInfo: [
-                .announcement: names.formatted(.list(type: .and).locale(UXText.locale)),
+                // D50.3: the conjunction follows the UI language, not the region.
+                .announcement: LibraryFormat(locale: UXText.locale, language: UXText.language).list(names),
                 .priority: NSAccessibilityPriorityLevel.medium.rawValue,
             ])
         }
