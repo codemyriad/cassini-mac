@@ -69,12 +69,38 @@ struct MeetingCardPaint {
             fill = dark ? Self.mix(ink, fraction: 0.07, into: raised) : surface
             border = Self.mix(ink, fraction: dark ? 0.50 : 0.55, into: surface)
         } else {
-            fill = dark ? raised : CassiniTokens.cardRestEntry.resolvedNSColor(dark: false)
+            fill = CassiniTokens.cardRestEntry.resolvedNSColor(dark: dark)
             border = CassiniTokens.lineEntry.resolvedNSColor(dark: dark)
         }
         shadow = CassiniTokens.inkEntry.resolvedNSColor(dark: false)
             .withAlphaComponent(selected && !dark ? 0.12 : 0)
     }
+
+    #if DEBUG
+    /// Pins the resting fill to card-rest in both modes (L-19, HARMONY §10.9) and checks
+    /// that the selected fill stays lighter than the resting fill in dark mode.
+    static func nativeSelfTest() -> [String: Bool] {
+        func hex(_ color: NSColor) -> String? {
+            guard let srgb = color.usingColorSpace(.sRGB) else { return nil }
+            return String(format: "#%02X%02X%02X", Int((srgb.redComponent * 255).rounded()),
+                          Int((srgb.greenComponent * 255).rounded()), Int((srgb.blueComponent * 255).rounded()))
+        }
+        func luma(_ color: NSColor) -> CGFloat {
+            guard let c = color.usingColorSpace(.sRGB) else { return 0 }
+            return 0.2126 * c.redComponent + 0.7152 * c.greenComponent + 0.0722 * c.blueComponent
+        }
+        let restLight = MeetingCardPaint(dark: false, selected: false).fill
+        let restDark = MeetingCardPaint(dark: true, selected: false).fill
+        let selectedDark = MeetingCardPaint(dark: true, selected: true).fill
+        return [
+            "meetingCardRestLightIsCardRest": hex(restLight) == CassiniTokens.cardRestEntry.light.uppercased()
+                && hex(restLight) == "#FAFAFB",
+            "meetingCardRestDarkIsCardRest": hex(restDark) == CassiniTokens.cardRestEntry.dark.uppercased()
+                && hex(restDark) == "#171A20",
+            "meetingCardSelectedDarkLiftsAboveRest": luma(selectedDark) > luma(restDark) + 0.03,
+        ]
+    }
+    #endif
 
     private static func mix(_ first: NSColor, fraction: CGFloat, into second: NSColor) -> NSColor {
         NSColor(srgbRed: first.redComponent * fraction + second.redComponent * (1 - fraction),
