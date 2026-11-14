@@ -226,7 +226,7 @@ final class LibraryBoards: XCTestCase {
         app.typeKey("z",modifierFlags:[.command,.shift])
         XCTAssertTrue(nameField.exists,"Undo/redo must stay inside the dialog")
         app.typeKey(.space,modifierFlags:[])
-        XCTAssertTrue(app.menuItems["Speaker 3"].waitForExistence(timeout:5),app.debugDescription)
+        XCTAssertTrue(app.menuItems["Marta"].waitForExistence(timeout:5),app.debugDescription)
         app.typeKey(.escape,modifierFlags:[])
         app.typeKey(.tab,modifierFlags:.shift)
         app.typeKey("[",modifierFlags:.command)
