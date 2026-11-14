@@ -19,7 +19,7 @@ struct AppCommands: Commands {
         return detail?.meeting ?? LibraryStore.shared.selected
     }
     private var speakerDialog:Bool { MeetingRenameCoordinator.shared.presentation == .speakers }
-    private var detail: MeetingDetailModel? { MeetingNavigation.shared.detail }
+    private var detail: MeetingDetailModel? { MeetingNavigation.shared.savedDetail }
     var body: some Commands {
         let _ = ApplicationWindows.install(window:openWindow,settings:openSettings)
         CommandGroup(after: .appInfo) {
