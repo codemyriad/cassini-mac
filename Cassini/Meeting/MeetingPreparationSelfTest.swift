@@ -27,6 +27,7 @@ import Observation
             fail("no saved fixture meeting")
         }
         var meeting = fixture
+        meeting.state.transcript = .done
         var a = fixture.speakers[0], b = fixture.speakers[0]
         a.id = "a"; a.name = "Ada Brooks"; a.colourIndex = 0
         b.id = "b"; b.name = "Marta Cole"; b.colourIndex = 2; b.provenance = .user
@@ -48,7 +49,19 @@ import Observation
         var report: [String:Any] = [:]
         let navigation = MeetingNavigation.shared
         navigation.openLibrary = nil
-        navigation.open(meeting)
+        var active = meeting
+        active.state.transcript = .queued
+        navigation.open(active)
+        guard let activeDetail = navigation.detail else { fail("no queued meeting page") }
+        report["queuedSkipsTranscriptPresentation"] = activeDetail.turns.isEmpty && activeDetail.shares.isEmpty && activeDetail.timelineReadout.speaker(at:0) == nil
+        active.state.transcript = .running
+        active.transcriptItems.append(.init(speaker:"a",startMs:15_000_000,endMs:15_001_000,text:"Partial."))
+        navigation.update([active],offline:false)
+        report["runningSkipsTranscriptPresentation"] = activeDetail.turns.isEmpty && activeDetail.shares.isEmpty && activeDetail.listeningTurns.isEmpty
+        // Completion without changed words must still start preparation.
+        meeting = active
+        meeting.state.transcript = .done
+        navigation.update([meeting],offline:false)
         guard let detail = navigation.detail else { fail("no meeting page") }
 
         // 1. Preparation started, off the main thread, and the page has no turns yet.
@@ -73,7 +86,7 @@ import Observation
         release.signal()
         guard case .finished? = await next.next() else { fail("the restarted preparation did not finish") }
         await delivered.value
-        report["recoveryDelivered"] = detail.turns.count == 10_000
+        report["recoveryDelivered"] = detail.turns.count == 10_001
         report["readoutDeliveredWithTurns"] = detail.timelineReadout.speaker(at:1500) == "b" && detail.timelineReadout.speaker(at:1200) == nil
         // Hold the next preparation so every cached snapshot still has a's old
         // identity while the metadata already contains only the merge target.
@@ -119,6 +132,7 @@ import Observation
         for (key,value) in CassiniTokens.nativeSelfTest() { report[key] = value }
         for (key,value) in MeetingCardPaint.nativeSelfTest() { report[key] = value }
         var asideMeeting = fixture
+        asideMeeting.state.transcript = .done
         asideMeeting.transcriptItems = [.init(speaker:"claire",startMs:0,endMs:800,text:"We agree."),
             .init(speaker:"guest",startMs:750,endMs:1100,text:"Yes."),.init(speaker:"claire",startMs:1000,endMs:1800,text:"Thanks.")]
         asideMeeting.speakers = [] // the projection/action proof needs no names or speaker editor
