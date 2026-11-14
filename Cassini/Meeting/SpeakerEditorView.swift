@@ -15,7 +15,6 @@ struct SpeakerEditorView:View {
                 nameEntry
                 savedVoices
                 rememberVoice
-                if edit.voiceChangeFailed { Text(UXText.text("savedVoices.changeFailed")).foregroundStyle(CassiniTheme.error) }
                 if edit.speakerChangeFailed {failure}
                 footer(meeting,speaker)
             }

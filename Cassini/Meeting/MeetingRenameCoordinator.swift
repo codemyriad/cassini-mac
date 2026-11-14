@@ -70,7 +70,7 @@ import CassiniLibrary
         if MeetingRenameFixture.enabled { NSLog("Hosted rename request: allowed=%d, current=%@, requested=%@",canRename(meeting),String(describing:self.presentation),String(describing:presentation)) }
         #endif
         guard canRename(meeting), self.presentation == nil else { return }
-        stopSpeakerPreparation();speakerChangeFailed=false;speakerRetry=nil
+        stopSpeakerPreparation();speakerChangeFailed=false;voiceChangeFailed=false;speakerRetry=nil
         self.meeting = meeting; name = meeting.title ?? UXText.text("library.untitled"); self.presentation = presentation
     }
     func cancel() {
@@ -167,7 +167,7 @@ import CassiniLibrary
         let enrollment=rememberVoice && SavedVoicesStore.validName(name) ? voiceEnrollment:nil, enrollmentName=name, voiceID=savedVoiceID
         task=Task {
             do {
-                voiceChangeFailed=try await SpeakerEditTransaction.run(library: {
+                voiceChangeFailed=try await SpeakerEditTransaction.run(changesVoices:SpeakerEditTransaction.changesVoices(edit,update:voiceUpdate),library: {
                     try await Task.detached(priority:.userInitiated) {
                         let access=try LibraryAccess(location,tolerateMissingPrevious:true)
                         defer {withExtendedLifetime(access) {}}
@@ -194,7 +194,7 @@ import CassiniLibrary
                     }
                     await SavedVoicesController.shared.refresh()
                 })
-                if !voiceChangeFailed { presentation=nil;self.meeting=nil;speakerID=nil }
+                presentation=nil;self.meeting=nil;speakerID=nil
             } catch {if !closing {speakerChangeFailed=true}}
             working=false;task=nil;LibraryMoveCoordinator.shared.maybeRetryDeferred()
         }

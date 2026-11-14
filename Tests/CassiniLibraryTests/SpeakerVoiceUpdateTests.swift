@@ -22,6 +22,17 @@ import Testing
         #expect(LibraryScanner(root:root).meeting(at:meeting.folder)?.speaker(for:"a")?.name == "Alice corrected")
         #expect(try await store.snapshot().voiceID(meeting:"meeting",speaker:"a") == id)
     }
+    @Test func preservedNameNeverReadsOrWritesVoices() async throws {
+        var committed=false, reads=0, writes=0
+        let failed=try await SpeakerEditTransaction.run(
+            changesVoices:SpeakerEditTransaction.changesVoices(.name(speaker:"a",value:"Alice"),update:.preserve),
+            library:{ "Alice" }, committed:{ _ in committed=true },
+            readOnly:{ reads += 1;throw SavedVoicesError.unsafeStorage },
+            voices:{ writes += 1;throw SavedVoicesError.unsafeStorage })
+        #expect(committed && !failed && reads == 0 && writes == 0)
+        #expect(SpeakerEditTransaction.changesVoices(.merge(from:"a",into:"b"),update:.preserve))
+        #expect(SpeakerEditTransaction.changesVoices(.undoMerge,update:.preserve))
+    }
     @Test func forgettingRequiresAnExplicitChoice() {
         var choice=SpeakerVoiceChoice(existing:false)
         #expect(choice.update(prepared:false) == .preserve)
