@@ -534,7 +534,7 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
         let changed = bankChanged || revision != valueRevision
         if bankChanged { source = RecordingSurfaceContents(value.surface) }
         bank = value; revision = valueRevision
-        let width = CGFloat(style.columns), height = style == .pill ? CGFloat(9) : CGFloat(32)
+        let width = style == .row ? bounds.width : CGFloat(style.columns), height = style == .pill ? CGFloat(9) : CGFloat(32)
         let capacity = CGFloat(style.columns+2), position = displayMs/style.slotMs
         let base = floor(position/Double(style.columns+2))*Double(style.columns+2)
         let origin = width-CGFloat(position-base)
@@ -542,9 +542,9 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
         reducedMode = reduced
         for index in lanes.indices {
             let lane = lanes[index], selected = style == .pill ? index : rowLane.rawValue
-            if bankChanged {
             lane.clip.frame = .init(x:0,y:style == .pill ? CGFloat(index)*11 : 0,width:width,height:height)
             lane.fade.frame = lane.clip.bounds
+            if bankChanged {
                 lane.scrolling.bounds = .init(x:0,y:0,width:capacity,height:height)
                 // Two GPU instances share one texture leaf, halving contents
                 // invalidations/exports while retaining the same wrap geometry.
@@ -564,6 +564,7 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
             if bankChanged {
                 lane.first.position = .zero
             }
+            lane.scrolling.transform = reduced && style == .row ? CATransform3DMakeScale(width/CGFloat(style.columns),1,1) : CATransform3DIdentity
             lane.scrolling.position = .init(x:reduced ? 0 : origin,y:0)
         }
     }
@@ -586,6 +587,6 @@ struct RecordingSpectrogramStrip: NSViewRepresentable {
     func updateNSView(_ view: RecordingSpectrogramView, context: Context) {
         view.configure(controller,dark:colourScheme == .dark,silent:silent)
     }
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: RecordingSpectrogramView, context: Context) -> CGSize? { .init(width:200,height:32) }
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: RecordingSpectrogramView, context: Context) -> CGSize? { .init(width:96,height:32) }
     static func dismantleNSView(_ view: RecordingSpectrogramView, coordinator: ()) { view.detach() }
 }
