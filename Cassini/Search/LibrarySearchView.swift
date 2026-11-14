@@ -44,7 +44,10 @@ struct LibrarySearchView: View {
                         .modifier(SearchChip(active:model.speaker != nil)).accessibilityIdentifier("search-speaker")
                     Menu {
                         ForEach(SearchDate.allCases,id:\.self) { date in Button(dateText(date)) { model.date = date; model.refresh() } }
-                    } label: { Text(dateText(model.date)) }.menuIndicator(.hidden).menuStyle(.borderlessButton).buttonStyle(.plain).fixedSize()
+                    } label: {
+                        Text(dateText(model.date))
+                            .foregroundStyle(model.date != .any ? CassiniTheme.onAccent : CassiniTheme.ink)
+                    }.menuIndicator(.hidden).menuStyle(.borderlessButton).buttonStyle(.plain).fixedSize()
                         .modifier(SearchChip(active:model.date != .any)).accessibilityIdentifier("search-date")
                     Button(UXText.text("search.filter.recordedByMe")) { model.own.toggle(); model.refresh() }.buttonStyle(.plain)
                         .modifier(SearchChip(active:model.own)).accessibilityAddTraits(model.own ? .isSelected : [])

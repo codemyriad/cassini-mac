@@ -298,9 +298,9 @@ final class LibraryStore {
         }
     }
     func removed(_ meeting: LibraryMeeting) {
-        let ordered = meetings
-        let index = ordered.firstIndex { $0.libraryKey == meeting.libraryKey } ?? 0
-        let next = ordered.dropFirst(index + 1).first ?? ordered.prefix(index).last
+        let ordered = groups.flatMap(\.meetings)
+        let index = ordered.firstIndex { $0.libraryKey == meeting.libraryKey }
+        let next = index.flatMap { ordered.dropFirst($0 + 1).first ?? ordered.prefix($0).last }
         stop() // An in-flight old snapshot must not resurrect the removed row.
         for (root, scan) in rootSnapshots {
             rootSnapshots[root] = .init(meetings:scan.meetings.filter { $0.folder != meeting.folder },issues:scan.issues)

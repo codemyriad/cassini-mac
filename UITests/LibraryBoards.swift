@@ -31,6 +31,10 @@ final class LibraryBoards: XCTestCase {
         window.descendants(matching:.any).matching(identifier:"search-date").firstMatch.click()
         XCTAssertTrue(relaunched.menuItems["This year"].exists); relaunched.menuItems["This year"].click()
         window.searchFields["library-search-field"].typeText("budget")
+        let count = window.staticTexts["search-count"]
+        let ready = NSPredicate { _,_ in self.visibleText(count) == "2 places in 1 meeting" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:ready,object:nil)],timeout:10),.completed)
+        XCTAssertTrue(window.buttons["search-play"].exists)
         capture(window,name:"search-starred")
         relaunched.typeKey(.escape,modifierFlags:[])
         XCTAssertTrue(window.descendants(matching:.any)["library-filters"].waitForExistence(timeout:5),"Escape closes Search before reopening it")
