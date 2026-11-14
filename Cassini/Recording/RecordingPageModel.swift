@@ -51,7 +51,7 @@ private actor RecordingEdits {
     var title: String
     private var cachedVoiceCount: Int = 0
     var voiceCount: Int {
-        if let owned { return owned.snapshot.manifest.tracks.filter { ["remote","media","tab"].contains($0.kind) && $0.ended != true }.count }
+        if let owned { return owned.presentation.voiceCount }
         return cachedVoiceCount
     }
     private var discarded = false
@@ -105,7 +105,7 @@ private actor RecordingEdits {
         RecordingController.shared.directory?.standardizedFileURL.path == meeting.folder.standardizedFileURL.path
     }
     var owned: LiveCapture? {
-        guard let capture = CaptureCollection.shared.captures[meeting.id], capture.snapshot.directory.standardizedFileURL.path == meeting.folder.standardizedFileURL.path else { return nil }
+        guard let capture = CaptureCollection.shared.captures[meeting.id], capture.presentation.directory.standardizedFileURL.path == meeting.folder.standardizedFileURL.path else { return nil }
         return capture
     }
     var spectrogram: RecordingSpectrogram? {
@@ -115,20 +115,20 @@ private actor RecordingEdits {
         return owned?.spectrogram ?? (native ? RecordingController.shared.spectrogram : nil)
     }
     var canStop: Bool { native || owned != nil }
-    var saving: Bool { owned.map { $0.savingSinceMs != nil || $0.snapshot.phase == .saving } ?? (native && RecordingController.shared.isSaving) }
-    var me: Bool { owned?.snapshot.me ?? true }
-    var others: Bool { owned?.snapshot.others ?? true }
-    var othersUnavailable: Bool { owned?.input.failedSides.contains(.others) == true }
+    var saving: Bool { owned.map { $0.savingSinceMs != nil || $0.presentation.saving } ?? (native && RecordingController.shared.isSaving) }
+    var me: Bool { owned?.presentation.me ?? true }
+    var others: Bool { owned?.presentation.others ?? true }
+    var othersUnavailable: Bool { owned?.presentation.failedSides.contains(.others) == true }
     var othersPathTitle: String {
-        let browser = owned?.snapshot.browserAlive ?? meeting.isBrowserCapture
+        let browser = owned?.presentation.browserAlive ?? meeting.isBrowserCapture
         return UXText.text(!others || othersUnavailable ? "whatIsRecorded.othersHeard.none.title" : browser ? "common.listeningInsideBrowser" : "whatIsRecorded.othersHeard.system.title")
     }
     var othersPathBody: String {
         let key: String
         if !others { key = "whatIsRecorded.othersHeard.none.description" }
-        else if othersUnavailable { key = owned?.input.othersDenied == true ? "errors.othersPermission.line" : "errors.deviceUnavailable.others" }
-        else if owned?.snapshot.browserAlive ?? meeting.isBrowserCapture { key = voiceCount > 1 ? "whatIsRecorded.othersHeard.browser.description" : "whatIsRecorded.othersHeard.browserMixed.description" }
-        else { key = owned?.snapshot.fallbackReason == nil ? "whatIsRecorded.othersHeard.system.description" : "whatIsRecorded.othersHeard.fallback.description" }
+        else if othersUnavailable { key = owned?.presentation.othersDenied == true ? "errors.othersPermission.line" : "errors.deviceUnavailable.others" }
+        else if owned?.presentation.browserAlive ?? meeting.isBrowserCapture { key = voiceCount > 1 ? "whatIsRecorded.othersHeard.browser.description" : "whatIsRecorded.othersHeard.browserMixed.description" }
+        else { key = owned?.presentation.fallbackReason == nil ? "whatIsRecorded.othersHeard.system.description" : "whatIsRecorded.othersHeard.fallback.description" }
         return UXText.text(key)
     }
     func stop() { if owned != nil { CaptureCollection.shared.stop(meeting.id) } else if native { RecordingController.shared.stop() } }

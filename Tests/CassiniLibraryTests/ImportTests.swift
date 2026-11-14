@@ -6,6 +6,42 @@ import Testing
 @testable import CassiniLibrary
 
 struct LibraryImportTests {
+    @Test func confirmationOnlyForNewCopiesAndUsesFolderFallback() throws {
+        let f = try Fixture(), library = f.root.appendingPathComponent("Library")
+        let source = f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus")
+        let first = try LibraryImport.copyWithOutcome(source, into: library)
+        let locale = Locale(identifier: "en_GB")
+        #expect(first.confirmation(language: .en, locale: locale) == "Imported from opus. A copy is kept in your Meeting Library.")
+        let duplicate = try LibraryImport.copyWithOutcome(source, into: library)
+        #expect(duplicate.confirmation(language: .en, locale: locale) == nil)
+        var noFolder = first.meeting
+        noFolder.received = nil
+        #expect(LibraryImportOutcome.imported(noFolder).confirmation(language: .en, locale: locale) == "Imported. A copy is kept in your Meeting Library.")
+        for language in CassiniLanguage.allCases {
+            let text = try #require(first.confirmation(language: language, locale: locale))
+            #expect(text.contains("opus") && !text.contains("{folder}"))
+            if language != .en { #expect(!text.hasPrefix("Imported")) }
+        }
+    }
+
+    @Test func localReplacementAndUnreadableTranscriptDoNotCreditAnotherDevice() throws {
+        let f = try Fixture(), root = f.root.appendingPathComponent("Library")
+        let source = f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/001-minimal-v1.opus")
+        let imported = try LibraryImport.copy(source, into: root)
+        #expect(imported.transcribedOnAnotherDevice)
+        let writer = try MeetingMetadataWriter(directory: imported.folder, id: imported.id)
+        try writer.transaction { $0["transcript"] = ["status": "running", "reference": ["kind": "embedded", "file": "original.opus"]] }
+        #expect(try LibraryScanner(root: root).scan().meetings.first?.transcribedOnAnotherDevice == false)
+        let body = Data(#"{"items":[{"speaker":"local","startMs":0,"endMs":100,"text":"Local words"}]}"#.utf8)
+        try body.write(to: imported.folder.appendingPathComponent("transcript.json"))
+        try writer.transaction { $0["transcript"] = ["status": "done", "reference": ["kind": "sidecar", "file": "transcript.json", "format": "cassini.words.v1"]] }
+        let local = try #require(LibraryScanner(root: root).scan().meetings.first)
+        #expect(local.state.transcript == .done && !local.transcribedOnAnotherDevice)
+        try writer.transaction { $0["transcript"] = ["status": "done", "reference": ["kind": "embedded", "file": "original.opus", "transcriptId": "missing"]] }
+        let damaged = try #require(LibraryScanner(root: root).scan().meetings.first)
+        #expect(damaged.state.transcript == .damaged && !damaged.transcribedOnAnotherDevice)
+    }
+
     @Test func intactHeadersDoNotMakeATruncatedOrCorruptStreamImportable() throws {
         let f = try Fixture(), library = f.root.appendingPathComponent("Library")
         let input = f.repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/002-plain-audio.opus")
@@ -34,6 +70,7 @@ struct LibraryImportTests {
         let imported = try LibraryImport.copy(source,into:library)
         #expect(imported.state.audioAvailable == true && imported.state.transcript == .damaged)
         #expect(imported.transcriptItems.isEmpty && imported.notes.isEmpty && imported.speakers.isEmpty)
+        #expect(!imported.transcribedOnAnotherDevice)
         #expect(imported.title == "Unknown policy")
         // A legacy importer may have persisted an embedded done reference.
         try MeetingMetadataWriter(directory:imported.folder,id:imported.id).transaction {
@@ -61,6 +98,7 @@ struct LibraryImportTests {
         #expect(meeting.state.origin == .received && meeting.state.lifecycle == .saved)
         #expect(meeting.state.transcript == (plain ? .none : .done))
         #expect(meeting.canWriteDown == plain)
+        #expect(meeting.transcribedOnAnotherDevice == !plain)
         #expect(meeting.received?.originalFolderName == "Downloads")
         #expect(meeting.received?.sha256 == SHA256.hash(data:original).map { String(format:"%02x",$0) }.joined())
         #expect(try Data(contentsOf:source) == original)

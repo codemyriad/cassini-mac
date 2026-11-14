@@ -198,9 +198,60 @@ import SwiftUI
             try await verifyImmediateStopSavingFeedback(parent:root.appendingPathComponent("browser-stop-probe"))
             let visible = NSApp.windows.filter { $0.isVisible && !(String(describing:type(of:$0)) == "NSStatusBarWindow" && $0.level == .statusBar) }
             guard visible.isEmpty else { throw NSError(domain:"SavingProbeVisibleWindow",code:1,userInfo:[NSLocalizedDescriptionKey:visible.map { $0.title + " class=" + String(describing:type(of:$0)) + " level=" + String($0.level.rawValue) }.joined(separator:", ")]) }
-            let report: [String:Any] = ["recordingClockAdvances":true,"savingUsesProducerEnd":true,"lifecycleOnlySavingHolds":true,"immediateStopSavingFeedback":true,"audioDevicesOpened":false,"documentWindowsOpened":false]
+            let report: [String:Any] = ["recordingClockAdvances":true,"savingUsesProducerEnd":true,"lifecycleOnlySavingHolds":true,"immediateStopSavingFeedback":true,"captureObservationIsolation":true,"audioDevicesOpened":false,"documentWindowsOpened":false]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch { FileHandle.standardError.write(Data("Saving clock probe failed: \(error)\n".utf8)); exit(1) }
+    }
+    private final class Invalidations: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        func record() { lock.withLock { count += 1 } }
+        var value: Int { lock.withLock { count } }
+    }
+    private static func verifyCaptureObservation(_ id: UUID, parent: URL) throws {
+        let collection = CaptureCollection.shared
+        let live = try collection.captures[id].unwrap("live capture for observation")
+        try live.owner.browserTrack(id:"observation-remote",label:"Remote",kind:"remote",sampleRate:8000,channels:1)
+        live.snapshot = live.owner.snapshot
+        let meeting = try LibraryScanner(root:parent,activity:CaptureActivitySnapshot([id:.recording]))
+            .scan().meetings.first.unwrap("observation meeting")
+        let editor = RecordingPageModel.editor(for:meeting)
+        let page = Invalidations(), library = Invalidations(), meter = Invalidations(), silence = Invalidations()
+        withObservationTracking {
+            // Dependencies read outside the meter child in RecordingPageView.
+            _ = editor.owned?.diskMinutes
+            _ = editor.owned?.presentation.failedSides
+            _ = editor.owned?.presentation.browserAlive
+            _ = editor.canStop
+        } onChange: { page.record() }
+        withObservationTracking { _ = RecordingOverview.libraryDiskLine } onChange: { library.record() }
+        withObservationTracking { _ = editor.microphone } onChange: { meter.record() }
+        withObservationTracking { _ = live.microphoneSilent } onChange: { silence.record() }
+        // Exercise the same optional dictionary access as the production poll.
+        collection.captures[id]?.callPolicy.resumeCapture = true
+        collection.captures[id]?.lastMicSound = 100
+        collection.captures[id]?.fixtureMicrophoneUptime = 119
+        collection.captures[id]?.levels = [.me:0.6]
+        try live.owner.browserAudio(id:"observation-remote",sequence:0,offsetMs:0,pcm:Data(repeating:0,count:1600))
+        live.snapshot = live.owner.snapshot // Changed frame counts must also stay quiet.
+        live.refreshMicrophoneSilence()
+        guard page.value == 0, library.value == 0, meter.value == 1, silence.value == 0 else {
+            throw NSError(domain:"CaptureObservation",code:1,userInfo:[NSLocalizedDescriptionKey:"Meter/policy polling invalidated the page or Library"])
+        }
+        live.fixtureMicrophoneUptime = 120
+        live.refreshMicrophoneSilence()
+        guard live.microphoneSilent, silence.value == 1 else { throw POSIXError(.EINVAL) }
+        let repeated = Invalidations()
+        withObservationTracking { _ = live.microphoneSilent } onChange: { repeated.record() }
+        live.fixtureMicrophoneUptime = 121
+        live.refreshMicrophoneSilence()
+        guard repeated.value == 0 else { throw POSIXError(.EINVAL) }
+        live.lastMicSound = 121
+        live.refreshMicrophoneSilence()
+        guard !live.microphoneSilent, repeated.value == 1 else { throw POSIXError(.EINVAL) }
+        live.snapshot = live.owner.snapshot
+        live.levels = [:]; live.fixtureMicrophoneUptime = nil
+        live.lastMicSound = ProcessInfo.processInfo.systemUptime
     }
     private struct SavingSurfaceHarness: View {
         @State private var recorder = RecordingController.shared
@@ -230,6 +281,7 @@ import SwiftUI
     private static func verifyImmediateStopSavingFeedback(parent: URL) async throws {
         let collection = CaptureCollection.shared
         let probe = try collection.beginBrowserStopProbeForTesting(parent:parent)
+        try verifyCaptureObservation(probe.id,parent:parent)
         let (laidOutStream, laidOutCont) = AsyncStream<String>.makeStream()
         defer { laidOutCont.finish() }
         let host = NSHostingView(rootView:SavingSurfaceHarness(onLaidOut:{ identifier in

@@ -2,7 +2,7 @@
 import Foundation
 import CassiniLibrary
 
-/// Owns loading the pinned shared catalog (`Cassini/Resources/UX/strings.json` at `5e0c34e`)
+/// Owns loading the pinned shared catalog (`Cassini/Resources/UX/strings.json` at `2d4415d`)
 /// outside SwiftUI View bodies and projecting validated `LibraryMeeting` state into `BadgeMeetingFields`.
 enum LibraryBadgeCatalog {
     private static let rawCatalogData: Data = {

@@ -103,7 +103,7 @@ struct LibraryView: View {
                         HStack(spacing: 8) {
                             Text(detail.meeting.title ?? UXText.text("library.untitled")).fontWeight(.semibold).lineLimit(1)
                             Text(store.format.previewSubtitle(detail.meeting.meetingTime, durationMs: detail.meeting.durationMs,
-                                                              received: detail.meeting.state.origin == .received))
+                                                              received: detail.meeting.state.origin == .received, transcribedOnAnotherDevice: detail.meeting.transcribedOnAnotherDevice))
                                 .foregroundStyle(CassiniTheme.ink2).lineLimit(1)
                         }.accessibilityElement(children: .contain).accessibilityIdentifier("meeting-compact-header")
                     } else {

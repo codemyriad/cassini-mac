@@ -221,6 +221,7 @@ public struct LibraryScanner: Sendable {
         case .damaged: damage(&meeting)
         case .none: break // Never promote an explicit none just because a body exists.
         }
+        meeting.transcribedOnAnotherDevice = received && readable && meeting.state.transcript == .done && metadata?.transcript.reference?.kind == "embedded"
         if ![.queued, .running].contains(meeting.state.transcript) { meeting.state.etaMinutes = nil }
         if meeting.state.transcript == .damaged { words = [] }
         // D84: readable grouping precedes display sorting in the viewer. Preserve canonical

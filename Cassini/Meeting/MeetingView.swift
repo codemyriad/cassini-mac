@@ -133,14 +133,6 @@ struct MeetingView: View {
                     Text(badge.text).foregroundStyle(CassiniTheme.ink2)
                 }.accessibilityIdentifier("meeting-transcribing")
             }
-            if let folder = meeting.received?.originalFolderName {
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "folder").accessibilityHidden(true)
-                    Text(UXText.text("received.folderCard", ["folder": folder])).fixedSize(horizontal: false, vertical: true)
-                }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(CassiniTheme.chipFill, in: RoundedRectangle(cornerRadius: 8))
-                    .accessibilityIdentifier("received-folder-card")
-            }
             if let line = issueLine { InlineMeetingLine(id: line, actionID: meeting.state.transcript == .failed ? "common.tryAgain" : nil, action: meeting.state.transcript == .failed ? { TranscriptionQueue.shared.writeDown(model) } : nil).disabled(LibraryMoveCoordinator.shared.busy) }
         }
     }
