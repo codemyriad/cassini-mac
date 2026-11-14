@@ -38,7 +38,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.buttons["search-starred"].waitForExistence(timeout:5))
         XCTAssertTrue(selected(window.buttons["search-starred"]))
         let dateChoice = window.popUpButtons["search-date"]
-        XCTAssertEqual(visibleText(dateChoice),"Any date",dateChoice.debugDescription)
+        XCTAssertEqual(dateChoice.title,"Any date",dateChoice.debugDescription)
         relaunched.typeKey(.escape,modifierFlags:[])
         let row = window.outlines.staticTexts.matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout:5)); row.rightClick()
@@ -1106,9 +1106,10 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(sheet.radioButtons["Markdown"].isSelected)
         capture(window,name:"export")
         XCTAssertFalse(sheet.radioButtons["Plain text"].exists)
-        // The native disclosure's label is not an activation target on macOS 26.
-        // Click the triangle itself and wait for its animated content to appear.
-        sheet.disclosureTriangles["export-more-formats"].coordinate(withNormalizedOffset:CGVector(dx:0.05,dy:0.5)).click()
+        // SwiftUI includes the leading padding in this AX frame. The chevron
+        // is 25 points from its left edge; its label is not an activation target.
+        sheet.disclosureTriangles["export-more-formats"].coordinate(withNormalizedOffset:.zero)
+            .withOffset(CGVector(dx:25,dy:8)).click()
         for label in ["Plain text", "Subtitles (SRT)", "Subtitles (WebVTT)"] {
             XCTAssertTrue(sheet.radioButtons[label].waitForExistence(timeout:5), app.debugDescription)
             sheet.radioButtons[label].click()
