@@ -659,8 +659,9 @@ final class LibraryBoards: XCTestCase {
             XCTAssertTrue(waitForPresent(settings,timeout:10))
             settings.toolbars.buttons["Browser companion"].click()
             if kind == "health-ready" {
-                let local = settings.buttons["settings-add-local-companion"]
-                XCTAssertTrue(waitForPresent(local,timeout:10),"A healthy connection still permits adding another browser")
+                // SwiftUI's link-style Button is exposed as an AXLink on macOS.
+                let local = settings.descendants(matching:.any).matching(identifier:"settings-add-local-companion").firstMatch
+                XCTAssertTrue(waitForPresent(local,timeout:10),"A healthy connection still permits adding another browser: " + app.debugDescription)
                 XCTAssertTrue(local.isEnabled)
                 local.click()
                 XCTAssertTrue(waitForPresent(settings.sheets.buttons["companion-local-done"],timeout:10),app.debugDescription)
