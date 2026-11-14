@@ -254,6 +254,7 @@ import Observation
 
         switch job {
         case .single(let request):
+            notice = nil
             let lease = request.lease
             cancellingCurrent = false
             task = Task {
@@ -269,18 +270,22 @@ import Observation
                     let work = Task.detached(priority: .userInitiated) { [lease] in
                         defer { withExtendedLifetime(lease) {} }
                         try Task.checkCancellation()
-                        return try LibraryImport.copy(
+                        return try LibraryImport.copyWithOutcome(
                             lease.url,
                             into: root,
                             additionalRoots: Array(roots.dropFirst()),
                             shouldCancel: { Task.isCancelled }
                         )
                     }
-                    let meeting = try await withTaskCancellationHandler(
+                    let outcome = try await withTaskCancellationHandler(
                         operation: { try await work.value },
                         onCancel: { work.cancel() }
                     )
                     try Task.checkCancellation()
+                    let meeting = outcome.meeting
+                    if let message = outcome.confirmation(language: UXText.language, locale: UXText.locale) {
+                        notice = Notice(message: message, isWarning: false, autoDismiss: true)
+                    }
                     transientItems.removeAll { $0.id == request.key }
                     LibrarySearchModel.shared.close()
                     MeetingNavigation.shared.back()

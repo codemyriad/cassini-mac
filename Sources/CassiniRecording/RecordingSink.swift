@@ -145,6 +145,8 @@ public final class RecordingSink: @unchecked Sendable {
     /// refused, so an expired input records nothing (#120 r3).
     private let admit: (@Sendable () -> Bool)?
     private var admitted = false
+    /// Event fence for package tests; installed before receiving PCM. Runs under the conversion lock.
+    package var beforeConversionForTesting: (@Sendable () -> Void)?
 
     public init(session: any RecordingSinkWriter, capacitySeconds: Double = 10,
                 originHostTime: UInt64 = AVAudioTime.hostTime(forSeconds: ProcessInfo.processInfo.systemUptime),
@@ -164,6 +166,7 @@ public final class RecordingSink: @unchecked Sendable {
               buffer.format.sampleRate.isFinite, buffer.format.sampleRate.rounded() == buffer.format.sampleRate, (8_000...192_000).contains(buffer.format.sampleRate) else {
             lock.unlock(); fail("The audio source changed to an unsupported format. The recorded audio was preserved."); return
         }
+        beforeConversionForTesting?()
         if !admitted {
             // The signal's own lock decides; nothing here calls back into this sink.
             guard admit?() ?? true else { accepting = false; lock.unlock(); return }
@@ -349,8 +352,22 @@ public final class RecordingSink: @unchecked Sendable {
         }
     }
 
-    public func status() -> (levels: [String: Float], frames: [String: UInt64], droppedMs: Double, gapMs: Double, warnings: [String]) {
+    public typealias Status = (levels: [String: Float], frames: [String: UInt64], droppedMs: Double, gapMs: Double, warnings: [String])
+
+    /// UI polling must never wait for PCM conversion holding the admission lock.
+    /// A skipped poll leaves meter peaks intact for the next tick.
+    public func statusIfAvailable() -> Status? {
+        guard lock.try() else { return nil }
+        defer { lock.unlock() }
+        return consumeStatus()
+    }
+
+    public func status() -> Status {
         lock.lock(); defer { lock.unlock() }
+        return consumeStatus()
+    }
+
+    private func consumeStatus() -> Status {
         let lost = sources.values.reduce(0) { $0 + Double($1.droppedFrames) / $1.rate * 1000 }
         let gaps = sources.values.reduce(0) { $0 + Double($1.gapFrames) / $1.rate * 1000 }
         var available = levels

@@ -490,10 +490,13 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try await wait { collection.captures[second.snapshot.manifest.id]?.snapshot.manifest.tracks.contains { $0.kind == "system" && $0.frames > 0 } == true }
             try require(collection.captures[second.snapshot.manifest.id]?.snapshot.directory == second.snapshot.directory,"Fallback retains the folder")
             stage = "reconcile worker recovery"
+            // LiveCapture has reference identity; retain the pre-reconnect key,
+            // rather than comparing the updated object with itself.
+            let previousPeer = second.key?.peer
             try await two.reconnectInterrupted()
             try await wait {
                 guard let key = collection.captures[second.snapshot.manifest.id]?.key else { return false }
-                return key.peer != second.key?.peer && collection.peers.filter(\.reconciled).count == 2
+                return key.peer != previousPeer && collection.peers.filter(\.reconciled).count == 2
             }
             try await wait { !collection.starting }
             try require(collection.captures.count == 1 && automatic.isEmpty,"Recovery does not auto-restore browser capture")
