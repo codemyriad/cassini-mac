@@ -110,7 +110,7 @@ struct LibraryView: View {
                         Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
                     }
                 }
-                if let spec = meetingTranscriptionToolbarSpec(detail) {
+                if meetingShowsTranscriptionInToolbar(detail), let spec = meetingTranscriptionToolbarSpec(detail) {
                     ToolbarItem(placement:.primaryAction) {
                         LibraryToolbarAction(title:spec.title,label:spec.title,identifier:spec.identifier,style:.bordered,enabled:spec.enabled,action:spec.action)
                     }
@@ -134,6 +134,9 @@ struct LibraryView: View {
                     LibraryToolbarAction(title:"",label:UXText.text("meeting.moreActions"),identifier:"meeting-more-actions",style:.more,menu:{
                         var entries:[LibraryToolbarAction.MenuEntry]=[
                             .init(title:UXText.text("details.menu"),identifier:"recording-details") {recordingDetails.show(detail.meeting)}]
+                        if !meetingShowsTranscriptionInToolbar(detail), let spec = meetingTranscriptionToolbarSpec(detail) {
+                            entries.insert(.init(title:spec.title,identifier:spec.identifier,enabled:spec.enabled,action:spec.action),at:0)
+                        }
                         if detail.meeting.speakerMergeCount>0 {
                             entries.append(.init(title:UXText.text("meeting.undoMerge"),identifier:"undo-speaker-merge",enabled:rename.canEditSpeakers(detail.meeting)) {rename.undoSpeakerMerge(detail.meeting)})
                         }
@@ -645,16 +648,36 @@ struct LibraryView: View {
         let enabled: Bool
         let action: () -> Void
     }
-
-
+    /// The title's leading edge (sidebar-aligned inset after back/record) plus
+    /// the toolbar's own gaps and trailing margin, calibrated so the widest
+    /// English layout that is known to fit at 1120 pt keeps fitting.
+    private static let meetingTitleFixedReserve: CGFloat = 236 + 110
+    private static let meetingTitleMinimumWidth: CGFloat = 200
+    private static let meetingToolbarItemSpacing: CGFloat = 12
+    /// Width the title must leave free, measured from the localized trailing
+    /// toolbar labels so long translations never push "…" off the window.
+    private func meetingTitleReservedWidth(_ detail: MeetingDetailModel, includingTranscription: Bool) -> CGFloat {
+        var trailing = LibraryToolbarAction.width(title:UXText.text("common.exportEllipsis"),style:.capsule)
+            + Self.meetingToolbarItemSpacing + LibraryToolbarAction.width(title:"",style:.more)
+        if includingTranscription, let spec = meetingTranscriptionToolbarSpec(detail) {
+            trailing += LibraryToolbarAction.width(title:spec.title,style:.bordered) + Self.meetingToolbarItemSpacing
+        }
+        return Self.meetingTitleFixedReserve + trailing
+    }
+    /// The transcription action moves into the "…" menu when the window is too
+    /// narrow to show it next to a readable title.
+    private func meetingShowsTranscriptionInToolbar(_ detail: MeetingDetailModel) -> Bool {
+        guard meetingTranscriptionToolbarSpec(detail) != nil else { return false }
+        return toolbarWidth - meetingTitleReservedWidth(detail,includingTranscription:true) >= Self.meetingTitleMinimumWidth
+    }
     private func meetingTranscriptionToolbarSpec(_ detail: MeetingDetailModel) -> TranscriptionToolbarSpec? {
         let busy = LibraryMoveCoordinator.shared.busy || transcriptionQueue.isStopping(detail.meeting.folder)
         if detail.meeting.canWriteDown && detail.meeting.state.transcript == .none {
-            let title = detail.meeting.transcriptPaused ? UXText.mac("transcription.resume") : UXText.text("common.writeDown")
+            let title = UXText.text("common.writeDown")
             return .init(title:title,identifier:"meeting-write-down",enabled:!busy) { TranscriptionQueue.shared.writeDown(detail) }
         }
         if [.queued,.running].contains(detail.meeting.state.transcript) && !detail.meeting.metadataReadOnly {
-            let title = UXText.mac("transcription.stop")
+            let title = UXText.text("transcribing.stopAndKeepProgress")
             return .init(title:title,identifier:"meeting-stop-transcription",enabled:!busy) { TranscriptionQueue.shared.stop(detail.meeting) }
         }
         return nil
@@ -663,10 +686,10 @@ struct LibraryView: View {
     private func previewTranscriptionButton(_ meeting: LibraryMeeting) -> some View {
         let busy = LibraryMoveCoordinator.shared.busy || transcriptionQueue.isStopping(meeting.folder)
         if meeting.canWriteDown && meeting.state.transcript == .none && !meeting.metadataReadOnly {
-            Button(meeting.transcriptPaused ? UXText.mac("transcription.resume") : UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
+            Button(UXText.text("common.writeDown")) { TranscriptionQueue.shared.enqueue(meeting) }
                 .buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("preview-write-down")
         } else if [.queued,.running].contains(meeting.state.transcript) && !meeting.metadataReadOnly {
-            Button(UXText.mac("transcription.stop")) { TranscriptionQueue.shared.stop(meeting) }
+            Button(UXText.text("transcribing.stopAndKeepProgress")) { TranscriptionQueue.shared.stop(meeting) }
                 .buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("preview-stop-transcription")
         }
     }
@@ -703,6 +726,17 @@ struct LibraryToolbarAction: NSViewRepresentable {
         }
         return menu
     }
+    /// Intrinsic width of a toolbar action; shared with layout code that must
+    /// reserve room for these buttons before AppKit lays them out.
+    static func width(title: String, style: Style) -> CGFloat {
+        switch style {
+        case .back, .more: return 28
+        default:
+            let text = ceil((title as NSString).size(withAttributes:[.font:font]).width)
+            return text + 28 + (style == .record ? 18 : style == .saving ? 22 : 0)
+        }
+    }
+    static let font = NSFont.systemFont(ofSize:13,weight:.semibold)
     static func singleMenu(title: String, identifier: String, action: @escaping () -> Void) -> NSMenu {
         let menu = NSMenu(); menu.autoenablesItems = false
         let item = ActionItem(title:title,handler:action)
@@ -780,7 +814,7 @@ final class LibraryToolbarActionView: NSView {
         setAccessibilityIdentifier(value.identifier + "-group"); setAccessibilityLabel("")
         button.spokenLabel = value.label; button.setAccessibilityIdentifier(value.identifier)
         button.toolTip = value.label; button.isEnabled = value.enabled
-        let font = NSFont.systemFont(ofSize:13,weight:.semibold)
+        let font = LibraryToolbarAction.font
         button.font = font; button.image = nil
         button.isBordered = value.style == .bordered; button.bezelStyle = .rounded
         button.layer?.cornerRadius = [.record,.stop,.saving,.capsule].contains(value.style) ? 17 : 6
@@ -789,24 +823,22 @@ final class LibraryToolbarActionView: NSView {
         let tint: NSColor = disabledRecord ? CassiniTheme.nsInk3 : [.stop,.record].contains(value.style) ? CassiniTheme.nsOnRecord : value.style == .saving ? CassiniTheme.nsInk2 : CassiniTheme.nsInk
         button.attributedTitle = NSAttributedString(string:value.title,attributes:[.font:font,.foregroundColor:tint])
         applyLayerFill()
-        let text = ceil((value.title as NSString).size(withAttributes:[.font:font]).width)
-        size = NSSize(width:text + 28,height:34)
+        size = NSSize(width:LibraryToolbarAction.width(title:value.title,style:value.style),height:34)
         if value.style == .saving { spinner.isHidden = false; spinner.startAnimation(nil) }
         else { spinner.stopAnimation(nil); spinner.isHidden = true }
         switch value.style {
         case .back, .more:
             button.image = NSImage(systemSymbolName:value.style == .back ? "chevron.left" : "ellipsis",accessibilityDescription:nil)
             button.imagePosition = .imageOnly; button.contentTintColor = CassiniTheme.nsInk
-            size.width = 28
         case .record:
             let dot = value.enabled ? CassiniTheme.nsOnRecord : CassiniTheme.nsInk3
             button.image = NSImage(size:NSSize(width:18,height:10),flipped:false) { _ in
                 dot.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:0,width:10,height:10)).fill(); return true
             }
-            button.imageHugsTitle = true; size.width += 18
+            button.imageHugsTitle = true
         case .saving:
             button.image = NSImage(size:NSSize(width:22,height:16))
-            button.imageHugsTitle = true; size.width += 22
+            button.imageHugsTitle = true
         default: break
         }
         needsLayout = true; invalidateIntrinsicContentSize()
