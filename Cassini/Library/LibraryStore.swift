@@ -136,12 +136,27 @@ final class LibraryStore {
     var isRefreshing: Bool { scanning || !pending.isEmpty }
     @ObservationIgnored private var selectionWhenAvailable: String?
     @ObservationIgnored private var selectionFolderWhenAvailable: URL?
+    var preferences: LibraryPreferences {
+        didSet { preferences.save(to:RecordingPreferences.defaults) }
+    }
+    func toggleStar(_ meeting: LibraryMeeting) {
+        preferences.toggle(meeting.libraryKey)
+        if preferences.filter == .starred && !preferences.starredKeys.contains(meeting.libraryKey) {
+            selectedKeys.remove(meeting.libraryKey)
+        }
+        LibrarySearchModel.shared.refresh()
+    }
+    func isStarred(_ meeting: LibraryMeeting) -> Bool { preferences.starredKeys.contains(meeting.libraryKey) }
+    var visibleMeetings: [LibraryMeeting] {
+        preferences.filter == .all ? meetings : meetings.filter { isStarred($0) }
+    }
     var meetings: [LibraryMeeting] { snapshot?.meetings ?? [] }
-    var groups: [LibraryDayGroup] { snapshot?.groups(format: format) ?? [] }
+    var groups: [LibraryDayGroup] { LibraryScan(meetings:visibleMeetings,issues:[]).groups(format:format) }
     var selected: LibraryMeeting? { meetings.first { $0.libraryKey == selectedKey } }
     var format: LibraryFormat { .init(timeZone: context.timeZone, now: context.now ?? Date(),locale:context.screenshot && UXText.language == .en ? Locale(identifier:"en_GB") : .current) }
     init(context: LibraryLaunchContext = .current) {
         self.context = context
+        preferences = LibraryPreferences(defaults:RecordingPreferences.defaults)
         let activity = NativeActivity(context.activity); self.activity = activity
         for root in [context.root] + context.previousRoots { scanners[root] = LibraryScanner(root:root,activity:activity) }
     }
@@ -243,7 +258,7 @@ final class LibraryStore {
                 let validKeys = Set(meetings.map(\.libraryKey))
                 let surviving = selectedKeys.intersection(validKeys)
                 if surviving.isEmpty {
-                    let initial = context.screenshot ? (meetings.first(where:{ $0.title == "Budget review" })?.libraryKey ?? meetings.first?.libraryKey) : (meetings.first(where: { $0.state.lifecycle == .saved }) ?? meetings.first)?.libraryKey
+                    let initial = context.screenshot ? (visibleMeetings.first(where:{ $0.title == "Budget review" })?.libraryKey ?? visibleMeetings.first?.libraryKey) : (visibleMeetings.first(where: { $0.state.lifecycle == .saved }) ?? visibleMeetings.first)?.libraryKey
                     selectedKeys = initial.map { [$0] } ?? []
                 } else if surviving != selectedKeys {
                     selectedKeys = surviving
@@ -283,9 +298,9 @@ final class LibraryStore {
         }
     }
     func removed(_ meeting: LibraryMeeting) {
-        let ordered = meetings
-        let index = ordered.firstIndex { $0.libraryKey == meeting.libraryKey } ?? 0
-        let next = ordered.dropFirst(index + 1).first ?? ordered.prefix(index).last
+        let ordered = groups.flatMap(\.meetings)
+        let index = ordered.firstIndex { $0.libraryKey == meeting.libraryKey }
+        let next = index.flatMap { ordered.dropFirst($0 + 1).first ?? ordered.prefix($0).last }
         stop() // An in-flight old snapshot must not resurrect the removed row.
         for (root, scan) in rootSnapshots {
             rootSnapshots[root] = .init(meetings:scan.meetings.filter { $0.folder != meeting.folder },issues:scan.issues)

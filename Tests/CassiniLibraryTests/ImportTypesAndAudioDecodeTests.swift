@@ -179,8 +179,8 @@ import zlib
         let pin = try #require(JSONSerialization.jsonObject(with: pinData) as? [String: String])
         #expect(pin["repository"] == "cassini-ux")
         #expect(pin["path"] == "contract/import-types.json")
-        #expect(pin["commit"] == "03fd3bb7dc806c015c1079807eaf5bc548a9fd42")
-        #expect(pin["sha256"] == "bd80bb2b5ef176279ad6615e62960d19e693519867ab4fa0dded2d717584295d")
+        #expect(pin["commit"] == "b26190b57d8e35391ba9b4bafd177d66b10f0ec3")
+        #expect(pin["sha256"] == "a6934fd26f12697b35e7754ba3c15dab4f122a28d027a7ed17b9a25ef44aaf68")
 
         let appBytes = try Data(contentsOf: appUX.appendingPathComponent("import-types.json"))
         let schemaBytes = try Data(contentsOf: f.repository.appendingPathComponent("Sources/CassiniLibrary/Schema/import-types.json"))
@@ -190,14 +190,14 @@ import zlib
         #expect(contract.sha256Hex == pin["sha256"])
     }
 
-    @Test func contractConsumesOnlyDecidedTypesExcludesFlacAndAlignsWithInfoPlistAndProjectYML() throws {
+    @Test func contractConsumesDecidedTypesIncludingNativeFlacAndAlignsWithInfoPlistAndProjectYML() throws {
         let f = try Fixture()
         let contract = ImportTypesContract.shared
-        #expect(contract.decidedEntries.map(\.id) == ["opus-ogg", "mp3", "m4a", "wav"])
-        #expect(contract.openEntries.map(\.id) == ["flac"])
-        #expect(contract.decidedExtensions == [".opus", ".ogg", ".mp3", ".m4a", ".wav"])
-        #expect(LibraryImport.supportedAudioExtensions == Set(["opus", "ogg", "mp3", "m4a", "wav"]))
-        #expect(!LibraryImport.supportedAudioExtensions.contains("flac"))
+        #expect(contract.decidedEntries.map(\.id) == ["opus-ogg", "mp3", "m4a", "wav", "flac"])
+        #expect(contract.openEntries.isEmpty)
+        #expect(contract.decidedExtensions == [".opus", ".ogg", ".mp3", ".m4a", ".wav", ".flac"])
+        #expect(LibraryImport.supportedAudioExtensions == Set(["opus", "ogg", "mp3", "m4a", "wav", "flac"]))
+        #expect(LibraryImport.supportedAudioExtensions.contains("flac"))
         #expect(!LibraryImport.supportedAudioExtensions.contains("oga"))
         #expect(!LibraryImport.supportedAudioExtensions.contains("ogv"))
 
@@ -208,11 +208,12 @@ import zlib
             "com.apple.m4a-audio",
             "public.mpeg-4-audio",
             "com.microsoft.waveform-audio",
+            "org.xiph.flac",
         ])
-        #expect(!contract.decidedUTIIdentifiers.contains("org.xiph.flac"))
+        #expect(contract.decidedUTIIdentifiers.contains("org.xiph.flac"))
         #expect(!contract.pickerMimeTypes.contains("audio/ogg"))
         #expect(!contract.pickerMimeTypes.contains("application/ogg"))
-        #expect(!contract.pickerMimeTypes.contains("audio/flac"))
+        #expect(contract.pickerMimeTypes.contains("audio/flac"))
 
         let plistData = try Data(contentsOf: f.repository.appendingPathComponent("Cassini/Info.plist"))
         let plist = try #require(PropertyListSerialization.propertyList(from: plistData, format: nil) as? [String: Any])
@@ -222,7 +223,7 @@ import zlib
             #expect(declaredUTIs.contains(uti), "Missing decided UTI \(uti) in Info.plist CFBundleDocumentTypes")
         }
         #expect(declaredUTIs.contains("public.zip-archive"))
-        #expect(!declaredUTIs.contains("org.xiph.flac"))
+        #expect(declaredUTIs.contains("org.xiph.flac"))
 
         for entry in docTypes {
             #expect(entry["CFBundleTypeRole"] as? String == "Viewer")
@@ -240,7 +241,7 @@ import zlib
         for uti in contract.decidedUTIIdentifiers {
             #expect(projectYML.contains(uti), "Missing decided UTI \(uti) in project.yml")
         }
-        #expect(!projectYML.contains("org.xiph.flac"))
+        #expect(projectYML.contains("org.xiph.flac"))
         #expect(!projectYML.contains("- oga"))
     }
 
@@ -338,6 +339,203 @@ import zlib
         let rawFlacInWav = f.root.appendingPathComponent("disguised-flac.wav")
         try rawFlacHeader.write(to: rawFlacInWav)
         #expect(contract.isDisguisedUnsupportedContainer(at: rawFlacInWav))
+    }
+
+    private static func flacHeader(sampleRate: Int = 44_100, lastBlock: Bool = false) -> Data {
+        var header = Data("fLaC".utf8) + Data(repeating: 0, count: 38)
+        header[4] = lastBlock ? 0x80 : 0
+        header[7] = 34
+        header[18] = UInt8((sampleRate >> 12) & 0xff)
+        header[19] = UInt8((sampleRate >> 4) & 0xff)
+        header[20] = UInt8((sampleRate & 0xf) << 4)
+        return header
+    }
+
+    @Test func nativeFlacHeadersAndDropAcceptance() throws {
+        let f = try Fixture()
+        let contract = ImportTypesContract.shared
+        for lastBlock in [false, true] {
+            for rate in [1, 44_100, 48_000, 0xfffff] {
+                let header = Self.flacHeader(sampleRate: rate, lastBlock: lastBlock)
+                for mime in [nil, "audio/flac", "audio/x-flac", " Audio/FLAC; charset=binary"] as [String?] {
+                    #expect(contract.validateCandidate(fileName: "Voice.FLAC", mimeType: mime, headerBytes: header).typeID == "flac")
+                }
+            }
+        }
+        #expect(contract.pickerMimeTypes.contains("audio/x-flac"))
+        #expect(!contract.validateCandidate(fileName: "voice.flac").accepted)
+        let valid = Self.flacHeader()
+        var wrongType = valid; wrongType[4] = 0x81
+        var wrongLength = valid; wrongLength[7] = 33
+        var highLength = valid; highLength[5] = 1
+        var wrongMagic = valid; wrongMagic[0] = 0
+        var zeroRate = Self.flacHeader(sampleRate: 0); zeroRate[20] = 0x0f
+        let ogg = Self.oggPage(payload: Data([0x7f]) + Data("FLAC".utf8) + valid)
+        let invalid = (0..<42).map { Data(valid.prefix($0)) } + [
+            wrongType, wrongLength, highLength, wrongMagic, zeroRate, ogg,
+            Data("ID3\u{03}\0\0\0\0\0\0".utf8) + valid,
+        ]
+        let library = f.root.appendingPathComponent("RejectedLibrary")
+        for (index, header) in invalid.enumerated() {
+            #expect(!contract.validateCandidate(fileName: "bad.flac", headerBytes: header).accepted)
+            let url = f.root.appendingPathComponent("Bad-\(index).flac")
+            try header.write(to: url)
+            // Drop hover must accept the extension so authoritative validation can
+            // settle the import with a failure reason for the Needs attention card.
+            #expect(!contract.isDisguisedUnsupportedContainer(at: url))
+            var summary = LibraryImportSummary()
+            var failure: String?
+            _ = try LibraryBatchImport.importURLs([url], into: library, summary: &summary,
+                onURLSettled: { _, reason in failure = reason })
+            #expect(summary.failed == 1)
+            #expect(!(try #require(failure)).isEmpty)
+        }
+        for mime in ["audio/x-flac+ogg", "audio/x-oggflac", "audio/ogg", "application/ogg", "video/ogg"] {
+            #expect(!contract.pickerMimeTypes.contains(mime))
+            #expect(!contract.validateCandidate(fileName: "voice.flac", mimeType: mime, headerBytes: valid).accepted)
+        }
+        #expect(try LibraryScanner(root: library).scan().meetings.isEmpty)
+    }
+
+    @Test func dropFormatsIncludesEveryDecidedLabelInEveryLocale() throws {
+        let entry = try #require(LibraryLocalization.shared.entries.first { $0.id == "mac.import.drop.formats" })
+        let translations = ["en": entry.mac ?? entry.en].merging(
+            (entry.l10n ?? [:]).mapValues { $0.mac ?? $0.text }, uniquingKeysWith: { _, value in value })
+        #expect(Set(translations.keys) == Set(CassiniLanguage.allCases.map(\.rawValue)))
+        let labels = ["Cassini", "ZIP"] + ImportTypesContract.shared.decidedEntries.map {
+            String($0.label.split(separator: "/")[0])
+        }
+        for (locale, text) in translations {
+            for label in labels {
+                #expect(text.contains(label), "Missing \(label) in \(locale): \(text)")
+            }
+        }
+    }
+
+    private static func makeNativeFlac(to source: URL, sampleRate: Double = 48_000) throws {
+        let frames = AVAudioFrameCount(sampleRate * 0.6)
+        let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 2, interleaved: false))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+        buffer.frameLength = frames
+        for i in 0..<Int(frames) {
+            let sample = Float(sin(Double(i) * 2 * .pi * 440 / sampleRate) * 0.3)
+            buffer.floatChannelData![0][i] = sample
+            buffer.floatChannelData![1][i] = sample * 0.5
+        }
+        let file = try AVAudioFile(forWriting: source, settings: [
+            AVFormatIDKey: kAudioFormatFLAC, AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: 2, AVEncoderBitDepthHintKey: 16,
+        ], commonFormat: .pcmFormatFloat32, interleaved: false)
+        try file.write(from: buffer)
+    }
+
+    @Test(arguments: [44_100.0, 48_000.0])
+    func nativeFlacDecodesIntoVerifiedOpusInLibrary(sampleRate: Double) throws {
+        let f = try Fixture()
+        let source = f.root.appendingPathComponent("Native.flac")
+        try Self.makeNativeFlac(to: source, sampleRate: sampleRate)
+        let input = try Data(contentsOf: source)
+        #expect(input.starts(with: Data("fLaC".utf8)))
+        #expect(ImportTypesContract.shared.validateFile(at: source).typeID == "flac")
+        #expect(!ImportTypesContract.shared.isDisguisedUnsupportedContainer(at: source))
+        let library = f.root.appendingPathComponent("Library")
+        let meeting = try LibraryImport.copy(source, into: library)
+        let output = try Data(contentsOf: meeting.folder.appendingPathComponent("original.opus"))
+        #expect(output.starts(with: Data("OggS".utf8)))
+        let parsed = try CassiniReader.read(output)
+        #expect(parsed.state == .plainAudio)
+        guard case .success(let digest)? = parsed.audioDigest else {
+            Issue.record("Expected verified Opus audio digest from native FLAC")
+            return
+        }
+        #expect(digest.channels == 1)
+        if sampleRate == 48_000 {
+            #expect(digest.sampleCount == 28_800)
+        } else {
+            // Core Audio's resampler drains a small filter tail (under 5 ms).
+            #expect(abs(digest.sampleCount - 28_800) <= 240)
+        }
+        #expect((590...610).contains(meeting.durationMs ?? 0))
+        #expect(meeting.received?.sha256 == SHA256.hash(data: input).map { String(format: "%02x", $0) }.joined())
+        #expect(try LibraryScanner(root: library).scan().meetings.map(\.id) == [meeting.id])
+        #expect(try LibraryImport.copy(source, into: library).id == meeting.id)
+        let archive = f.root.appendingPathComponent("Native.zip")
+        try Self.makeStoredZip([(name: "Audio/Native.flac", payload: input)]).write(to: archive)
+        let zipLibrary = f.root.appendingPathComponent("ZipLibrary")
+        var summary = LibraryImportSummary()
+        _ = try ZipArchiveImport.importArchive(archive, into: zipLibrary, summary: &summary)
+        #expect(summary.imported == 1)
+        #expect(summary.failed == 0)
+        #expect(try LibraryScanner(root: zipLibrary).scan().meetings.count == 1)
+    }
+
+    @Test func truncatedAndEmptyNativeFlacImportsLeaveLibraryClean() throws {
+        let f = try Fixture()
+        let source = f.root.appendingPathComponent("Complete.flac")
+        try Self.makeNativeFlac(to: source)
+        let complete = try Data(contentsOf: source)
+        var audioStart = 4
+        while true {
+            let last = complete[audioStart] & 0x80 != 0
+            let length = Int(complete[audioStart + 1]) << 16
+                | Int(complete[audioStart + 2]) << 8 | Int(complete[audioStart + 3])
+            audioStart += 4 + length
+            if last { break }
+        }
+        // Locate the next frame sync with a valid CRC-16 for the entire first
+        // frame, ensuring both cuts retain a decodable first frame.
+        var crc: UInt16 = 0
+        var firstFrameEnd: Int?
+        for index in audioStart..<(complete.count - 1) {
+            if index > audioStart, crc == 0, complete[index] == 0xff,
+               complete[index + 1] & 0xfe == 0xf8 {
+                firstFrameEnd = index
+                break
+            }
+            crc ^= UInt16(complete[index]) << 8
+            for _ in 0..<8 {
+                crc = crc & 0x8000 != 0 ? (crc &<< 1) ^ 0x8005 : crc &<< 1
+            }
+        }
+        let boundary = try #require(firstFrameEnd)
+        #expect(boundary > audioStart)
+        #expect(boundary + 16 < complete.count)
+        let library = f.root.appendingPathComponent("RejectedLibrary")
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+        for unknownSamples in [false, true] {
+            var input = complete
+            if unknownSamples {
+                input[21] &= 0xf0
+                for i in 22...25 { input[i] = 0 }
+                // A valid unknown-length stream with its PCM digest still imports.
+                let valid = f.root.appendingPathComponent("UnknownLength.flac")
+                try input.write(to: valid)
+                _ = try LibraryImport.copy(valid, into: f.root.appendingPathComponent("ValidUnknownLibrary"))
+            }
+            for (label, end) in [("boundary", boundary), ("mid-frame", boundary + 16), ("metadata-only", audioStart)] {
+                let url = f.root.appendingPathComponent("\(label)-\(unknownSamples).flac")
+                try input.prefix(end).write(to: url)
+                #expect(throws: (any Error).self) { _ = try LibraryImport.copy(url, into: library) }
+                var summary = LibraryImportSummary()
+                var failure: String?
+                _ = try LibraryBatchImport.importURLs([url], into: library, summary: &summary,
+                    onURLSettled: { _, reason in failure = reason })
+                #expect(summary.failed == 1)
+                #expect(summary.imported == 0)
+                #expect(!(try #require(failure)).isEmpty)
+                #expect(try LibraryScanner(root: library).scan().meetings.isEmpty)
+                #expect(try FileManager.default.contentsOfDirectory(atPath: library.path).isEmpty)
+            }
+        }
+        var unverifiable = complete
+        unverifiable[21] &= 0xf0
+        for i in 22..<42 { unverifiable[i] = 0 }
+        let noDigest = f.root.appendingPathComponent("UnknownWithoutDigest.flac")
+        try unverifiable.write(to: noDigest)
+        #expect(throws: DecodedAudioImportError.unreadableAudio) {
+            try DecodedAudioImport.transcodeToOpus(sourceURL: noDigest, typeID: "flac",
+                destinationURL: f.root.appendingPathComponent("Unverifiable.opus"))
+        }
     }
 
     // MARK: - 3. Offline MP3, M4A, and WAV Import & Duplicate / Archive Handling
@@ -478,16 +676,16 @@ import zlib
         var zipSummary = LibraryImportSummary()
         _ = try ZipArchiveImport.importArchive(zipURL, into: library, summary: &zipSummary)
         #expect(zipSummary.imported == 4)
-        #expect(zipSummary.unsupported == 3)
-        #expect(zipSummary.failed == 1)
+        #expect(zipSummary.unsupported == 2)
+        #expect(zipSummary.failed == 2)
         #expect(zipSummary.duplicates == 0)
 
         var dupZipSummary = LibraryImportSummary()
         _ = try ZipArchiveImport.importArchive(zipURL, into: library, summary: &dupZipSummary)
         #expect(dupZipSummary.imported == 0)
         #expect(dupZipSummary.duplicates == 4)
-        #expect(dupZipSummary.unsupported == 3)
-        #expect(dupZipSummary.failed == 1)
+        #expect(dupZipSummary.unsupported == 2)
+        #expect(dupZipSummary.failed == 2)
 
         // Verify LibraryBatchImport per-URL settled callback for UI failed-card retention (W4.6)
         let batchLib = f.root.appendingPathComponent("BatchLibrary")
@@ -509,10 +707,10 @@ import zlib
             }
         )
         #expect(batchSummary.imported == 1)
-        #expect(batchSummary.failed == 1)
-        #expect(batchSummary.unsupported == 1)
+        #expect(batchSummary.failed == 2)
+        #expect(batchSummary.unsupported == 0)
         #expect(settled["Good.mp3"] == .some(nil))
-        #expect(settled["Ignored.flac"] == .some(nil))
+        #expect(!(try #require(settled["Ignored.flac"] ?? nil)).isEmpty)
         let brokenReason = try #require(settled["Broken.wav"] ?? nil)
         #expect(!brokenReason.isEmpty)
     }

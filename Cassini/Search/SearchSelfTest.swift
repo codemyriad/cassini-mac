@@ -58,12 +58,33 @@ import Observation
             await recovering.waitForFixtureSearch()
             guard !recovering.searching, recovering.hits.count == 4, failures.value == 1 else { throw POSIXError(.EINVAL) }
             recovering.close()
+            try checkStarredRemoval(store)
             let report: [String:Any] = ["realAppFTS5":true,"places":4,"meetings":3,"d14Order":[4000,872000,1870000,527000],
-                                      "andFilters":true,"selectAllPreserved":true,"navigationClosesSearch":true,"hitSeekMs":872000,"filtersResetOnClose":true,"indexFailureRecovers":true,"audioDevicesOpened":false]
+                                      "andFilters":true,"selectAllPreserved":true,"navigationClosesSearch":true,"hitSeekMs":872000,"filtersResetOnClose":true,"indexFailureRecovers":true,"starredRemovalSelection":true,"audioDevicesOpened":false]
             FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:report,options:[.sortedKeys]) + Data([10])); exit(0)
         } catch {
             FileHandle.standardError.write(Data("Search app self-test failed: \(error)\n".utf8)); exit(1)
         }
+    }
+    /// Exercise Trash's actual selection update without deleting bundled fixtures.
+    private static func checkStarredRemoval(_ store: LibraryStore) throws {
+        let savedPreferences = store.preferences
+        defer { store.stop(); store.preferences = savedPreferences }
+        store.preferences.filter = .all
+        let ordered = store.groups.flatMap(\.meetings)
+        guard ordered.count >= 3, let first = ordered.first, let last = ordered.last else { throw POSIXError(.EINVAL) }
+        store.preferences.starredKeys = [first.libraryKey, last.libraryKey]
+        store.preferences.filter = .starred
+        // Fall back in visible row order across hidden unstarred rows, then
+        // clear selection when the final star is removed.
+        store.selectedKey = last.libraryKey
+        store.removed(last)
+        store.stop() // Keep the read-only fixture scan from restoring this row.
+        guard store.selectedKey == first.libraryKey, store.visibleMeetings.count == 1 else { throw POSIXError(.EINVAL) }
+        store.removed(first)
+        store.stop()
+        guard store.selectedKey == nil, store.selectedMeetings.isEmpty,
+              store.visibleMeetings.isEmpty, !store.meetings.isEmpty else { throw POSIXError(.EINVAL) }
     }
     private final class FailFirstIndex: @unchecked Sendable {
         private let lock = NSLock(); private var first = true

@@ -201,6 +201,11 @@ targets:
             LSHandlerRank: Alternate
             LSItemContentTypes:
               - com.microsoft.waveform-audio
+          - CFBundleTypeName: FLAC Audio
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - org.xiph.flac
           - CFBundleTypeName: ZIP Archive
             CFBundleTypeRole: Viewer
             LSHandlerRank: Alternate

@@ -33,6 +33,7 @@ let package = Package(
         .executable(name: "cassini-browser-setup-probe-service", targets: ["cassini-browser-setup-probe-service"]),
     ],
     targets: [
+        .testTarget(name:"CassiniSpeakerEditorTests",dependencies:["CassiniLibrary","CassiniRecording"]),
         .target(name: "CassiniKit"),
         .target(name:"CassiniSpectrogram",dependencies:["CassiniRecording"]),
         .testTarget(name:"CassiniSpectrogramTests",dependencies:["CassiniSpectrogram"],resources:[.copy("Fixtures")]),

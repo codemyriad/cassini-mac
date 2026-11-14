@@ -3,6 +3,60 @@ import AppKit
 import XCTest
 
 final class LibraryBoards: XCTestCase {
+    @MainActor func testStarsPersistAndSearchCarriesLibraryChoiceThenResetsOtherFilters() throws {
+        let defaultsID = UUID().uuidString
+        let app = try launch("library",fixture:"main",extra:["-CassiniDefaultsID",defaultsID])
+        defer { app.terminate() }
+        var window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["meeting-more-actions"].waitForExistence(timeout:20),app.debugDescription)
+        window.buttons["meeting-more-actions"].click()
+        let star = app.menuItems["Star"]
+        XCTAssertTrue(star.waitForExistence(timeout:5),app.debugDescription); star.click()
+        let filters = window.descendants(matching:.any)["library-filters"]
+        XCTAssertTrue(filters.exists,app.debugDescription)
+        filters.radioButtons["Starred"].click()
+        XCTAssertFalse(window.staticTexts["library-starred-empty"].exists)
+        capture(window,name:"library-starred")
+        app.terminate()
+        let relaunched = try launch("library",fixture:"main",extra:["-CassiniDefaultsID",defaultsID])
+        defer { relaunched.terminate() }
+        window = relaunched.windows["cassini-library-window"]
+        let starredChoice = window.descendants(matching:.any)["library-filters"].radioButtons["Starred"]
+        XCTAssertTrue(starredChoice.waitForExistence(timeout:20),relaunched.debugDescription)
+        XCTAssertTrue(selected(starredChoice),starredChoice.debugDescription)
+        window.searchFields["library-search-field"].click()
+        let starred = window.buttons["search-starred"]
+        XCTAssertTrue(starred.waitForExistence(timeout:5),relaunched.debugDescription)
+        XCTAssertTrue(selected(starred))
+        window.descendants(matching:.any).matching(identifier:"search-date").firstMatch.click()
+        XCTAssertTrue(relaunched.menuItems["This year"].exists); relaunched.menuItems["This year"].click()
+        window.searchFields["library-search-field"].typeText("budget")
+        let count = window.staticTexts["search-count"]
+        let ready = NSPredicate { _,_ in self.visibleText(count) == "2 places in 1 meeting" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:ready,object:nil)],timeout:10),.completed)
+        XCTAssertTrue(window.buttons["search-play"].exists)
+        capture(window,name:"search-starred")
+        relaunched.typeKey(.escape,modifierFlags:[])
+        XCTAssertTrue(window.descendants(matching:.any)["library-filters"].waitForExistence(timeout:5),"Escape closes Search before reopening it")
+        window.searchFields["library-search-field"].click()
+        XCTAssertTrue(window.buttons["search-starred"].waitForExistence(timeout:5))
+        XCTAssertTrue(selected(window.buttons["search-starred"]))
+        let dateChoice = window.popUpButtons["search-date"]
+        XCTAssertEqual(dateChoice.title,"Any date",dateChoice.debugDescription)
+        relaunched.typeKey(.escape,modifierFlags:[])
+        let row = window.outlines.staticTexts.matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout:5)); row.rightClick()
+        let unstar = relaunched.menuItems["Unstar"]
+        XCTAssertTrue(unstar.waitForExistence(timeout:5),relaunched.debugDescription); unstar.click()
+        XCTAssertTrue(window.staticTexts["library-starred-empty"].waitForExistence(timeout:5),relaunched.debugDescription)
+        relaunched.terminate()
+        let empty = try launch("library",fixture:"main",extra:["-CassiniDefaultsID",defaultsID])
+        defer { empty.terminate() }
+        let emptyWindow = empty.windows["cassini-library-window"]
+        XCTAssertTrue(emptyWindow.staticTexts["library-starred-empty"].waitForExistence(timeout:20),empty.debugDescription)
+        XCTAssertTrue(emptyWindow.staticTexts["meeting-empty-selection"].waitForExistence(timeout:5),"Refresh cannot select an unstarred meeting behind an empty Starred list")
+    }
+
     /// D-963: both Stop routes preserve the meeting and expose Resume after the
     /// asynchronous metadata commit. Retained partial words are not a live draft.
     @MainActor func testActiveTranscribingStatusDetailsAndStopKeepsProgress() throws {
@@ -446,7 +500,7 @@ final class LibraryBoards: XCTestCase {
             XCTAssertTrue(helpWindow.descendants(matching:.any)[topic].exists,topic)
         }
         let trashBody = "Deleted meetings go to the Trash. Choose Edit › Undo right away, or later open the Trash in Finder and choose Put Back."
-        XCTAssertTrue(helpWindow.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@",trashBody,trashBody)).firstMatch.waitForExistence(timeout:5))
+        XCTAssertTrue(helpWindow.staticTexts.matching(NSPredicate(format:"value CONTAINS %@ OR label CONTAINS %@",trashBody,trashBody)).firstMatch.waitForExistence(timeout:5))
         XCTAssertEqual(helpWindow.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS[c] %@ OR value CONTAINS[c] %@","30 days","30 days")).count,0)
         // Opening Help again reuses the single scene.
         helpMenu.click()
@@ -454,11 +508,12 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(app.windows.matching(identifier:"cassini-help-window").count,1)
         helpWindow.buttons[XCUIIdentifierCloseWindow].click()
         app.menuBars.menuBarItems["Cassini talk"].click()
-        XCTAssertTrue(app.menuItems["Saved Voices…"].exists)
+        XCTAssertEqual(app.menuItems.matching(identifier:"Saved Voices…").count,1)
         app.menuItems["Saved Voices…"].click()
         let settingsWindow = app.windows["cassini-settings-window"]
         XCTAssertTrue(settingsWindow.waitForExistence(timeout:10),app.debugDescription)
-        XCTAssertTrue(settingsWindow.descendants(matching:.any)["saved-voices-empty"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(settingsWindow.buttons["saved-voices-add"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(settingsWindow.buttons["saved-voices-back"].exists)
         settingsWindow.buttons[XCUIIdentifierCloseWindow].click()
     }
     @MainActor func testBrowserStatesBeforeFirstConnectionAndAfterFailure() throws {

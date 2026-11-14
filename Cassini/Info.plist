@@ -60,6 +60,18 @@
 		</dict>
 		<dict>
 			<key>CFBundleTypeName</key>
+			<string>FLAC Audio</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>org.xiph.flac</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
 			<string>ZIP Archive</string>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>

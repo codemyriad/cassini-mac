@@ -8,6 +8,23 @@ import CassiniLibrary
     static let shared = MeetingRenameCoordinator()
     var presentation: Presentation?
     var name = ""
+    private var voiceChoice=SpeakerVoiceChoice(existing:false)
+    var rememberVoice:Bool {
+        get { voiceChoice.remember }
+        set { voiceChoice.choose(newValue) }
+    }
+    private(set) var voiceChangeFailed=false
+    var canChangeRememberVoice:Bool {
+        guard !working, !SavedVoicesController.shared.readOnly else { return false }
+        return voiceEnrollment != nil || meeting.flatMap { meeting in
+            speakerID.flatMap { SavedVoicesController.shared.snapshot?.voiceID(meeting:meeting.folder.lastPathComponent,speaker:$0) }
+        } != nil
+    }
+    var savedVoiceID:String?
+    private(set) var voiceEnrollment:SavedVoicesController.TranscriptEnrollment?
+    private(set) var voicePreparationFailed=false
+    struct VoiceCandidate:Identifiable,Sendable { let voice:SavedVoice;let score:Float?;var id:String {voice.id} }
+    private(set) var voiceCandidates:[VoiceCandidate]=[]
     private(set) var speakerID:String?
     private(set) var speakerChangeFailed=false
     private(set) var speakerTalkTime:Int64=0
@@ -15,6 +32,7 @@ import CassiniLibrary
     private(set) var speakerSampleRange:Range<Int64>?
     private(set) var speakerPreparing=false
     @ObservationIgnored private var speakerPreparation:Task<Void,Never>?
+    @ObservationIgnored private var speakerPreparationID=UUID()
     @ObservationIgnored private var speakerRetry:SpeakerEdits.Edit?
     var selectedSpeaker:MeetingSpeaker? { meeting?.speakers.first {$0.id==speakerID} }
     private(set) var meeting: LibraryMeeting?
@@ -26,7 +44,7 @@ import CassiniLibrary
         guard let meeting else { return false }
         if presentation == .speakers {
             guard let speaker=selectedSpeaker else {return false}
-            return canEditSpeakers(meeting) && SpeakerEdits.validName(name) && SpeakerEdits.normalizedName(name) != speaker.name
+            return canEditSpeakers(meeting) && SpeakerEdits.validName(name) && (SpeakerEdits.normalizedName(name) != speaker.name || voiceChoice.explicitlyDisabled || rememberVoice && SavedVoicesStore.validName(name) && voiceEnrollment != nil)
         }
         let original = meeting.title ?? UXText.text("library.untitled")
         return !working && name != original && (normalized == nil || normalized != original) && canRename(meeting)
@@ -52,12 +70,12 @@ import CassiniLibrary
         if MeetingRenameFixture.enabled { NSLog("Hosted rename request: allowed=%d, current=%@, requested=%@",canRename(meeting),String(describing:self.presentation),String(describing:presentation)) }
         #endif
         guard canRename(meeting), self.presentation == nil else { return }
-        stopSpeakerPreparation();speakerChangeFailed=false;speakerRetry=nil
+        stopSpeakerPreparation();speakerChangeFailed=false;voiceChangeFailed=false;speakerRetry=nil
         self.meeting = meeting; name = meeting.title ?? UXText.text("library.untitled"); self.presentation = presentation
     }
     func cancel() {
         stopSpeakerPreparation();MeetingNavigation.shared.detail?.speakerSample.cancel()
-        presentation=nil;speakerChangeFailed=false;speakerRetry=nil
+        presentation=nil;speakerChangeFailed=false;voiceChangeFailed=false;speakerRetry=nil
         if !working {meeting=nil;speakerID=nil}
     }
     func canEditSpeakers(_ meeting:LibraryMeeting?) -> Bool {
@@ -85,14 +103,35 @@ import CassiniLibrary
         self.meeting=meeting;speakerID=speaker.id;name=speaker.name ?? ""
         if let detail=MeetingNavigation.shared.detail,detail.meeting.folder==meeting.folder {detail.namingSpeakerID=speaker.id}
         speakerChangeFailed=false;speakerRetry=nil;presentation = .speakers
+        voiceChoice=SpeakerVoiceChoice(existing:SavedVoicesController.shared.snapshot?.voiceID(meeting:meeting.folder.lastPathComponent,speaker:speaker.id) != nil);voiceChangeFailed=false;voiceEnrollment=nil;voicePreparationFailed=false;savedVoiceID=nil;voiceCandidates=[]
         stopSpeakerPreparation();speakerPreparing=true;speakerSampleRange=nil;speakerQuote=nil
-        let id=speaker.id
+        let id=speaker.id, preparationID=UUID()
+        speakerPreparationID=preparationID
         speakerPreparation=Task {
+            defer { if speakerPreparationID == preparationID { speakerPreparation=nil } }
             let facts=await Task.detached(priority:.userInitiated) {
                 (SpeakerEdits.talkTime(meeting,speaker:id),SpeakerEdits.sample(meeting,speaker:id),SpeakerEdits.quote(meeting,speaker:id))
             }.value
             guard !Task.isCancelled,!closing,presentation == .speakers,speakerID==id else {return}
-            speakerTalkTime=facts.0;speakerSampleRange=facts.1;speakerQuote=facts.2;speakerPreparing=false;speakerPreparation=nil
+            speakerTalkTime=facts.0;speakerSampleRange=facts.1;speakerQuote=facts.2;speakerPreparing=false
+            await SavedVoicesController.shared.refresh()
+            guard !Task.isCancelled, presentation == .speakers, speakerID == id else { return }
+            if !voiceChoice.userChanged {
+                let existing=SavedVoicesController.shared.snapshot?.voiceID(meeting:meeting.folder.lastPathComponent,speaker:id)
+                voiceChoice=SpeakerVoiceChoice(existing:existing != nil)
+                savedVoiceID=existing
+            }
+            do {
+                let prepared=try await SavedVoicesController.shared.prepare(meeting,speaker:id)
+                guard !Task.isCancelled, presentation == .speakers, speakerID == id else { return }
+                voiceEnrollment=prepared
+                let profiles=SavedVoicesController.shared.voices
+                let ranked=await Task.detached(priority:.userInitiated) {
+                    VoiceMatcher.ranked(prepared?.embedding ?? [],voices:profiles).map { VoiceCandidate(voice:$0.voice,score:$0.score) }
+                }.value
+                guard !Task.isCancelled, presentation == .speakers, speakerID == id else { return }
+                voiceCandidates=ranked
+            } catch { if !Task.isCancelled { voicePreparationFailed=true } }
         }
     }
     private func stopSpeakerPreparation() {speakerPreparation?.cancel();speakerPreparation=nil;speakerPreparing=false}
@@ -117,25 +156,45 @@ import CassiniLibrary
         guard let edit=speakerRetry else {return}
         if case .name = edit {apply()} else {performSpeakerEdit(edit)}
     }
-    func dismissSpeakerFailure() {speakerChangeFailed=false;speakerRetry=nil;if !working {meeting=nil}}
+    func dismissSpeakerFailure() {speakerChangeFailed=false;voiceChangeFailed=false;speakerRetry=nil;if !working {meeting=nil}}
     private func performSpeakerEdit(_ edit:SpeakerEdits.Edit) {
         guard let meeting,canEditSpeakers(meeting) else {return}
         stopSpeakerPreparation();MeetingNavigation.shared.detail?.speakerSample.cancel()
-        working=true;speakerChangeFailed=false;speakerRetry=edit
+        working=true;speakerChangeFailed=false;voiceChangeFailed=false;speakerRetry=edit
         let location=LibraryLocationModel.shared.location
         let scanner=LibraryStore.shared.scannerForRename(meeting) ?? LibraryScanner(root:meeting.folder.deletingLastPathComponent())
+        let voiceUpdate=voiceChoice.update(prepared:voiceEnrollment != nil && SavedVoicesStore.validName(name))
+        let enrollment=rememberVoice && SavedVoicesStore.validName(name) ? voiceEnrollment:nil, enrollmentName=name, voiceID=savedVoiceID
         task=Task {
             do {
-                let updated=try await Task.detached(priority:.userInitiated) {
-                    let access=try LibraryAccess(location,tolerateMissingPrevious:true)
-                    defer {withExtendedLifetime(access) {}}
-                    try SpeakerEdits.apply(edit,to:meeting,roots:access.roots,scanner:scanner)
-                    guard let updated=scanner.meeting(at:meeting.folder) else {throw POSIXError(.ENOENT)}
-                    return updated
-                }.value
-                if let detail=MeetingNavigation.shared.detail,detail.meeting.folder==meeting.folder,detail.fileURL==nil {detail.meeting=updated}
-                LibraryStore.shared.refresh(affected:meeting.folder)
-                presentation=nil;self.meeting=nil;speakerID=nil;speakerRetry=nil
+                voiceChangeFailed=try await SpeakerEditTransaction.run(changesVoices:SpeakerEditTransaction.changesVoices(edit,update:voiceUpdate),library: {
+                    try await Task.detached(priority:.userInitiated) {
+                        let access=try LibraryAccess(location,tolerateMissingPrevious:true)
+                        defer {withExtendedLifetime(access) {}}
+                        try SpeakerEdits.apply(edit,to:meeting,roots:access.roots,scanner:scanner)
+                        return scanner.meeting(at:meeting.folder) ?? meeting
+                    }.value
+                }, committed: { updated in
+                    self.speakerRetry=nil
+                    if let detail=MeetingNavigation.shared.detail,detail.meeting.folder==meeting.folder,detail.fileURL==nil {detail.meeting=updated}
+                    self.meeting=updated
+                    LibraryStore.shared.refresh(affected:meeting.folder)
+                }, readOnly: { try await SavedVoicesController.shared.store.snapshot().readOnly }, voices: {
+                    switch edit {
+                    case .merge(let from,let into):
+                        try await SavedVoicesController.shared.store.unenroll(meeting:meeting.folder.lastPathComponent,speakers:[from,into])
+                    case .undoMerge:
+                        try await SavedVoicesController.shared.store.unenroll(meeting:meeting.folder.lastPathComponent,speakers:Set(meeting.mergedInto.keys).union(meeting.mergedInto.values))
+                    case .name(let id,_):
+                        if voiceUpdate == .forget {
+                            try await SavedVoicesController.shared.store.unenroll(meeting:meeting.folder.lastPathComponent,speakers:[id])
+                        } else if voiceUpdate == .enroll, let enrollment {
+                            try await SavedVoicesController.shared.enroll(enrollment,name:enrollmentName,into:voiceID)
+                        }
+                    }
+                    await SavedVoicesController.shared.refresh()
+                })
+                presentation=nil;self.meeting=nil;speakerID=nil
             } catch {if !closing {speakerChangeFailed=true}}
             working=false;task=nil;LibraryMoveCoordinator.shared.maybeRetryDeferred()
         }

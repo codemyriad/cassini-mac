@@ -40,6 +40,11 @@ import CassiniLibrary
     static func show(_ meeting: LibraryMeeting?, trash: MeetingTrashCoordinator, undo: UndoManager?) -> Bool {
         guard let view = anchor, view.window === NSApp.keyWindow else { return false }
         let menu = NSMenu(); menu.autoenablesItems = false
+        if let meeting {
+            let stars = LibraryStore.shared
+            let starItem = ActionItem(title:UXText.text(stars.isStarred(meeting) ? "meeting.unstar" : "meeting.star")) { stars.toggleStar(meeting) }
+            starItem.setAccessibilityIdentifier("library-keyboard-star"); menu.addItem(starItem)
+        }
         let renameItem = ActionItem(title:UXText.text("meeting.renameEllipsis")) { if let meeting { MeetingRenameCoordinator.shared.show(meeting) } }
         renameItem.isEnabled = meeting.map { MeetingRenameCoordinator.shared.canRename($0) } ?? false
         renameItem.setAccessibilityIdentifier("library-keyboard-rename"); menu.addItem(renameItem)

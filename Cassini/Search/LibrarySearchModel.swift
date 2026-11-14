@@ -10,6 +10,7 @@ import CassiniSearch
     var query = ""
     var speaker: String?
     var date = SearchDate.any
+    var starred = false
     var own = false
     var selectedID: String?
     private(set) var hits: [SearchHit] = []
@@ -37,18 +38,19 @@ import CassiniSearch
     }
     func open() {
         guard !LibraryMoveCoordinator.shared.busy else { return }
+        if !visible { starred = LibraryStore.shared.preferences.filter == .starred }
         MeetingNavigation.shared.back(); visible = true; focusRequest &+= 1
         MeetingNavigation.shared.openLibrary?(); update(LibraryStore.shared.meetings)
     }
     func close() {
-        task?.cancel(); generation &+= 1; visible = false; query = ""; speaker = nil; date = .any; own = false
+        task?.cancel(); generation &+= 1; visible = false; query = ""; speaker = nil; date = .any; own = false; starred = false
         selectedID = nil; hits = []; searching = false
     }
     func update(_ meetings: [LibraryMeeting]) { self.meetings = meetings; refresh() }
     func refresh() {
         task?.cancel(); generation &+= 1
         guard visible else { return }
-        let revision = generation, snapshot = meetings, query = query, filter = SearchFilter(speaker:speaker,date:date,own:own)
+        let revision = generation, snapshot = meetings, query = query, filter = SearchFilter(speaker:speaker,date:date,own:own,starredKeys:starred ? LibraryStore.shared.preferences.starredKeys : nil)
         let context = LibraryStore.shared.context, now = context.now ?? Date(), zone = context.timeZone
         if indexTask == nil {
             let cache = context.screenshot ? FileManager.default.temporaryDirectory.appendingPathComponent("CassiniSearchFixture-\(ProcessInfo.processInfo.processIdentifier)") :

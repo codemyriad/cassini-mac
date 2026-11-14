@@ -16,7 +16,7 @@ struct CassiniApp: App {
         #if DEBUG
         let suppressWindow = CommandLine.arguments.contains("--browser-return-self-test") || CommandLine.arguments.contains("--live-folder-self-test") || CommandLine.arguments.contains("--browser-background-self-test") || CommandLine.arguments.contains("--recording-saving-self-test") ||
             CommandLine.arguments.contains("--browser-capture-self-test") ||
-            CommandLine.arguments.contains("--models-network-self-test") || CommandLine.arguments.contains("--parakeet-self-test") ||
+            CommandLine.arguments.contains("--voices-self-test") || CommandLine.arguments.contains("--models-network-self-test") || CommandLine.arguments.contains("--parakeet-self-test") ||
             (RecordingFixture.enabled && CommandLine.arguments.contains("--fixture-windowless-launch"))
         #else
         let suppressWindow = false
@@ -73,7 +73,7 @@ extension UTType {
     static let oggAudio = UTType(importedAs: "org.xiph.ogg-audio")
     static let opusAudio = UTType(importedAs: "org.xiph.opus")
 
-    /// Decided audio UTIs from `contract/import-types.json` (`status == "decided"` only; excludes `flac`).
+    /// Decided audio UTIs from `contract/import-types.json` (`status == "decided"` only; includes native `flac`).
     static var decidedImportAudioContentTypes: [UTType] {
         ImportTypesContract.shared.decidedUTIIdentifiers.compactMap { identifier in
             switch identifier {

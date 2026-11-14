@@ -89,3 +89,47 @@ int32_t cassini_sherpa_count(const CassiniSherpaResult *r) { return r->value->co
 const char *cassini_sherpa_token(const CassiniSherpaResult *r, int32_t i) { return i >= 0 && i < r->value->count ? r->value->tokens_arr[i] : NULL; }
 float cassini_sherpa_timestamp(const CassiniSherpaResult *r, int32_t i) { return i >= 0 && i < r->value->count ? r->value->timestamps[i] : NAN; }
 float cassini_sherpa_duration(const CassiniSherpaResult *r, int32_t i) { return i >= 0 && i < r->value->count ? r->value->durations[i] : NAN; }
+
+// A separate, short-lived worker owns each biometric computation.
+int cassini_voice_embedding(const char *library, const char *ort, const char *model, const float *samples, int32_t count, float *output) {
+    const char *telemetry = getenv("ORT_DISABLE_TELEMETRY");
+    if (!telemetry || strcmp(telemetry,"1") || count < 64000 || count > 720000 || !samples || !output) return 0;
+    for (int i=0;i<count;i++) if (!isfinite(samples[i])) return 0;
+    void *o=dlopen(ort,RTLD_NOW|RTLD_LOCAL), *l=NULL;
+    if (!o) return 0;
+    l=dlopen(library,RTLD_NOW|RTLD_LOCAL);
+    int ok=0;
+    if (!l) goto done;
+#define VOICE_BIND(name, symbol) __typeof__(&symbol) name = (__typeof__(&symbol))dlsym(l,#symbol); if (!name) goto done
+    VOICE_BIND(create,SherpaOnnxCreateSpeakerEmbeddingExtractor);
+    VOICE_BIND(destroy,SherpaOnnxDestroySpeakerEmbeddingExtractor);
+    VOICE_BIND(dim,SherpaOnnxSpeakerEmbeddingExtractorDim);
+    VOICE_BIND(stream,SherpaOnnxSpeakerEmbeddingExtractorCreateStream);
+    VOICE_BIND(accept,SherpaOnnxOnlineStreamAcceptWaveform);
+    VOICE_BIND(finish,SherpaOnnxOnlineStreamInputFinished);
+    VOICE_BIND(ready,SherpaOnnxSpeakerEmbeddingExtractorIsReady);
+    VOICE_BIND(compute,SherpaOnnxSpeakerEmbeddingExtractorComputeEmbedding);
+    VOICE_BIND(free_embedding,SherpaOnnxSpeakerEmbeddingExtractorDestroyEmbedding);
+    VOICE_BIND(free_stream,SherpaOnnxDestroyOnlineStream);
+#undef VOICE_BIND
+    SherpaOnnxSpeakerEmbeddingExtractorConfig config={0};
+    config.model=model; config.num_threads=2; config.provider="cpu";
+    const SherpaOnnxSpeakerEmbeddingExtractor *e=create(&config);
+    if (!e) goto done;
+    if (dim(e)==512) {
+        const SherpaOnnxOnlineStream *s=stream(e);
+        if (s) {
+            accept(s,16000,samples,count); finish(s);
+            if (ready(e,s)) {
+                const float *v=compute(e,s);
+                if (v) { memcpy(output,v,512*sizeof(float)); free_embedding(v); ok=1; }
+            }
+            free_stream(s);
+        }
+    }
+    destroy(e);
+done:
+    if (l) dlclose(l);
+    dlclose(o);
+    return ok;
+}

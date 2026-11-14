@@ -458,7 +458,7 @@ public enum LibraryImport {
         let stagedFolder = stageDir.appendingPathComponent(folderName)
         try FileManager.default.createDirectory(at:stagedFolder,withIntermediateDirectories:false,attributes:[.posixPermissions:0o700])
 
-        let isDecoded = (bareExt == "mp3" || bareExt == "m4a" || bareExt == "wav")
+        let isDecoded = DecodedAudioImport.requiresTranscode(typeID: bareExt)
         let rawCopyTarget = isDecoded
             ? stageDir.appendingPathComponent("source." + bareExt)
             : stagedFolder.appendingPathComponent("original.opus")

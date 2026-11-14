@@ -28,7 +28,7 @@ struct AppCommands: Commands {
         }
         CommandGroup(after: .appSettings) {
             Button(UXText.text("savedVoices.menuItem")) {
-                SettingsNavigation.shared.openSavedVoices()
+                SavedVoicesController.shared.open()
             }
             .disabled(speakerDialog)
         }

@@ -38,6 +38,16 @@ struct MeetingTimeSearchTests {
         #expect(format.absoluteDate(time) == expectedDate)
         #expect(format.absoluteDateLine(time,durationMs:nil) == expectedDate + ", " + clock)
     }
+    @Test func civilYearLabelUsesViewerYearWithoutInventingAnInstant() throws {
+        let repository = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        var meeting = try #require(CassiniReader.read(contentsOf:repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/028-date-is-created-at.opus")).manifest?.meeting)
+        meeting.recordedAtLocal = "2026-01-01T00:00:00"
+        let time = try #require(MeetingTime.resolve(meeting:meeting,dateTag:meeting.createdAtUtc))
+        let now = try #require(MeetingTime.parseInstant("2025-12-31T23:30:00Z"))
+        #expect(time.instant == nil)
+        #expect(SearchDate.year.contains(meetingTime:time,now:now,timeZone:try #require(TimeZone(identifier:"Europe/Rome"))))
+        #expect(!SearchDate.year.contains(meetingTime:time,now:now,timeZone:try #require(TimeZone(identifier:"America/New_York"))))
+    }
     @Test func civilLabelKeepsItsClockAndViewerCalendarDay() throws {
         let repository = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         var meeting = try #require(CassiniReader.read(contentsOf:repository.appendingPathComponent("Tests/CassiniKitTests/Conformance/opus/028-date-is-created-at.opus")).manifest?.meeting)

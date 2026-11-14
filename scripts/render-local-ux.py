@@ -16,7 +16,7 @@ import uuid
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('app',type=Path)
-parser.add_argument('board',choices=['first-run','meeting','recording','received','export','search','settings-recording','settings-transcription','settings-library','settings-browser'])
+parser.add_argument('board',choices=['first-run','meeting','recording','received','export','search','settings-recording','settings-transcription','settings-voices','settings-library','settings-browser'])
 parser.add_argument('--output',type=Path,required=True)
 parser.add_argument('--listening',choices=['playing','finished'])
 parser.add_argument('--speaker')
