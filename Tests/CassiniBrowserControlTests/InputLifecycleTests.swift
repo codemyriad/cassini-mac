@@ -47,7 +47,57 @@ import CassiniKit
     }
     func stop() { stops += 1; sink = nil; onStop?() }
 }
+private func waitForStatusGate(_ gate: DispatchSemaphore) -> Bool { gate.wait(timeout:.now()+5) == .success }
+
 final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
+    @MainActor func testAvailableStatusRetainsBusySideAndDropsDeselectedSide() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("Busy-status-"+UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let owner = try OwnedBrowserCapture(parent:root,title:"Busy status",microphone:true,browser:false)
+        let origin = mach_absolute_time()
+        let mic = GeneratedInput("microphone",origin:origin), system = GeneratedInput("system",origin:origin)
+        let inputs = CaptureInputLifecycle(capture:owner,originHostTime:origin,microphone:{ mic },system:{ system },failure:{ _ in })
+        try await inputs.start()
+        let sink = try XCTUnwrap(mic.sink)
+        func emit(_ peak: Float, at seconds: Double) {
+            let format = AVAudioFormat(standardFormatWithSampleRate:8000,channels:1)!
+            let pcm = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:800)!
+            pcm.frameLength = 800
+            for index in 0..<800 { pcm.floatChannelData![0][index] = index.isMultiple(of:2) ? peak : -peak }
+            sink.receive(pcm,hostTime:origin+AVAudioTime.hostTime(forSeconds:seconds),id:"microphone",label:"Mic",kind:"microphone")
+        }
+        emit(0.6,at:0.1)
+        let previous = CaptureInputLifecycle.displayedLevels(status:inputs.availableStatus(),previous:[:])
+        XCTAssertEqual(previous[.me],0.6)
+        let entered = DispatchSemaphore(value:0), release = DispatchSemaphore(value:0)
+        sink.beforeConversionForTesting = { entered.signal(); release.wait() }
+        let producer = Task.detached {
+            let format = AVAudioFormat(standardFormatWithSampleRate:8000,channels:1)!
+            let pcm = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:800)!
+            pcm.frameLength = 800
+            for index in 0..<800 { pcm.floatChannelData![0][index] = index.isMultiple(of:2) ? 0.1 : -0.1 }
+            sink.receive(pcm,hostTime:origin+AVAudioTime.hostTime(forSeconds:0.2),id:"microphone",label:"Mic",kind:"microphone")
+        }
+        defer { release.signal() }
+        let reached = await Task.detached { waitForStatusGate(entered) }.value
+        XCTAssertTrue(reached)
+        let busy = inputs.availableStatus()
+        XCTAssertTrue(busy.keys.contains(.me))
+        XCTAssertNil(try XCTUnwrap(busy[.me]))
+        XCTAssertNotNil(try XCTUnwrap(busy[.others]))
+        XCTAssertEqual(CaptureInputLifecycle.displayedLevels(status:busy,previous:previous)[.me],0.6)
+        release.signal()
+        await producer.value
+        let fresh = inputs.availableStatus()
+        XCTAssertEqual(try XCTUnwrap(fresh[.me])?.levels["microphone"],0.1)
+        try await inputs.select(me:false,others:true)
+        let deselected = inputs.availableStatus()
+        XCTAssertFalse(deselected.keys.contains(.me))
+        XCTAssertNil(CaptureInputLifecycle.displayedLevels(status:deselected,previous:previous)[.me])
+        try await inputs.stop()
+        try await owner.finish()
+    }
+
     @MainActor func testSelectionKeepsSubmillisecondRecordingTimeInsteadOfTheDisplayCounter() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("Selection-clock-"+UUID().uuidString)
         defer { try? FileManager.default.removeItem(at:root) }
