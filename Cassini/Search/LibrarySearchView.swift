@@ -50,7 +50,7 @@ struct LibrarySearchView: View {
                         .modifier(SearchChip(active:model.own)).accessibilityAddTraits(model.own ? .isSelected : [])
                         .accessibilityIdentifier("search-own")
                 }.padding(.horizontal,10).padding(.bottom,10)
-            }
+            }.frame(height:38)
             Text(model.count).font(.system(size:12,weight:.semibold)).foregroundStyle(CassiniTheme.ink2)
                 .padding(.horizontal,18).padding(.bottom,6).accessibilityIdentifier("search-count")
         }.frame(maxWidth:.infinity,alignment:.leading)

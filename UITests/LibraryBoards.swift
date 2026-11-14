@@ -23,7 +23,7 @@ final class LibraryBoards: XCTestCase {
         window = relaunched.windows["cassini-library-window"]
         let starredChoice = window.segmentedControls["library-filters"].buttons["Starred"]
         XCTAssertTrue(starredChoice.waitForExistence(timeout:20),relaunched.debugDescription)
-        XCTAssertEqual(starredChoice.value as? String,"1")
+        XCTAssertTrue(starredChoice.isSelected || String(describing:starredChoice.value ?? "") == "1",starredChoice.debugDescription)
         window.searchFields["library-search-field"].click()
         let starred = window.buttons["search-starred"]
         XCTAssertTrue(starred.waitForExistence(timeout:5),relaunched.debugDescription)
