@@ -23,6 +23,7 @@ parser.add_argument('--speaker')
 parser.add_argument('--speaker-editor',action='store_true',help='Render the read-only Name a speaker fixture')
 parser.add_argument('--transcribing',action='store_true',help='Render the L-45 status instead of completed reading')
 parser.add_argument('--scheme',choices=['light','dark'],default=os.environ.get('CASSINI_SCREENSHOT_SCHEME') or 'light')
+parser.add_argument('--language',choices=['en-GB','it','fr','es','pt-BR','pt-PT'],default='en-GB')
 parser.add_argument('--accent',default=os.environ.get('CASSINI_SCREENSHOT_ACCENT') or '')
 args = parser.parse_args()
 assert not args.listening or args.board == 'meeting', 'Listening preview requires the meeting fixture'
@@ -39,7 +40,8 @@ with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
     command = ['open','-W','-n','-a',str(app),'--stdout',str(output),'--stderr',str(stderr),
                '--env','CASSINI_LOCAL_WORKFLOW_TESTS=1','--env','CASSINI_HOSTED_SCREENSHOTS=1','--args',
                '-CassiniScreenshot',args.board,'-CassiniRenderID',render_id,'-CassiniFixture',str(fixture),'-CassiniNow','2026-10-27T13:18:00Z',
-               '-ApplePersistenceIgnoreState','YES','-AppleLanguages','(en-GB)','-AppleLocale','en_GB',
+               '-ApplePersistenceIgnoreState','YES','-AppleLanguages',f'({args.language})','-AppleLocale',
+               {'en-GB':'en_GB','it':'it_IT','fr':'fr_FR','es':'es_ES','pt-BR':'pt_BR','pt-PT':'pt_PT'}[args.language],
                '-AppleInterfaceStyle','Dark' if args.scheme == 'dark' else 'Light']
     if args.accent: command += ['-AppleAccentColor',args.accent]
     if args.scheme == 'dark': command += ['-CassiniScreenshotScheme','dark']

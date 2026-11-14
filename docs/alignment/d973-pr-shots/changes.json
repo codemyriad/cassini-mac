@@ -2,10 +2,46 @@
   "version": 1,
   "app": "mac",
   "repo": "codemyriad/cassini-mac",
-  "pr": 309,
+  "pr": 310,
   "git_images": false,
   "no_baseline": false,
   "rows": [
+    {
+      "screen": "first-run",
+      "label": "First run",
+      "scheme": "dark",
+      "lang": "en",
+      "device": "desktop",
+      "status": "changed",
+      "changed_pct": 9.804067,
+      "bbox": [
+        80,
+        7,
+        1002,
+        704
+      ],
+      "before": "before/first-run.dark.png",
+      "after": "after/first-run.dark.png",
+      "diff": "diff/first-run.dark.png"
+    },
+    {
+      "screen": "first-run",
+      "label": "First run",
+      "scheme": "light",
+      "lang": "en",
+      "device": "desktop",
+      "status": "changed",
+      "changed_pct": 9.700273,
+      "bbox": [
+        80,
+        7,
+        1002,
+        704
+      ],
+      "before": "before/first-run.light.png",
+      "after": "after/first-run.light.png",
+      "diff": "diff/first-run.light.png"
+    },
     {
       "screen": "settings-browser",
       "label": "Settings browser",
@@ -86,12 +122,12 @@
     "sha": "fd18c36c8f7dd9e44446ebf257e71bf307b9e11e",
     "run_id": "local",
     "runner": "unknown",
-    "image": "unknown"
+    "image": "frozen-app-view"
   },
   "head": {
-    "sha": "973a66c0f05df844bc97a180b446301f72129a2c",
+    "sha": "caedf9c53ffe23e269436105c69a79f510b48ecb",
     "run_id": "local",
     "runner": "unknown",
-    "image": "unknown"
+    "image": "frozen-app-view"
   }
 }

@@ -266,6 +266,7 @@
 		0CFDFBED5CFF6924BDF895A8 /* ExportSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportSelfTest.swift; sourceTree = "<group>"; };
 		0D7A75EA903A55281DA87E2F /* LibraryKeyboardMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryKeyboardMenu.swift; sourceTree = "<group>"; };
 		0E31D8C73A37ABF71375ADEB /* SettingsSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSelfTest.swift; sourceTree = "<group>"; };
+		11EEDDB56BC0B743595091C9 /* cassini-mac-d-1028 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac-d-1028"; path = .; sourceTree = SOURCE_ROOT; };
 		127092BBB0CAF57C83F84D65 /* CaptureDiskWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureDiskWatch.swift; sourceTree = "<group>"; };
 		12F78C037DFC84998CC4C0EA /* CassiniWindowScreenshots.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CassiniWindowScreenshots.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1306467A5EEEC9D698F5B4E9 /* Service.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Service.swift; sourceTree = "<group>"; };
@@ -336,7 +337,6 @@
 		8BF3BCB920D3A33FC3C3A9DC /* BrowserBackgroundSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserBackgroundSelfTest.swift; sourceTree = "<group>"; };
 		8C306DD8AAAA314655363059 /* SpeechModelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechModelController.swift; sourceTree = "<group>"; };
 		8DEEE9B7ECB69C54C0B2D9DB /* MeetingTranscriptText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingTranscriptText.swift; sourceTree = "<group>"; };
-		601E7D3164B2FF9446235263 /* agy-mac-d96 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "agy-mac-d96"; path = .; sourceTree = SOURCE_ROOT; };
 		939FFE6582BA0ADDF5FEFBFE /* CassiniTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CassiniTheme.swift; sourceTree = "<group>"; };
 		94C9C1C73010D4F2A7AEF6D4 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		951931138AC4567A0258C588 /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = it.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -879,7 +879,7 @@
 		F04E817D85F11D039AFB3A19 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				A45990EC4525753CFF61D0D6 /* cassini-mac-d-1011 */,
+				11EEDDB56BC0B743595091C9 /* cassini-mac-d-1028 */,
 			);
 			name = Packages;
 			sourceTree = "<group>";

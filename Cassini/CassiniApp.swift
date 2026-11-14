@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import CassiniKit
+import CassiniLibrary
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -64,11 +65,23 @@ private struct CassiniStatusLabel: View {
 extension UTType {
     /// Ogg audio, which is what the system calls an `.opus` file.
     static let oggAudio = UTType(importedAs: "org.xiph.ogg-audio")
+    static let opusAudio = UTType(importedAs: "org.xiph.opus")
+
+    /// Decided audio UTIs from `contract/import-types.json` (`status == "decided"` only; excludes `flac`).
+    static var decidedImportAudioContentTypes: [UTType] {
+        ImportTypesContract.shared.decidedUTIIdentifiers.compactMap { identifier in
+            switch identifier {
+            case "org.xiph.opus": return .opusAudio
+            case "org.xiph.ogg-audio": return .oggAudio
+            default: return UTType(identifier)
+            }
+        }
+    }
 }
 
 /// A read-only document: the bytes, and what the Cassini reader made of them.
 struct CassiniDocument: FileDocument {
-    static let readableContentTypes: [UTType] = [.oggAudio]
+    static let readableContentTypes: [UTType] = UTType.decidedImportAudioContentTypes
 
     let data: Data
     let file: CassiniFile?

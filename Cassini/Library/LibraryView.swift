@@ -145,9 +145,6 @@ struct LibraryView: View {
                     }) { }
                 }
             }
-            if showsFirstRun && !search.visible {
-                ToolbarItem(placement: .principal) { toolbarTitle }
-            }
             }
         }
         .cassiniUnifiedToolbarChrome()
@@ -441,6 +438,15 @@ struct LibraryView: View {
                         .foregroundStyle(CassiniTheme.ink)
                         .lineLimit(1)
                     Spacer(minLength: 2)
+                    if isFailed {
+                        Button(UXText.text("common.done")) {
+                            importer.dismissTransientItem(item.id)
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(CassiniTheme.accentInk)
+                        .accessibilityIdentifier("dismiss-failed-import-" + item.fileName)
+                    }
                 }
                 HStack(spacing: 6) {
                     Text(store.format.rowTime(item.startedAt))
@@ -450,7 +456,7 @@ struct LibraryView: View {
                     if let presentation {
                         catalogStatusBadge(presentation, onAccent: false)
                     }
-                    Text(item.fileName)
+                    Text(failureDetail ?? item.fileName)
                         .foregroundStyle(CassiniTheme.ink2)
                         .lineLimit(1)
                 }
@@ -466,7 +472,7 @@ struct LibraryView: View {
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
         .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
-        .accessibilityIdentifier("importing-" + item.fileName)
+        .accessibilityIdentifier((isFailed ? "failed-import-" : "importing-") + item.fileName)
     }
     private var toolbarControl: some View {
         HStack(spacing: 4) {
@@ -576,30 +582,48 @@ struct LibraryView: View {
             .help(UXText.text("common.autoTag.tooltip"))
     }
     private var firstRun: some View {
-        VStack(spacing: 0) {
-            Spacer()
-            VStack(spacing: 22) {
-                Image(systemName: "mic").font(.system(size: 36, weight: .light)).foregroundStyle(CassiniTheme.ink2)
-                    .frame(width: 96, height: 96).background(CassiniTheme.chipFill, in: Circle()).accessibilityHidden(true)
-                VStack(spacing: 8) {
-                    Text(UXText.text("firstRun.title")).font(.system(size: 22, weight: .bold)).fixedSize(horizontal: true, vertical: false)
-                    Text(UXText.text("firstRun.body")).foregroundStyle(CassiniTheme.ink2).lineSpacing(4).multilineTextAlignment(.center).frame(maxWidth: 460)
-                }
-                if let line = RecordingOverview.libraryDiskLine { Text(line).foregroundStyle(CassiniTheme.warningNotice) }
-                recordButton(big: true)
-                Text(UXText.text("firstRun.shortcutHint", ["shortcut": UXText.text("common.shortcut.record")])).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.ink2)
-            }
-            Spacer()
-            HStack(spacing: 8) {
-                Image(systemName: "lock").accessibilityHidden(true)
-                if LibraryLocationModel.shared.location.primaryPath == LibraryLocation.standardRoot.path || store.context.screenshot {
-                    Text(UXText.text("firstRun.footer"))
-                } else {
-                    Text(UXText.text("settings.library.folder.title") + ": " + LibraryLocationModel.shared.displayPath)
-                }
-            }.font(.system(size: 11.5)).foregroundStyle(CassiniTheme.ink2).padding(16)
-        }.frame(maxWidth: .infinity, maxHeight: .infinity).background(CassiniTheme.paneGround)
-            .overlay { LibraryDropListOverlay(state: dropState) }
+        GeometryReader { geometry in
+            let compact = geometry.size.height < FirstRunHeroMetrics.compactHeight
+            ScrollView {
+                VStack(alignment:.leading,spacing:compact ? FirstRunHeroMetrics.compactGap : FirstRunHeroMetrics.gap) {
+                    CassiniBrandMark(height:compact ? FirstRunHeroMetrics.compactMark : FirstRunHeroMetrics.mark)
+                    VStack(alignment:.leading,spacing:0) {
+                        Text(UXText.text("firstRun.hero.title"))
+                            .foregroundStyle(CassiniTheme.ink).accessibilityIdentifier("first-run-hero-title")
+                        Text(UXText.text("firstRun.hero.subtitle"))
+                            .foregroundStyle(CassiniTheme.ink3).accessibilityIdentifier("first-run-hero-subtitle")
+                    }.font(.system(size:FirstRunHeroMetrics.headline,weight:.bold))
+                        .lineLimit(1).minimumScaleFactor(0.45)
+                        .frame(maxWidth:.infinity,alignment:.leading).accessibilityAddTraits(.isHeader)
+                    if let line = RecordingOverview.libraryDiskLine {
+                        Text(line).foregroundStyle(CassiniTheme.warningNotice)
+                    }
+                    HStack(spacing:FirstRunHeroMetrics.gap) {
+                        recordButton(big:true).fixedSize()
+                        FirstRunWave().frame(height:compact ? FirstRunHeroMetrics.compactMark : FirstRunHeroMetrics.mark)
+                    }
+                    VStack(alignment:.leading,spacing:10) {
+                        Text(UXText.text("firstRun.body")).font(.system(size:13)).lineSpacing(4)
+                            .fixedSize(horizontal:false,vertical:true)
+                        Text(UXText.text("firstRun.shortcutHint",["shortcut":UXText.text("common.shortcut.record")]))
+                            .font(.system(size:11.5))
+                        HStack(alignment:.top,spacing:8) {
+                            Image(systemName:"lock").accessibilityHidden(true)
+                            if LibraryLocationModel.shared.location.primaryPath == LibraryLocation.standardRoot.path || store.context.screenshot {
+                                Text(UXText.text("firstRun.footer"))
+                            } else {
+                                Text(UXText.text("settings.library.folder.title") + ": " + LibraryLocationModel.shared.displayPath)
+                            }
+                        }.font(.system(size:11.5)).fixedSize(horizontal:false,vertical:true)
+                    }.foregroundStyle(CassiniTheme.ink2)
+                }.padding(.horizontal,FirstRunHeroMetrics.horizontalPadding)
+                    .padding(.vertical,compact ? FirstRunHeroMetrics.compactPadding : FirstRunHeroMetrics.padding)
+                    .frame(maxWidth:FirstRunHeroMetrics.maxWidth + 2 * FirstRunHeroMetrics.horizontalPadding,alignment:.leading)
+                    .frame(maxWidth:.infinity,minHeight:geometry.size.height,alignment:.center)
+            }.accessibilityElement(children:.contain).accessibilityLabel(UXText.text("library.title"))
+                .accessibilityAddTraits(.isHeader).accessibilityIdentifier("first-run-library")
+        }.background(CassiniTheme.paneGround)
+            .overlay { LibraryDropListOverlay(state:dropState) }
     }
     @ViewBuilder private func recordButton(big: Bool) -> some View {
         let saving = big && RecordingOverview.saving
@@ -875,5 +899,41 @@ struct UpdateReadyFooter: View {
                 .frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,18).padding(.vertical,8)
                 .accessibilityIdentifier("library-update-ready")
         }
+    }
+}
+
+// L-27: desktop headline size is decided; the adaptable geometry stays here.
+private enum FirstRunHeroMetrics {
+    static let headline: CGFloat = 64
+    static let maxWidth: CGFloat = 960
+    static let horizontalPadding: CGFloat = 48
+    static let gap: CGFloat = 24
+    static let compactGap: CGFloat = 16
+    static let mark: CGFloat = 64
+    static let compactMark: CGFloat = 48
+    static let padding: CGFloat = 32
+    static let compactPadding: CGFloat = 24
+    static let compactHeight: CGFloat = 600
+}
+
+/// Decorative and static: no microphone input, timer or motion to announce.
+private struct FirstRunWave: View {
+    private static let barWidth: CGFloat = 4
+    private static let pitch: CGFloat = 8
+    private static let maxBars = 96
+    private static let fadeBars = 10
+    private static let levels: [CGFloat] = [12,20,28,44,60,36,24,16,32,52,40,20,12,28,48,64,44,24,16]
+    var body: some View {
+        Canvas { context,size in
+            let count = max(1,min(Self.maxBars,Int(size.width / Self.pitch)))
+            let width = CGFloat(count - 1) * Self.pitch + Self.barWidth
+            let start = (size.width - width) / 2
+            for index in 0..<count {
+                let height = min(size.height,Self.levels[index % Self.levels.count])
+                let fade = min(1,Double(min(index,count - 1 - index)) / Double(Self.fadeBars))
+                let bar = CGRect(x:start + CGFloat(index) * Self.pitch,y:(size.height - height) / 2,width:Self.barWidth,height:height)
+                context.fill(Path(bar),with:.color(CassiniTokens.accent.opacity(fade)))
+            }
+        }.accessibilityHidden(true).allowsHitTesting(false)
     }
 }
