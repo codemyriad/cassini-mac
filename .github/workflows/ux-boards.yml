@@ -57,6 +57,7 @@ jobs:
         set -o pipefail
         xcodebuild test-without-building -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" \
           -destination 'platform=macOS' -parallel-testing-enabled NO \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testCompanionHealthUsesExplicitTabAdviceAndFileCheckedSetup \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSpeakerNamesClearMergeUndoAndReopen \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSpeakerDialogActionsAtMinimumWindowHeight \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingTitleAndHiddenControls \
