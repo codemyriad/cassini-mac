@@ -33,6 +33,26 @@ public enum MeetingFileExporter {
               FileManager.default.createFile(atPath:artifact.url.path,contents:data,attributes:[.posixPermissions:0o600]) else { throw MeetingExportError.tooLarge }
         return artifact
     }
+    public static func text(_ meeting: LibraryMeeting, kind: MeetingExportKind,
+                            temporaryRoot: URL = FileManager.default.temporaryDirectory) throws -> ExportArtifact {
+        let data = Data(try MeetingTextExport.render(meeting, kind: kind).utf8)
+        guard data.count <= 64 * 1024 * 1024 else { throw MeetingExportError.tooLarge }
+        let artifact = try stage(in: temporaryRoot, filename: "meeting." + kind.suffix(for: meeting))
+        try data.write(to: artifact.url, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: artifact.url.path)
+        return artifact
+    }
+    public static func originalAudio(_ meeting: LibraryMeeting,
+                                     temporaryRoot: URL = FileManager.default.temporaryDirectory) throws -> ExportArtifact {
+        guard meeting.state.lifecycle == .saved, meeting.state.origin == .received,
+              !meeting.hasCassiniFile, meeting.state.transcript != .done,
+              meeting.audioFiles.count == 1, let source = meeting.audioFiles.first else { throw MeetingExportError.invalidSource }
+        try regular(source)
+        let artifact = try stage(in: temporaryRoot, filename: "meeting." + source.pathExtension)
+        try FileManager.default.copyItem(at: source, to: artifact.url)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: artifact.url.path)
+        return artifact
+    }
     /// `timeZone`: the Library device's zone for legacy namePrefix selection.
     /// A site-local label requires the offset actually recorded at capture start.
     public static func cassini(_ meeting: LibraryMeeting, assets: OpusAssets?,

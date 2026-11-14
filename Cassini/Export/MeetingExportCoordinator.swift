@@ -6,7 +6,6 @@ import CassiniExport
 import UniformTypeIdentifiers
 import Observation
 
-enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { self == .cassini ? "opus" : "md" } }
 @MainActor @Observable final class MeetingExportCoordinator {
     static let shared = MeetingExportCoordinator()
     var showing = false
@@ -57,11 +56,11 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
     var isBusy: Bool { task != nil || presentationTask != nil || savePanel != nil }
     static func canExport(_ meeting: LibraryMeeting?) -> Bool {
         guard !LibraryMoveCoordinator.shared.busy, let meeting, meeting.state.lifecycle == .saved else { return false }
-        return !meeting.audioFiles.isEmpty || !meeting.transcriptItems.isEmpty || !meeting.notes.isEmpty
+        return !meeting.audioFiles.isEmpty || meeting.state.transcript == .done
     }
     func show(_ meeting: LibraryMeeting) {
         guard !closing, !isBusy, Self.canExport(meeting) else { return }
-        self.meeting = meeting; kind = meeting.audioFiles.isEmpty ? .markdown : .cassini
+        self.meeting = meeting; kind = meeting.audioFiles.isEmpty && meeting.state.transcript == .done ? .markdown : MeetingExportKind.primary(for: meeting)[0]
         selectedFile = nil; receipt = nil; failure = nil
         estimatedBytes = nil; showing = true; estimateTask?.cancel()
         estimateTask = Task {
@@ -123,8 +122,8 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
             }
             guard !closing, !Task.isCancelled else { return }
             let panel = NSSavePanel(); panel.directoryURL = directory
-            panel.nameFieldStringValue = MeetingMarkdown.filename(title:meeting.title ?? UXText.text("library.untitled"),extension:kind.suffix)
-            panel.allowedContentTypes = [kind == .cassini ? .oggAudio : (UTType(filenameExtension:"md") ?? .plainText)]
+            panel.nameFieldStringValue = MeetingMarkdown.filename(title:meeting.title ?? UXText.text("library.untitled"),extension:kind.suffix(for: meeting))
+            panel.allowedContentTypes = [UTType(filenameExtension: kind.suffix(for: meeting)) ?? .data]
             panel.canCreateDirectories = true; savePanel = panel
             let complete: (NSApplication.ModalResponse) -> Void = { [self] response in MainActor.assumeIsolated {
                 self.savePanel = nil
@@ -161,8 +160,11 @@ enum MeetingExportKind: Sendable { case cassini, markdown; var suffix: String { 
                     defer { withExtendedLifetime(file) {} }
                     try Task.checkCancellation()
                     let artifact: ExportArtifact
-                    if kind == .markdown { artifact = try MeetingFileExporter.markdown(meeting,timeZone:.current) }
-                    else {
+                    switch kind {
+                    case .markdown: artifact = try MeetingFileExporter.markdown(meeting,timeZone:.current)
+                    case .plainText, .srt, .vtt: artifact = try MeetingFileExporter.text(meeting, kind: kind)
+                    case .originalAudio: artifact = try MeetingFileExporter.originalAudio(meeting)
+                    case .cassini:
                         let assets = meeting.state.origin == .own ? try OpusAssets.bundled(app:Bundle.main.bundleURL) : nil
                         artifact = try MeetingFileExporter.cassini(meeting,assets:assets,shouldCancel:{ Task.isCancelled })
                     }
