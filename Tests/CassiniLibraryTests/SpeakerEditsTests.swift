@@ -7,7 +7,7 @@ import CassiniRecording
 @testable import CassiniLibrary
 
 struct SpeakerEditsTests {
-    private func fixture() throws -> (URL,LibraryMeeting) {
+    func fixture() throws -> (URL,LibraryMeeting) {
         let root=FileManager.default.temporaryDirectory.appendingPathComponent("SpeakerEdits-"+UUID().uuidString)
         let session=try RecordingSession(parent:root,title:"Call",source:"macos")
         try session.addTrack(id:"mic",label:"Mic",kind:"microphone",sampleRate:16000,channels:1)

@@ -19,7 +19,7 @@ final class ModelDownloadClient: NSObject, CassiniModelDownloadProgress, @unchec
         connection.invalidationHandler = { [weak self] in self?.finish(.failure(ModelDownloadError.response)) }
         connection.interruptionHandler = { [weak self] in self?.finish(.failure(ModelDownloadError.response)) }
     }
-    func install(appData: URL) async throws -> URL {
+    func install(appData: URL, voices: Bool = false) async throws -> URL {
         try await withTaskCancellationHandler {
             let scope = try await Task.detached(priority:.utility) {
                 try FileManager.default.createDirectory(at:appData,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
@@ -39,15 +39,17 @@ final class ModelDownloadClient: NSObject, CassiniModelDownloadProgress, @unchec
                     guard let proxy = connection.remoteObjectProxyWithErrorHandler({ [weak self] error in self?.finish(.failure(error)) }) as? CassiniModelDownloadService else {
                         finish(.failure(ModelDownloadError.response)); return
                     }
-                    proxy.install(destinationBookmark:scope.1,expectedDirectory:scope.0.path) { [weak self] path,error in
+                    let reply: @Sendable (String?,NSError?) -> Void = { [weak self] path,error in
                         if let error { self?.finish(.failure(Self.decode(error))); return }
-                        let pin = ModelPin.parakeetUltra
+                        let pin: ModelPin = voices ? .savedVoices : .parakeetUltra
                         let expected = scope.0.appendingPathComponent("models/" + pin.id + "/" + pin.sourceSHA256)
                         guard let path, URL(fileURLWithPath:path).standardizedFileURL.path == expected.path else {
                             self?.finish(.failure(ModelDownloadError.installation)); return
                         }
                         self?.finish(.success(expected))
                     }
+                    if voices { proxy.installVoices(destinationBookmark:scope.1,expectedDirectory:scope.0.path,reply:reply) }
+                    else { proxy.install(destinationBookmark:scope.1,expectedDirectory:scope.0.path,reply:reply) }
                 }
             }
         } onCancel: { self.cancel() }

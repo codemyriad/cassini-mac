@@ -100,6 +100,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--settings-resume-moves-self-test") {
             Task { @MainActor in await SettingsSelfTest.resume() }; return
         }
+        if CommandLine.arguments.contains("--voices-self-test") {
+            Task { await SavedVoicesSelfTest.run() }; return
+        }
         if CommandLine.arguments.contains("--settings-self-test") {
             Task { @MainActor in await SettingsSelfTest.run() }; return
         }

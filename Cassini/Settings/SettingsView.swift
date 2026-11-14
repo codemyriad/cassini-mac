@@ -14,6 +14,7 @@ enum SettingsTab: String, CaseIterable { case recording, transcription, library,
     static let shared = SettingsNavigation()
     var tab = SettingsTab.recording
     var capturingShortcut = false
+    var savedVoices = false
     @ObservationIgnored var open: (() -> Void)? = { ApplicationWindows.preferences(); NSApp.activate(ignoringOtherApps:true) }
 }
 struct CassiniSettingsView: View {
@@ -22,7 +23,9 @@ struct CassiniSettingsView: View {
     var body: some View {
         TabView(selection:$navigation.tab) {
             SettingsRecordingView().tabItem { Label(SettingsTab.recording.title,systemImage:SettingsTab.recording.icon) }.tag(SettingsTab.recording)
-            SettingsTranscriptionView().tabItem { Label(SettingsTab.transcription.title,systemImage:SettingsTab.transcription.icon) }.tag(SettingsTab.transcription)
+            NavigationStack {
+                SettingsTranscriptionView().navigationDestination(isPresented:$navigation.savedVoices) { SavedVoicesView() }
+            }.tabItem { Label(SettingsTab.transcription.title,systemImage:SettingsTab.transcription.icon) }.tag(SettingsTab.transcription)
             SettingsLibraryView().tabItem { Label(SettingsTab.library.title,systemImage:SettingsTab.library.icon) }.tag(SettingsTab.library)
             SettingsBrowserView().tabItem { Label(SettingsTab.browser.title,systemImage:SettingsTab.browser.icon) }.tag(SettingsTab.browser)
         }.frame(width:700,height:500)
@@ -239,6 +242,7 @@ private struct SettingsTranscriptionView: View {
                 }
             }.accessibilityElement(children:.contain).accessibilityLabel(UXText.text("settings.transcription.speech.a11y"))
                 .accessibilityIdentifier(models.recommendationReady ? "settings-speech-models-ready" : "settings-speech-models-loading")
+            SavedVoicesSettingsRow()
             VStack(alignment:.leading,spacing:12) {
                 Text(UXText.text("settings.transcription.network.heading")).fontWeight(.bold)
                 HStack(alignment:.top,spacing:10) {
