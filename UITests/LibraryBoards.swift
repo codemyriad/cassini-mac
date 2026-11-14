@@ -434,11 +434,12 @@ final class LibraryBoards: XCTestCase {
         app.typeKey(.escape,modifierFlags:[])
         XCTAssertTrue(window.buttons["first-run-record"].exists)
         XCTAssertFalse(app.buttons["recording-stop"].exists,"Reading consent captions must never start a capture")
-        XCTAssertTrue(app.menuBars.menuBarItems["Help"].exists)
-        app.menuBars.menuBarItems["Help"].click()
-        XCTAssertFalse(app.menuItems["Cassini Help"].exists)
-        XCTAssertTrue(app.menuItems["Cassini talk Help"].exists)
-        app.menuItems["Cassini talk Help"].click()
+        let helpMenu = app.menuBars.menuBarItems["Help"]
+        XCTAssertTrue(helpMenu.exists)
+        helpMenu.click()
+        XCTAssertFalse(helpMenu.menus.menuItems["Cassini Help"].exists)
+        XCTAssertTrue(helpMenu.menus.menuItems["Cassini talk Help"].exists)
+        helpMenu.menus.menuItems["Cassini talk Help"].click()
         let helpWindow = app.windows["cassini-help-window"]
         XCTAssertTrue(helpWindow.waitForExistence(timeout:10),app.debugDescription)
         for topic in ["help-topic-record","help-topic-library","help-topic-trash","help-topic-voices"] {
@@ -448,8 +449,8 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(helpWindow.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@",trashBody,trashBody)).firstMatch.waitForExistence(timeout:5))
         XCTAssertEqual(helpWindow.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS[c] %@ OR value CONTAINS[c] %@","30 days","30 days")).count,0)
         // Opening Help again reuses the single scene.
-        app.menuBars.menuBarItems["Help"].click()
-        app.menuItems["Cassini talk Help"].click()
+        helpMenu.click()
+        helpMenu.menus.menuItems["Cassini talk Help"].click()
         XCTAssertEqual(app.windows.matching(identifier:"cassini-help-window").count,1)
         helpWindow.buttons[XCUIIdentifierCloseWindow].click()
         app.menuBars.menuBarItems["Cassini talk"].click()
