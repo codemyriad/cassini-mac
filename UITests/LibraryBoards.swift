@@ -1084,7 +1084,8 @@ final class LibraryBoards: XCTestCase {
         window.buttons.matching(identifier:"recording-back").firstMatch.click()
         // Back flushes the edited title. Seeing it on the Library row proves a
         // subsequent scan published, rather than reopening before the refresh.
-        let renamedRow = window.outlines.firstMatch.staticTexts["Title from the live page"]
+        let renamedRow = window.outlines.firstMatch.staticTexts.matching(NSPredicate(
+            format: "label == %@ OR value == %@", "Title from the live page", "Title from the live page")).firstMatch
         XCTAssertTrue(renamedRow.waitForExistence(timeout: 10), window.debugDescription)
         XCTAssertFalse(title.exists, "A live-recording refresh must leave Back on the Library")
         window.buttons["recording-open-current"].click()
@@ -1302,7 +1303,7 @@ final class LibraryBoards: XCTestCase {
         let play = window.buttons["meeting-play"]
         if play.label == "Pause" { play.click() }
         XCTAssertEqual(play.label, "Play")
-        let timestamp = window.links.matching(NSPredicate(format: "label CONTAINS %@", "00:31:10")).firstMatch
+        let timestamp = window.links.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "00:31:10", "00:31:10")).firstMatch
         XCTAssertTrue(timestamp.waitForExistence(timeout: 10), window.debugDescription)
         timestamp.click()
         let target = window.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "turn-play-", "00:31:10")).firstMatch
