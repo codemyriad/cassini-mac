@@ -1,0 +1,9 @@
+{
+  "repository": "codemyriad/cassini-ux",
+  "commit": "75b64098bf992c4d927f6df135f8433f7b73f40b",
+  "files": {
+    "vectors/voices/vectors.json": "30901226d9413060d7834f92665e26b908e8d91a3f2f66d8d457ce84e4bc4847",
+    "vectors/voices/desktop-vectors.json": "0d3238c6667651ad2ee494ed496a7b39c7e31ff18cffe4368160d0df15c0bdf4",
+    "vectors/voices/README.md": "b05381437958eadc035bbffbe604fe1332cde091d0e083920197b9e49abd7651"
+  }
+}

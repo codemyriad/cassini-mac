@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import Foundation
+
+/// A missing preparation is never a request to forget a contribution.
+public struct SpeakerVoiceChoice: Sendable {
+    public private(set) var remember: Bool
+    public private(set) var explicitlyDisabled = false
+    public private(set) var userChanged = false
+    public init(existing: Bool, enabled: Bool = false) { remember = existing || enabled }
+    public mutating func choose(_ value: Bool) { remember=value; explicitlyDisabled = !value; userChanged=true }
+    public enum Update: Sendable { case preserve, forget, enroll }
+    public func update(prepared:Bool) -> Update {
+        if explicitlyDisabled { return .forget }
+        return remember && prepared ? .enroll : .preserve
+    }
+}
+
+/// Library edits are the primary commit. Voice failures must never make them retryable.
+public enum SpeakerEditTransaction {
+    public static func changesVoices(_ edit:SpeakerEdits.Edit,update:SpeakerVoiceChoice.Update) -> Bool {
+        if case .name = edit, update == .preserve { return false }
+        return true
+    }
+    @MainActor public static func run<T>(
+        changesVoices: Bool = true,
+        library: @MainActor () async throws -> T,
+        committed: @MainActor (T) -> Void,
+        readOnly: @MainActor () async throws -> Bool,
+        voices: @MainActor () async throws -> Void
+    ) async throws -> Bool {
+        let updated = try await library()
+        committed(updated)
+        guard changesVoices else { return false }
+        do {
+            guard try await !readOnly() else { return false }
+            try await voices()
+            return false
+        } catch { return true }
+    }
+}

@@ -1,0 +1,8 @@
+{
+  "repository": "codemyriad/cassini-ux",
+  "commit": "75b64098bf992c4d927f6df135f8433f7b73f40b",
+  "files": {
+    "vectors/voices/golden.json": "36ede95f1e8906f6a50df0c039b4e1747d7cc7626616f6ad5bc91f8aead1f39f",
+    "vectors/diarization/ATTRIBUTION.md": "f94b2bd0a87de7bbc4ad3dd90ee843973261517e1b407e6a1eb1c3ebc014dc6c"
+  }
+}

@@ -2,8 +2,7 @@
 import SwiftUI
 import CassiniLibrary
 
-/// WP6: a single column dialog. Voice profiles are not yet prepared on Mac;
-/// naming stays available without pretending that a voiceprint has been saved.
+/// Local voice enrollment is offered only for a prepared, separated source.
 struct SpeakerEditorView:View {
     @State private var edit=MeetingRenameCoordinator.shared
     @State private var nameFocused=false
@@ -26,7 +25,12 @@ struct SpeakerEditorView:View {
             .shadow(color:CassiniTheme.shadow,radius:24,y:12)
             .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("speakers.dialog.a11y"))
             .accessibilityAddTraits(.isModal).accessibilityIdentifier("speaker-editor")
-            .onAppear {SpeakerEditorChrome.focusName()}
+                        .onAppear {SpeakerEditorChrome.setVoiceIDs(edit.voiceCandidates.map(\.id));SpeakerEditorChrome.focusName()}
+            .onChange(of:edit.voiceCandidates.map(\.id)) { _,ids in SpeakerEditorChrome.setVoiceIDs(ids) }
+            .onChange(of:edit.name) { _,new in
+                if let id=edit.savedVoiceID,
+                   SavedVoicesController.shared.voices.first(where:{$0.id == id})?.name != new { edit.savedVoiceID=nil }
+            }
             .onDisappear {SpeakerEditorChrome.dismiss();detail?.speakerSample.cancel()}
     }
     private func header(_ speaker:MeetingSpeaker)->some View {
@@ -76,25 +80,50 @@ struct SpeakerEditorView:View {
     private var savedVoices:some View {
         VStack(alignment:.leading,spacing:8) {
             Text(UXText.text("common.savedVoices")).fontWeight(.semibold)
-            Text(UXText.text("savedVoices.empty")).foregroundStyle(CassiniTheme.ink2)
-                .frame(maxWidth:.infinity,alignment:.leading).padding(12)
-                .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
-                .overlay(RoundedRectangle(cornerRadius:12).stroke(CassiniTheme.lineSoft,lineWidth:1))
-        }
+            if SavedVoicesController.shared.voices.isEmpty {
+                Text(UXText.text("savedVoices.empty")).foregroundStyle(CassiniTheme.ink2)
+            } else {
+                ScrollView {
+                    VStack(alignment:.leading,spacing:8) {
+                        ForEach(edit.voiceCandidates) { candidate in
+                            HStack {
+                                SpeakerActionButton(control:.voice(candidate.id),title:candidate.voice.name,enabled:!edit.working) {
+                                    edit.name=candidate.voice.name;edit.savedVoiceID=candidate.id
+                                }
+                                Spacer()
+                                if candidate.id == edit.voiceCandidates.first?.id, (candidate.score ?? 0) >= 0.5 {
+                                    Text(UXText.text("speakers.savedVoices.likely")).font(.system(size:11))
+                                        .padding(.horizontal,6).background(CassiniTheme.neutralPillFill,in:RoundedRectangle(cornerRadius:5))
+                                }
+                            }
+                        }
+                    }.frame(maxWidth:.infinity,alignment:.leading)
+                }.frame(maxHeight:100)
+                Text(UXText.text("speakers.savedVoices.closestFirst")).font(.system(size:11)).foregroundStyle(CassiniTheme.ink2)
+            }
+            if let duplicate=VoiceSelection.matchingName(edit.name,voices:SavedVoicesController.shared.voices).first,
+               edit.savedVoiceID == nil {
+                Text(UXText.text("speakers.duplicate.notice",["name":duplicate.name]))
+                HStack {
+                    SpeakerActionButton(control:.samePerson,title:UXText.text("speakers.duplicate.samePerson"),enabled:!edit.working) { edit.savedVoiceID=duplicate.id }
+                    SpeakerActionButton(control:.someoneElse,title:UXText.text("speakers.duplicate.someoneElse"),enabled:!edit.working) { edit.savedVoiceID=nil }
+                }
+            }
+        }.padding(12).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
     }
     private var rememberVoice:some View {
         VStack(alignment:.leading,spacing:8) {
             HStack(alignment:.top,spacing:12) {
                 VStack(alignment:.leading,spacing:5) {
                     Text(UXText.text("speakers.rememberVoice.title"))
-                    Text(UXText.text("speakers.rememberVoice.notPrepared"))
+                    Text(UXText.text(edit.voiceEnrollment == nil ? "speakers.rememberVoice.notPrepared":"savedVoices.privacy.mac"))
                         .accessibilityIdentifier("speaker-remember-explanation")
                         .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
                         .fixedSize(horizontal:false,vertical:true)
                 }
                 Spacer(minLength:0)
-                Toggle(UXText.text("speakers.rememberVoice.title"),isOn:.constant(false))
-                    .labelsHidden().toggleStyle(.switch).controlSize(.small).disabled(true)
+                SpeakerRememberSwitch(isOn:$edit.rememberVoice,enabled:edit.canChangeRememberVoice)
+                    .frame(width:38,height:22)
                     .accessibilityIdentifier("speaker-remember-voice")
             }
         }.padding(14).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
@@ -124,10 +153,10 @@ struct SpeakerEditorView:View {
 struct SpeakerEditFailureNotice:View {
     @State private var edit=MeetingRenameCoordinator.shared
     var body:some View {
-        if edit.speakerChangeFailed && edit.presentation==nil {
+        if (edit.speakerChangeFailed || edit.voiceChangeFailed) && edit.presentation==nil {
             HStack {
-                Text(UXText.text("speakers.changeFailed"))
-                Button(UXText.text("common.tryAgain")) {edit.retrySpeakerEdit()}.disabled(!edit.canEditSpeakers(edit.meeting))
+                Text(UXText.text(edit.voiceChangeFailed ? "savedVoices.changeFailed":"speakers.changeFailed"))
+                if edit.canRetrySpeakerEdit { Button(UXText.text("common.tryAgain")) {edit.retrySpeakerEdit()}.disabled(!edit.canEditSpeakers(edit.meeting)) }
                 Button {edit.dismissSpeakerFailure()} label: {Image(systemName:"xmark")}.accessibilityLabel(UXText.text("common.close"))
             }.font(.system(size:13)).padding(14)
                 .foregroundStyle(CassiniTheme.toastUsesInverse ? CassiniTheme.onInverse : CassiniTheme.ink)
@@ -156,6 +185,8 @@ struct SpeakerEditFailureNotice:View {
     }
     private static var controls:[SpeakerEditorControl:ControlReference]=[:]
     private static var initialFocusPending=false
+    private static var voiceIDs:[String]=[]
+    static func setVoiceIDs(_ ids:[String]) { voiceIDs=ids }
     static func register(_ control:NSControl,as key:SpeakerEditorControl) {
         controls[key]=ControlReference(control)
         completeInitialFocus()
@@ -173,7 +204,8 @@ struct SpeakerEditFailureNotice:View {
         return responder === control || responder === control.currentEditor()
     }
     static func advanceFocus(reverse:Bool,in window:NSWindow) {
-        let available=SpeakerEditorControl.allCases.compactMap {controls[$0]?.value}.filter {
+        let order:[SpeakerEditorControl] = [.sample,.name]+voiceIDs.map { .voice($0) }+[.samePerson,.someoneElse,.remember,.merge,.retry,.cancel,.save]
+        let available=order.compactMap {controls[$0]?.value}.filter {
             $0.window === window && $0.isEnabled && $0.canBecomeKeyView
         }
         guard !available.isEmpty else {return}
@@ -185,14 +217,14 @@ struct SpeakerEditFailureNotice:View {
     }
     private static let undoGate=SpeakerUndoGate()
     private static let identifier=NSUserInterfaceItemIdentifier("speaker-titlebar-scrim")
-    static func dismiss() {controls=[:];initialFocusPending=false;undoGate.reset()}
+    static func dismiss() {controls=[:];voiceIDs=[];initialFocusPending=false;undoGate.reset()}
     #if DEBUG
     static func nativeSelfTest()->[String:Bool] {
-        let savedControls=controls,savedPending=initialFocusPending
-        controls=[:];initialFocusPending=false
+        let savedControls=controls,savedPending=initialFocusPending,savedVoiceIDs=voiceIDs
+        controls=[:];voiceIDs=[];initialFocusPending=false
         let window=NSWindow(contentRect:NSRect(x:0,y:0,width:760,height:480),styleMask:[.titled],backing:.buffered,defer:false)
         window.isReleasedWhenClosed=false
-        defer {window.close();controls=savedControls;initialFocusPending=savedPending}
+        defer {window.close();controls=savedControls;voiceIDs=savedVoiceIDs;initialFocusPending=savedPending}
         var changes=0
         let history=window.undoManager!
         history.beginUndoGrouping()
@@ -225,7 +257,20 @@ struct SpeakerEditFailureNotice:View {
         advanceFocus(reverse:true,in:window)
         let skipped=isFocused(popup,in:window)
         window.makeFirstResponder(nil);popup.isEnabled=false
-        return ["speakerModalBlocksLibraryUndo":blocked && changes == 1,
+        let savedVoice=SpeakerActionButton.Button(frame:NSRect(x:0,y:80,width:150,height:24))
+        let remember=SpeakerRememberSwitch.Switch(frame:NSRect(x:160,y:80,width:40,height:22))
+        window.contentView!.addSubview(savedVoice);window.contentView!.addSubview(remember)
+        register(savedVoice,as:.voice("fixture"));register(remember,as:.remember);setVoiceIDs(["fixture"])
+        name.isEnabled=true
+        window.makeFirstResponder(name)
+        advanceFocus(reverse:false,in:window)
+        let voiceFocus=isFocused(savedVoice,in:window)
+        advanceFocus(reverse:false,in:window)
+        let rememberFocus=isFocused(remember,in:window)
+        advanceFocus(reverse:true,in:window)
+        let voiceReturn=isFocused(savedVoice,in:window)
+        return ["speakerEnrollmentNativeFocusCycle":voiceFocus && rememberFocus && voiceReturn,
+                "speakerModalBlocksLibraryUndo":blocked && changes == 1,
                 "speakerMergeHasNativeKeyboardFocus":nativeFocus && !popup.acceptsFirstResponder && !popup.canBecomeKeyView,
                 "speakerNativeFocusCycle":cycle,"speakerNativeFocusSkipsDisabled":skipped]
     }
@@ -344,12 +389,17 @@ private struct SpeakerMergeMenu:NSViewRepresentable {
 
 
 /// Every dialog control participates in this one native responder cycle.
-enum SpeakerEditorControl:CaseIterable {
-    case sample,name,merge,retry,cancel,save
+enum SpeakerEditorControl:Hashable {
+    case sample,name,samePerson,someoneElse,remember,merge,retry,cancel,save
+    case voice(String)
     var identifier:String {
         switch self {
         case .sample:return "speaker-play-sample"
         case .name:return "speaker-name-field"
+        case .voice(let id):return "speaker-saved-voice-"+id
+        case .samePerson:return "speaker-same-person"
+        case .someoneElse:return "speaker-someone-else"
+        case .remember:return "speaker-remember-voice"
         case .merge:return "speaker-merge-menu"
         case .retry:return "speaker-retry"
         case .cancel:return "speaker-cancel"
@@ -451,5 +501,28 @@ private struct SpeakerNameField:NSViewRepresentable {
             guard command == NSSelectorFromString("insertNewline:") else {return false}
             submit();return true
         }
+    }
+}
+
+private struct SpeakerRememberSwitch:NSViewRepresentable {
+    @Binding var isOn:Bool
+    let enabled:Bool
+    func makeNSView(context:Context)->Switch {
+        let view=Switch(frame:.zero)
+        view.target=view;view.action=#selector(Switch.change(_:));view.controlSize = .small
+        view.setAccessibilityIdentifier(SpeakerEditorControl.remember.identifier)
+        view.setAccessibilityLabel(UXText.text("speakers.rememberVoice.title"))
+        SpeakerEditorChrome.register(view,as:.remember)
+        return view
+    }
+    func updateNSView(_ view:Switch,context:Context) {
+        view.state=isOn ? .on:.off;view.isEnabled=enabled && context.environment.isEnabled
+        view.changed={isOn=$0};SpeakerEditorChrome.register(view,as:.remember)
+    }
+    final class Switch:NSSwitch {
+        var changed:((Bool)->Void)?
+        override var acceptsFirstResponder:Bool {isEnabled}
+        override var canBecomeKeyView:Bool {isEnabled && !isHiddenOrHasHiddenAncestor}
+        @objc func change(_ sender:Any?) {if isEnabled {changed?(state == .on)}}
     }
 }

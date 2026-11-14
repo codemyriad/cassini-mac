@@ -1,0 +1,23 @@
+{
+  "reviewFindingsAddressed": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "fullSwiftSuite": "passed (exit 0); model/fixture-dependent tests skipped by their existing guards",
+  "regressionTestFunctions": 13,
+  "regressionTestSuites": [
+    "SpeakerVoiceUpdateTests",
+    "VoiceEnrollmentOperationTests",
+    "VoiceEnrollmentAudioTests"
+  ],
+  "nativeDebugBuild": "passed (Xcode 27)",
+  "nativeSpeakerKeyboardAndMeetingPreparation": "passed",
+  "cancellation": "event-gated permission, recording and inference; stale completion cannot clear a replacement; detached decode receives cancellation",
+  "longTrackExtraction": "real sparse 60 s and 11 h WAVs decode the same frame count, below 100,000 frames",
+  "copy": "automatic naming setup and toggle hidden while Mac separator is unavailable; permission denial uses errors.micPermission.line",
+  "catalogAndDiffChecks": "passed",
+  "microphoneHardwareTested": false
+}
