@@ -668,7 +668,6 @@ final class LibraryBoards: XCTestCase {
                 app.typeKey(.escape,modifierFlags:[])
                 let guideClosed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:settings.sheets.firstMatch)
                 XCTAssertEqual(XCTWaiter.wait(for:[guideClosed],timeout:5),.completed,app.debugDescription)
-                capture(settings,name:"settings-browser")
             }
             let message = settings.staticTexts["companion-reload-message"]
             if kind == "health-reload" {
