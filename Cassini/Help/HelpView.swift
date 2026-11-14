@@ -71,7 +71,7 @@ struct HelpView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(CassiniTheme.surface, in: RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(CassiniTheme.cardStroke))
-                    .accessibilityElement(children: .combine)
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier(topic.id)
                 }
             }
@@ -89,7 +89,6 @@ struct HelpView: View {
             guard let window else { return }
             window.title = UXText.text("help.title")
             window.setAccessibilityIdentifier("cassini-help-window")
-            RecordingConfirmation.attach(to: window)
         })
     }
 }

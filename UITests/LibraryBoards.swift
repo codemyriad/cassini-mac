@@ -444,8 +444,9 @@ final class LibraryBoards: XCTestCase {
         for topic in ["help-topic-record","help-topic-library","help-topic-trash","help-topic-voices"] {
             XCTAssertTrue(helpWindow.descendants(matching:.any)[topic].exists,topic)
         }
-        XCTAssertTrue(text("Deleted meetings go to the Trash. Choose Edit › Undo right away, or later open the Trash in Finder and choose Put Back.",in:helpWindow))
-        XCTAssertFalse(text("30 days",in:helpWindow))
+        let trashBody = "Deleted meetings go to the Trash. Choose Edit › Undo right away, or later open the Trash in Finder and choose Put Back."
+        XCTAssertTrue(helpWindow.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@",trashBody,trashBody)).firstMatch.waitForExistence(timeout:5))
+        XCTAssertEqual(helpWindow.descendants(matching:.any).matching(NSPredicate(format:"label CONTAINS[c] %@ OR value CONTAINS[c] %@","30 days","30 days")).count,0)
         // Opening Help again reuses the single scene.
         app.menuBars.menuBarItems["Help"].click()
         app.menuItems["Cassini talk Help"].click()
