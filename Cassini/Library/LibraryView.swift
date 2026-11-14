@@ -518,8 +518,8 @@ struct LibraryView: View {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size: 22, weight: .bold)).accessibilityAddTraits(.isHeader)
-                    Text(store.format.previewSubtitle(meeting.meetingTime, durationMs: meeting.durationMs, received: meeting.state.origin == .received)).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("preview-subtitle")
-                    if let presentation = LibraryBadgeCatalog.presentation(for: meeting) {
+                    Text(store.format.previewSubtitle(meeting.meetingTime, durationMs: meeting.durationMs, received: meeting.state.origin == .received, transcribedOnAnotherDevice: meeting.transcribedOnAnotherDevice)).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("preview-subtitle")
+                    if let presentation = LibraryBadgeCatalog.presentation(for: meeting), presentation.kind != "received" {
                         catalogStatusBadge(presentation)
                             .padding(.top, 2)
                             .accessibilityIdentifier(presentation.kind == "transcribing" ? "preview-transcribing" : "preview-status-badge")
@@ -528,13 +528,6 @@ struct LibraryView: View {
                 if let line = RecordingOverview.libraryDiskLine { Text(line).foregroundStyle(CassiniTheme.warningNotice) }
                 if meeting.state.transcript == .failed { InlineMeetingLine(id: "errors.transcribeFailed.line", actionID: "common.tryAgain", action: { TranscriptionQueue.shared.enqueue(meeting, retry: true) }).disabled(LibraryMoveCoordinator.shared.busy) }
                 if meeting.state.transcript == .damaged { InlineMeetingLine(id: "errors.transcriptDamaged.line", action: nil) }
-                if let folder = meeting.received?.originalFolderName {
-                    HStack(alignment:.top,spacing:12) {
-                        Image(systemName:"folder").padding(.top,2).accessibilityHidden(true)
-                        Text(UXText.text("received.folderCard",["folder":folder])).fixedSize(horizontal:false,vertical:true)
-                    }.padding(16).frame(maxWidth:.infinity,alignment:.leading)
-                        .background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:8)).accessibilityIdentifier("received-folder-card")
-                }
                 if meeting.state.origin == .own { ScrollView(.horizontal) {
                     HStack(spacing: 8) {
                         ForEach(meeting.speakers, id: \.id) { speaker in
@@ -675,7 +668,7 @@ struct LibraryView: View {
                 .accessibilityAction(named:Text(UXText.text("meeting.renameEllipsis"))) { rename.show(detail.meeting,presentation:.title) }
                 .help(UXText.text("meeting.renameEllipsis"))
                 .popover(isPresented:Binding(get:{ rename.presentation == .title && rename.meeting?.folder == detail.meeting.folder },set:{ if !$0 { rename.cancel() } })) { MeetingRenameView() }
-            Text(store.format.previewSubtitle(detail.meeting.meetingTime,durationMs:detail.meeting.durationMs,received:detail.meeting.state.origin == .received))
+            Text(store.format.previewSubtitle(detail.meeting.meetingTime,durationMs:detail.meeting.durationMs,received:detail.meeting.state.origin == .received,transcribedOnAnotherDevice:detail.meeting.transcribedOnAnotherDevice))
                 .font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
         }.background(MeetingTitleAlignment(inset:$meetingTitleInset))
             .padding(.leading,meetingTitleInset)

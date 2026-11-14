@@ -90,6 +90,7 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testFirstRun \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSearchBoardFiltersAndOpeningTheHit \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testReceivedBoard \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testOpenAndFinderRoutingWithLibraryClosed \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testExportBoardAndKeyboardChoices \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testExportReceivedAudioThroughAFileOnlySaveGrant \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingBoard \
@@ -97,7 +98,7 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMeetingBoard \
           -resultBundlePath build/UXBoardsDark.xcresult \
           2>&1 | tee build/ux-boards-dark.log
-        echo "Dark Library boards: 22 tests (27 boards), $((SECONDS - dark_start)) s wall" >> "$GITHUB_STEP_SUMMARY"
+        echo "Dark Library boards: 23 tests (28 boards), $((SECONDS - dark_start)) s wall" >> "$GITHUB_STEP_SUMMARY"
     - name: Library boards test durations
       if: always()
       run: |
