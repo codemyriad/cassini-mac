@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import Darwin
 import Testing
 import CassiniKit
 import CassiniLibrary
@@ -32,6 +33,27 @@ struct AlignedExportTests {
         meeting.state.transcript = .done
         #expect(MeetingExportKind.primary(for: meeting) == [.cassini, .markdown])
         #expect(MeetingExportKind.more(for: meeting) == [.plainText, .srt, .vtt])
+    }
+    @Test func elevenHourSingleSpeakerExportPreservesEveryWordWithinThreadCPUBudget() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        var meeting = try imported(root)
+        meeting.state.transcript = .done
+        meeting.transcriptItems = (0..<100_000).map {
+            .init(speaker: "one", startMs: Int64($0) * 396, endMs: Int64($0) * 396 + 300, text: "word")
+        }
+        let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+        let text = try MeetingTextExport.render(meeting, kind: .plainText)
+        let subtitles = try MeetingTextExport.render(meeting, kind: .srt)
+        let cpu = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start
+        // Generous Debug-build budget for 11 hours of words, measured on this thread;
+        // catches accidental quadratic copying of a single speaker's growing turn.
+        #expect(cpu < 15_000_000_000)
+        #expect(text.components(separatedBy: "word").count == 100_001)
+        #expect(subtitles.components(separatedBy: "word").count == 100_001)
+        for block in subtitles.split(separator: "\n\n") {
+            #expect(block.split(separator: "\n").count <= 4)
+        }
     }
     @Test func textAndSubtitleConformance() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
