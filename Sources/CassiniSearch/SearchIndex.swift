@@ -6,7 +6,7 @@ import SQLite3
 import CassiniLibrary
 import CassiniKit
 
-public enum SearchDate: Sendable, CaseIterable { case any, today, week, month
+public enum SearchDate: Sendable, CaseIterable { case any, today, week, month, year
     public func contains(meetingTime: MeetingTime?, now: Date, timeZone: TimeZone) -> Bool {
         guard self != .any else { return true }
         guard let meetingTime else { return false }
@@ -22,6 +22,10 @@ public enum SearchDate: Sendable, CaseIterable { case any, today, week, month
         var calendar = Calendar(identifier:.gregorian); calendar.timeZone = timeZone
         guard let day = calendar.dateInterval(of:.day,for:now),
               let firstDay = calendar.date(byAdding:.day,value:self == .month ? -29 : self == .week ? -6 : 0,to:now) else { return false }
+        if self == .year {
+            guard let year = calendar.dateInterval(of:.year,for:now) else { return false }
+            return date >= year.start && date < day.end
+        }
         // A day may begin at 01:00. Adding days to that boundary leaks an hour
         // into tomorrow and drops an hour from an earlier day's range.
         return date >= calendar.startOfDay(for:firstDay) && date < day.end
@@ -31,7 +35,9 @@ public struct SearchFilter: Sendable {
     public var speaker: String?
     public var date: SearchDate
     public var own: Bool
-    public init(speaker: String? = nil, date: SearchDate = .any, own: Bool = false) { self.speaker = speaker; self.date = date; self.own = own }
+    /// nil means all meetings; an empty set means no starred meetings.
+    public var starredKeys: Set<String>?
+    public init(speaker: String? = nil, date: SearchDate = .any, own: Bool = false, starredKeys: Set<String>? = nil) { self.speaker = speaker; self.date = date; self.own = own; self.starredKeys = starredKeys }
 }
 public struct SearchSpan: Sendable, Equatable { public let start: Int; public let length: Int }
 public struct SearchHit: Sendable, Identifiable {
@@ -152,7 +158,8 @@ public actor SearchIndex {
             let key = statement.text(0), rowIndex = statement.integer(1)
             guard rowIndex >= 0, let rows = spoken[key], rows.indices.contains(rowIndex) else { continue }
             let row = rows[rowIndex], index = row.visibleIndex
-            guard let meeting = meetings[key], !filter.own || meeting.state.origin == .own,
+            guard filter.starredKeys?.contains(key) != false,
+                  let meeting = meetings[key], !filter.own || meeting.state.origin == .own,
                   filter.date.contains(meetingTime:meeting.meetingTime,now:now,timeZone:timeZone),
                   let turn = turns[key]?.dropFirst(index).first else { continue }
             let highlighted = statement.text(2)
