@@ -134,6 +134,7 @@ public struct LibraryScanner: Sendable {
                 let url = try safeFile(receivedMetadata.originalName, in: folder); original = url; seen.insert(url)
                 file = try cache.read(url) { try CassiniReader.read(regularData($0)) }
                 if let file {
+                    meeting.hasCassiniFile = file.state != .plainAudio
                     // R6 permits these display fallbacks even when a payload is
                     // damaged; they do not authenticate its words or notes.
                     titleCandidates += [file.manifest?.meeting.title, file.tags?["TITLE"]]

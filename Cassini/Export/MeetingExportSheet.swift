@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
 import CassiniLibrary
+import CassiniExport
 
 struct TransferStatusBanner: View {
     @State private var importer = LibraryImportCoordinator.shared
@@ -173,6 +174,7 @@ struct MeetingExportNotice: View {
 struct MeetingExportSheet: View {
     @State private var coordinator = MeetingExportCoordinator.shared
     let meeting: LibraryMeeting
+    @State private var moreFormats = false
     var body: some View {
         VStack(alignment:.leading,spacing:20) {
             VStack(alignment:.leading,spacing:6) {
@@ -180,12 +182,24 @@ struct MeetingExportSheet: View {
                 Text(UXText.text("export.subtitle")).foregroundStyle(CassiniTheme.ink2)
             }
             VStack(spacing:0) {
-                option(.cassini,title:"export.cassiniFile.label",description:"export.cassiniFile.description")
-                Divider()
-                option(.markdown,title:"export.markdown.label",description:"export.markdown.description")
+                ForEach(MeetingExportKind.primary(for: meeting), id: \.self) { kind in
+                    option(kind)
+                    if kind == .cassini && meeting.state.transcript == .done { Divider() }
+                }
+                if meeting.state.transcript == .done {
+                    DisclosureGroup(UXText.text("export.moreFormats"), isExpanded: $moreFormats) {
+                        ForEach(MeetingExportKind.more(for: meeting), id: \.self) { kind in
+                            option(kind)
+                        }
+                    }.padding(12).accessibilityIdentifier("export-more-formats")
+                }
             }.background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
                 .clipShape(RoundedRectangle(cornerRadius:8)).overlay { RoundedRectangle(cornerRadius:8).stroke(CassiniTheme.cardStroke) }
                 .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("export.formatGroup.a11y"))
+            if meeting.state.transcript != .done {
+                Text(UXText.text("export.audioOnly.note")).foregroundStyle(CassiniTheme.ink2)
+                    .accessibilityIdentifier("export-audio-only-note")
+            }
             VStack(alignment:.leading,spacing:6) {
                 Text(UXText.text("export.speakerNames.heading")).font(.system(size:11.5,weight:.bold)).foregroundStyle(CassiniTheme.ink2)
                 ScrollView { speakerNames.lineSpacing(5).fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,alignment:.leading) }
@@ -225,7 +239,10 @@ struct MeetingExportSheet: View {
         }.font(.system(size:13)).padding(26).frame(width:540)
             .accessibilityElement(children:.contain).accessibilityIdentifier("meeting-export-sheet")
     }
-    private func option(_ kind: MeetingExportKind, title: String, description: String) -> some View {
+    private func option(_ kind: MeetingExportKind) -> some View {
+        let title = "export.\(kind.catalogName).label"
+        let description = "export.\(kind.catalogName).description"
+        return
         HStack(spacing:14) {
             ExportRadio(selected:coordinator.kind == kind,label:UXText.text(title)) { coordinator.kind = kind }.frame(width:20,height:20)
             VStack(alignment:.leading,spacing:3) {
@@ -239,7 +256,7 @@ struct MeetingExportSheet: View {
             .background(coordinator.kind == kind ? CassiniTheme.selectedOptionWash : Color.clear)
             .contentShape(Rectangle()).onTapGesture { if !coordinator.working && (kind != .cassini || !meeting.audioFiles.isEmpty) { coordinator.kind = kind } }
             .disabled(coordinator.working || (kind == .cassini && meeting.audioFiles.isEmpty))
-            .accessibilityElement(children:.contain).accessibilityIdentifier(kind == .cassini ? "export-cassini" : "export-markdown")
+            .accessibilityElement(children:.contain).accessibilityIdentifier("export-\(kind.rawValue)")
     }
     private var speakerNames: Text {
         let names = meeting.speakers.filter { $0.provenance == .recognised }.map(\.displayName)
