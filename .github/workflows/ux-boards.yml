@@ -65,6 +65,7 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingEditedTitleSurvivesSavedSelection \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testActiveTranscribingStatusDetailsAndStopKeepsProgress \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testFrenchLibraryPhrasesWithAmericanRegionalSettings \
           -resultBundlePath build/UXSpeakers.xcresult \
           2>&1 | tee build/ux-speakers.log
     - name: Render Library boards

@@ -92,13 +92,13 @@ final class LibraryBoards: XCTestCase {
         let today=NSPredicate {_,_ in header.exists && self.visibleText(header)=="Aujourd’hui"}
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:today,object:nil)],timeout:10),.completed,"French Today header with US region: "+app.debugDescription)
         // The outline's narrow status capsule truncates its AX value along with
-        // the drawn text. Inspect the complete phrase in the selected preview.
+        // the drawn text. Inspect the complete phrase in the selected meeting status.
         let client=window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch
         XCTAssertTrue(client.waitForExistence(timeout:10),app.debugDescription);client.click()
         // Select the status text rather than the spinner in the shared status row.
-        let eta=window.staticTexts["meeting-transcribing"]
-        let etaReady=NSPredicate {_,_ in eta.exists && self.visibleText(eta)=="Transcription · 4 min"}
-        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:etaReady,object:nil)],timeout:10),.completed,"French compact ETA in the selected meeting: "+app.debugDescription)
+        let eta=window.staticTexts["transcribing-status"]
+        let etaReady=NSPredicate {_,_ in eta.exists && self.visibleText(eta)=="Transcription · environ 4 min restantes"}
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:etaReady,object:nil)],timeout:10),.completed,"French ETA in the selected meeting: "+app.debugDescription)
     }
     @MainActor func testFrenchSearchCountWithAmericanRegionalSettings() throws {
         // A separate test must still exercise Search if a Library check fails.
