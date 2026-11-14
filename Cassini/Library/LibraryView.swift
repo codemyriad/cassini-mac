@@ -109,7 +109,7 @@ struct LibraryView: View {
                 ToolbarItem(placement:.navigation) {
                     meetingTitleHeader(detail)
                 }
-                if let spec = meetingTranscriptionToolbarSpec(detail) {
+                if meetingShowsTranscriptionInToolbar(detail), let spec = meetingTranscriptionToolbarSpec(detail) {
                     ToolbarItem(placement:.primaryAction) {
                         LibraryToolbarAction(title:spec.title,label:spec.title,identifier:spec.identifier,style:.bordered,enabled:spec.enabled,action:spec.action)
                     }
@@ -121,6 +121,9 @@ struct LibraryView: View {
                     LibraryToolbarAction(title:"",label:UXText.text("meeting.moreActions"),identifier:"meeting-more-actions",style:.more,menu:{
                         var entries:[LibraryToolbarAction.MenuEntry]=[
                             .init(title:UXText.text("details.menu"),identifier:"recording-details") {recordingDetails.show(detail.meeting)}]
+                        if !meetingShowsTranscriptionInToolbar(detail), let spec = meetingTranscriptionToolbarSpec(detail) {
+                            entries.insert(.init(title:spec.title,identifier:spec.identifier,enabled:spec.enabled,action:spec.action),at:0)
+                        }
                         if detail.meeting.speakerMergeCount>0 {
                             entries.append(.init(title:UXText.text("meeting.undoMerge"),identifier:"undo-speaker-merge",enabled:rename.canEditSpeakers(detail.meeting)) {rename.undoSpeakerMerge(detail.meeting)})
                         }
@@ -660,12 +663,27 @@ struct LibraryView: View {
         let enabled: Bool
         let action: () -> Void
     }
-    private func meetingTitleReservedWidth(_ meeting: LibraryMeeting) -> CGFloat {
-        if ([.queued,.running].contains(meeting.state.transcript) && !meeting.metadataReadOnly) ||
-           (meeting.canWriteDown && meeting.state.transcript == .none && meeting.transcriptPaused) {
-            return 620
+    /// The title's leading edge (sidebar-aligned inset after back/record) plus
+    /// the toolbar's own gaps and trailing margin, calibrated so the widest
+    /// English layout that is known to fit at 1120 pt keeps fitting.
+    private static let meetingTitleFixedReserve: CGFloat = 236 + 110
+    private static let meetingTitleMinimumWidth: CGFloat = 200
+    private static let meetingToolbarItemSpacing: CGFloat = 12
+    /// Width the title must leave free, measured from the localized trailing
+    /// toolbar labels so long translations never push "…" off the window.
+    private func meetingTitleReservedWidth(_ detail: MeetingDetailModel, includingTranscription: Bool) -> CGFloat {
+        var trailing = LibraryToolbarAction.width(title:UXText.text("common.exportEllipsis"),style:.capsule)
+            + Self.meetingToolbarItemSpacing + LibraryToolbarAction.width(title:"",style:.more)
+        if includingTranscription, let spec = meetingTranscriptionToolbarSpec(detail) {
+            trailing += LibraryToolbarAction.width(title:spec.title,style:.bordered) + Self.meetingToolbarItemSpacing
         }
-        return meeting.canWriteDown && meeting.state.transcript == .none ? 570 : 450
+        return Self.meetingTitleFixedReserve + trailing
+    }
+    /// The transcription action moves into the "…" menu when the window is too
+    /// narrow to show it next to a readable title.
+    private func meetingShowsTranscriptionInToolbar(_ detail: MeetingDetailModel) -> Bool {
+        guard meetingTranscriptionToolbarSpec(detail) != nil else { return false }
+        return toolbarWidth - meetingTitleReservedWidth(detail,includingTranscription:true) >= Self.meetingTitleMinimumWidth
     }
     private func meetingTitleHeader(_ detail: MeetingDetailModel) -> some View {
         VStack(alignment:.leading,spacing:1) {
@@ -679,7 +697,7 @@ struct LibraryView: View {
                 .font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk).lineLimit(1).accessibilityIdentifier("meeting-subtitle")
         }.background(MeetingTitleAlignment(inset:$meetingTitleInset))
             .padding(.leading,meetingTitleInset)
-            .frame(width:max(200,toolbarWidth - meetingTitleReservedWidth(detail.meeting)),alignment:.leading)
+            .frame(width:max(Self.meetingTitleMinimumWidth,toolbarWidth - meetingTitleReservedWidth(detail,includingTranscription:meetingShowsTranscriptionInToolbar(detail))),alignment:.leading)
             .accessibilityElement(children:.contain)
     }
     private func meetingTranscriptionToolbarSpec(_ detail: MeetingDetailModel) -> TranscriptionToolbarSpec? {
@@ -734,6 +752,17 @@ struct LibraryToolbarAction: NSViewRepresentable {
         }
         return menu
     }
+    /// Intrinsic width of a toolbar action; shared with layout code that must
+    /// reserve room for these buttons before AppKit lays them out.
+    static func width(title: String, style: Style) -> CGFloat {
+        switch style {
+        case .back, .more: return 28
+        default:
+            let text = ceil((title as NSString).size(withAttributes:[.font:font]).width)
+            return text + 28 + (style == .record ? 18 : style == .saving ? 22 : 0)
+        }
+    }
+    static let font = NSFont.systemFont(ofSize:13,weight:.semibold)
     static func singleMenu(title: String, identifier: String, action: @escaping () -> Void) -> NSMenu {
         let menu = NSMenu(); menu.autoenablesItems = false
         let item = ActionItem(title:title,handler:action)
@@ -810,7 +839,7 @@ final class LibraryToolbarActionView: NSView {
         setAccessibilityIdentifier(value.identifier + "-group"); setAccessibilityLabel("")
         button.spokenLabel = value.label; button.setAccessibilityIdentifier(value.identifier)
         button.toolTip = value.label; button.isEnabled = value.enabled
-        let font = NSFont.systemFont(ofSize:13,weight:.semibold)
+        let font = LibraryToolbarAction.font
         button.font = font; button.image = nil
         button.isBordered = value.style == .bordered; button.bezelStyle = .rounded
         button.layer?.cornerRadius = [.record,.stop,.saving,.capsule].contains(value.style) ? 17 : 6
@@ -818,23 +847,21 @@ final class LibraryToolbarActionView: NSView {
         let tint: NSColor = [.stop,.record].contains(value.style) ? CassiniTheme.nsOnRecord : value.style == .saving ? CassiniTheme.nsInk2 : CassiniTheme.nsInk
         button.attributedTitle = NSAttributedString(string:value.title,attributes:[.font:font,.foregroundColor:tint])
         applyLayerFill()
-        let text = ceil((value.title as NSString).size(withAttributes:[.font:font]).width)
-        size = NSSize(width:text + 28,height:34)
+        size = NSSize(width:LibraryToolbarAction.width(title:value.title,style:value.style),height:34)
         if value.style == .saving { spinner.isHidden = false; spinner.startAnimation(nil) }
         else { spinner.stopAnimation(nil); spinner.isHidden = true }
         switch value.style {
         case .back, .more:
             button.image = NSImage(systemSymbolName:value.style == .back ? "chevron.left" : "ellipsis",accessibilityDescription:nil)
             button.imagePosition = .imageOnly; button.contentTintColor = CassiniTheme.nsInk
-            size.width = 28
         case .record:
             button.image = NSImage(size:NSSize(width:18,height:10),flipped:false) { _ in
                 CassiniTheme.nsOnRecord.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:0,width:10,height:10)).fill(); return true
             }
-            button.imageHugsTitle = true; size.width += 18
+            button.imageHugsTitle = true
         case .saving:
             button.image = NSImage(size:NSSize(width:22,height:16))
-            button.imageHugsTitle = true; size.width += 22
+            button.imageHugsTitle = true
         default: break
         }
         needsLayout = true; invalidateIntrinsicContentSize()
