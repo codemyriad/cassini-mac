@@ -18,10 +18,10 @@ public struct SpeakerVoiceChoice: Sendable {
 /// Library edits are the primary commit. Voice failures must never make them retryable.
 public enum SpeakerEditTransaction {
     @MainActor public static func run<T>(
-        library: () async throws -> T,
-        committed: (T) -> Void,
-        readOnly: () async throws -> Bool,
-        voices: () async throws -> Void
+        library: @MainActor () async throws -> T,
+        committed: @MainActor (T) -> Void,
+        readOnly: @MainActor () async throws -> Bool,
+        voices: @MainActor () async throws -> Void
     ) async throws -> Bool {
         let updated = try await library()
         committed(updated)

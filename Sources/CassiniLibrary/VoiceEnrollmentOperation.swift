@@ -6,8 +6,8 @@ import Foundation
 @MainActor public final class VoiceEnrollmentOperation {
     private var task:Task<Void,Never>?
     private var id=UUID()
-    private var cleanup:(() -> Void)?
-    private var recordingCleanup:(() -> Void)?
+    private var cleanup:(@MainActor () -> Void)?
+    private var recordingCleanup:(@MainActor () -> Void)?
     public init() {}
     public func cancel() {
         id=UUID();task?.cancel();task=nil
@@ -15,11 +15,11 @@ import Foundation
         let stop=recordingCleanup;recordingCleanup=nil;stop?()
     }
     @discardableResult public func requestPermission(
-        request:@escaping () async -> Bool,
-        granted:@escaping () throws -> Void,
-        denied:@escaping () -> Void,
-        stopRecording:@escaping () -> Void = {},
-        failed:@escaping (Error) -> Void
+        request:@escaping @MainActor () async -> Bool,
+        granted:@escaping @MainActor () throws -> Void,
+        denied:@escaping @MainActor () -> Void,
+        stopRecording:@escaping @MainActor () -> Void = {},
+        failed:@escaping @MainActor (Error) -> Void
     ) -> Task<Void,Never> {
         start { [self] in
             let allowed=await request()
@@ -29,11 +29,11 @@ import Foundation
         }
     }
     @discardableResult public func infer<Input,Output>(
-        read:@escaping () async throws -> Input,
-        worker:@escaping (Input) async throws -> Output,
-        ready:@escaping (Output) -> Void,
-        failed:@escaping (Error) -> Void,
-        cleanup:@escaping () -> Void
+        read:@escaping @MainActor () async throws -> Input,
+        worker:@escaping @MainActor (Input) async throws -> Output,
+        ready:@escaping @MainActor (Output) -> Void,
+        failed:@escaping @MainActor (Error) -> Void,
+        cleanup:@escaping @MainActor () -> Void
     ) -> Task<Void,Never> {
         start(cleanup:cleanup) {
             do {
@@ -45,7 +45,7 @@ import Foundation
             } catch { if !Task.isCancelled { failed(error) } }
         }
     }
-    @discardableResult public func start(cleanup:@escaping () -> Void = {}, operation:@escaping @MainActor () async -> Void) -> Task<Void,Never> {
+    @discardableResult public func start(cleanup:@escaping @MainActor () -> Void = {}, operation:@escaping @MainActor () async -> Void) -> Task<Void,Never> {
         cancel()
         let token=UUID();id=token;self.cleanup=cleanup
         let running=Task {
