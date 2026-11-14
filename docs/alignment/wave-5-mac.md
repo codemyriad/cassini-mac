@@ -40,3 +40,13 @@ for the eventual light/dark comparison.
   healthy connection can open the local guide, explicit repair/reload states.
 - `LibraryBoards.testSettingsTranscriptionModelChoices`: existing model controls
   and no update-network claim in fixture builds without an updater.
+
+## Visual evidence
+
+The `d973-pr-shots/` folder contains light/dark before, after and difference
+images generated with the shared `tools/pr-shots/pr-shots.py`. These are frozen
+renders of Cassini's own views on the local Mac, not desktop screenshots or
+proof of user interaction. Source changes are from `973a66c`; the before build
+uses main's Settings view with the same fixture harness. The disconnected
+Browser page comparison covers the tab strip; the connected Add from Cassini
+interaction is covered separately by the UI regression.
