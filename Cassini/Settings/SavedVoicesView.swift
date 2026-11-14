@@ -62,11 +62,7 @@ struct SavedVoicesView: View {
             .navigationTitle(UXText.text("common.savedVoices"))
             .navigationBarBackButtonHidden(true)
             .task { await voices.refresh() }
-            .onAppear {
-                if !RecordingPreferences.defaults.bool(forKey:"CassiniVoicesSetupSeen") { voices.requestSetup() }
-            }
             .onDisappear { voices.stopSample() }
-            .sheet(isPresented:$voices.setupPresented) { VoiceSetupView() }
             .sheet(isPresented:$voices.enrollmentPresented,onDismiss:{ voices.cancelEnrollment() }) { VoiceEnrollmentView() }
             .sheet(item:$renaming) { voice in
                 VStack(alignment:.leading,spacing:18) {
@@ -103,12 +99,6 @@ struct SavedVoicesView: View {
                     Button(UXText.text("models.download")) { voices.download() }.disabled(voices.busy)
                 }
             }
-            Toggle(UXText.text("voices.setup.title"),isOn:Binding(get:{ voices.enabled },set:{ value in
-                if value { voices.requestSetup() } else { voices.setEnabled(false) }
-            })).toggleStyle(.switch).disabled(voices.readOnly)
-            // Mac has no D24 diarizer yet. Preserve its explicit capability gate:
-            // enrollment is available; future automatic matching needs both models.
-            Text(UXText.text("speakers.rememberVoice.modelsNeeded")).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
         }.padding(16).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
     }
     private func voiceRow(_ voice: SavedVoice) -> some View {
@@ -131,20 +121,6 @@ struct SavedVoicesView: View {
             Button(UXText.text("savedVoices.row.rename")) { name=voice.name; renaming=voice }.disabled(voices.busy || voices.readOnly)
             Button(UXText.text("savedVoices.row.forget")) { deleting=voice }.disabled(voices.busy || voices.readOnly)
         }.padding(16).accessibilityElement(children:.contain)
-    }
-}
-struct VoiceSetupView: View {
-    @State private var voices=SavedVoicesController.shared
-    var body: some View {
-        VStack(alignment:.leading,spacing:18) {
-            Text(UXText.text("voices.setup.title")).font(.title2).fontWeight(.semibold)
-            Text(UXText.text("voices.setup.body"))
-            Text(UXText.text("voices.setup.privacy.desktop")).foregroundStyle(CassiniTheme.ink2)
-            HStack { Spacer()
-                Button(UXText.text("common.notNow")) { voices.finishSetup(enable:false) }.keyboardShortcut(.cancelAction)
-                Button(UXText.text("voices.setup.enable")) { voices.finishSetup(enable:true) }.keyboardShortcut(.defaultAction)
-            }
-        }.padding(24).frame(width:440).fixedSize(horizontal:false,vertical:true)
     }
 }
 struct VoiceEnrollmentView: View {

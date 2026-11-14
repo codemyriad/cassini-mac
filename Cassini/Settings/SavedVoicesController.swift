@@ -25,18 +25,16 @@ import CassiniWhistle
     private(set) var savingEnrollment=false
     var enrollmentName=""
     var selectedExistingID: String?
-    var setupPresented=false
     var enrollmentPresented=false
     @ObservationIgnored private var client: ModelDownloadClient?
     @ObservationIgnored private var downloadTask: Task<Void,Never>?
-    @ObservationIgnored private var enrollmentTask: Task<Void,Never>?
+    @ObservationIgnored private let enrollmentOperation=VoiceEnrollmentOperation()
     @ObservationIgnored private var recorder: AVAudioRecorder?
     @ObservationIgnored private let recorderDelegate=VoiceRecorderDelegate()
     @ObservationIgnored private var recordingFile: URL?
     @ObservationIgnored private var prepared: (embedding:[Float], seconds:Double, generation:Int64)?
     @ObservationIgnored private let playback=SessionPlayback()
     @ObservationIgnored private lazy var sample=SpeakerSample(playback:playback)
-    private(set) var enabled=RecordingPreferences.defaults.bool(forKey:"CassiniRememberVoices")
     var readOnly: Bool { snapshot?.readOnly ?? true }
     var voices: [SavedVoice] { snapshot?.voices ?? [] }
     private(set) var meetingCounts:[String:Int]=[:]
@@ -61,18 +59,10 @@ import CassiniWhistle
             return SHA256.hash(data:data).map { String(format:"%02x",$0) }.joined() == Voiceprint.model
         }.value
     }
-    func setEnabled(_ value: Bool) {
-        enabled=value; RecordingPreferences.defaults.set(value,forKey:"CassiniRememberVoices")
-    }
     func open() {
         SettingsNavigation.shared.tab = .transcription
         SettingsNavigation.shared.savedVoices=true
         SettingsNavigation.shared.open?()
-    }
-    func requestSetup() { setupPresented=true }
-    func finishSetup(enable: Bool) {
-        setEnabled(enable); setupPresented=false
-        RecordingPreferences.defaults.set(true,forKey:"CassiniVoicesSetupSeen")
     }
     func download() {
         guard !downloading else { return }
@@ -140,7 +130,7 @@ import CassiniWhistle
         enrollmentPresented=true
     }
     func cancelEnrollment() {
-        enrollmentTask?.cancel(); enrollmentTask=nil
+        enrollmentOperation.cancel(); busy=false
         recorder?.stop(); recorder=nil; recording=false; prepared=nil; sampleReady=false
         removeRecording()
     }
@@ -152,48 +142,47 @@ import CassiniWhistle
         guard !busy, modelReady, !readOnly, !recording,
               !RecordingController.shared.isRecording, !CaptureCollection.shared.isRecording else { return }
         prepared=nil; sampleReady=false; message=nil
-        enrollmentTask=Task {
-            let allowed=await AVCaptureDevice.requestAccess(for:.audio)
-            guard !Task.isCancelled, enrollmentPresented else { return }
-            guard allowed else { message=UXText.text("savedVoices.changeFailed"); return }
-            do {
-                let root=FileManager.default.temporaryDirectory.appendingPathComponent("voice-enrollment-"+UUID().uuidString,isDirectory:true)
-                try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
-                recordingFile=root.appendingPathComponent("sample.wav")
-                let recorder=try AVAudioRecorder(url:recordingFile!,settings:[AVFormatIDKey:kAudioFormatLinearPCM,AVSampleRateKey:16000,
-                    AVNumberOfChannelsKey:1,AVLinearPCMBitDepthKey:16,AVLinearPCMIsFloatKey:false,AVLinearPCMIsBigEndianKey:false])
-                recorder.delegate=recorderDelegate
-                self.recorder=recorder
-                guard recorder.record(forDuration:45) else { throw SavedVoicesError.invalidPrint }
-                recording=true
-            } catch { removeRecording(); message=UXText.text("savedVoices.changeFailed") }
-        }
+        enrollmentOperation.requestPermission(request:{ await AVCaptureDevice.requestAccess(for:.audio) }, granted:{ [self] in
+            guard enrollmentPresented else { return }
+            let root=FileManager.default.temporaryDirectory.appendingPathComponent("voice-enrollment-"+UUID().uuidString,isDirectory:true)
+            try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
+            recordingFile=root.appendingPathComponent("sample.wav")
+            let recorder=try AVAudioRecorder(url:recordingFile!,settings:[AVFormatIDKey:kAudioFormatLinearPCM,AVSampleRateKey:16000,
+                AVNumberOfChannelsKey:1,AVLinearPCMBitDepthKey:16,AVLinearPCMIsFloatKey:false,AVLinearPCMIsBigEndianKey:false])
+            recorder.delegate=recorderDelegate
+            self.recorder=recorder
+            guard recorder.record(forDuration:45) else { throw SavedVoicesError.invalidPrint }
+            recording=true
+        }, denied:{ self.message=UXText.text("errors.micPermission.line") }, stopRecording:{
+            self.recorder?.stop();self.recorder=nil;self.recording=false
+        }, failed:{ _ in
+            self.removeRecording();self.message=UXText.text("savedVoices.changeFailed")
+        })
     }
     func finishRecording() {
         guard recording, let file=recordingFile else { return }
         recorder?.stop(); recorder=nil; recording=false; busy=true
-        enrollmentTask=Task {
-            defer { busy=false; removeRecording() }
-            do {
-                let generation=try await store.snapshot().generation
-                let samples=try await Task.detached(priority:.userInitiated) {
-                    try Self.readGuidedAudio(file)
-                }.value
-                let result=try await Self.embedding(samples,guided:true)
-                try Task.checkCancellation()
-                prepared=(result.embedding,result.seconds,generation); sampleReady=true
-            } catch is CancellationError {}
-            catch SavedVoicesError.invalidPrint { message=UXText.text("voices.enroll.tooShort") }
-            catch { message=UXText.text("savedVoices.changeFailed") }
-        }
+        enrollmentOperation.infer(read:{ [self] in
+            let generation=try await store.snapshot().generation
+            try Task.checkCancellation()
+            let samples=try await VoiceEnrollmentWork.run { try Self.readGuidedAudio(file) }
+            return (samples,generation)
+        }, worker:{ input in
+            (try await Self.embedding(input.0,guided:true),input.1)
+        }, ready:{ [self] result in
+            prepared=(result.0.embedding,result.0.seconds,result.1);sampleReady=true
+        }, failed:{ [self] error in
+            if case SavedVoicesError.invalidPrint = error { message=UXText.text("voices.enroll.tooShort") }
+            else { message=UXText.text("savedVoices.changeFailed") }
+        }, cleanup:{ self.busy=false;self.removeRecording() })
     }
+
     func saveEnrollment() {
         guard let prepared, SavedVoicesStore.validName(enrollmentName), !busy, !readOnly else { return }
         busy=true; message=nil
         let name=enrollmentName, existing=selectedExistingID
         savingEnrollment=true
-        enrollmentTask=Task {
-            defer { busy=false; savingEnrollment=false }
+        enrollmentOperation.start(cleanup:{ self.busy=false; self.savingEnrollment=false }) { [self] in
             do {
                 try Task.checkCancellation()
                 _=try await store.enroll(name:name,embedding:prepared.embedding,seconds:prepared.seconds,generation:prepared.generation,into:existing)
@@ -226,10 +215,12 @@ import CassiniWhistle
     func prepare(_ meeting:LibraryMeeting,speaker:String) async throws -> TranscriptEnrollment? {
         guard modelReady, !readOnly else { return nil }
         let generation=try await store.snapshot().generation
-        guard let selection=try await Task.detached(priority:.userInitiated,operation:{
+        guard let selection=try await VoiceEnrollmentWork.run({
             try VoiceEnrollmentAudio.prepare(meeting,speaker:speaker)
-        }).value else { return nil }
+        }) else { return nil }
+        try Task.checkCancellation()
         let result=try await Self.embedding(selection.samples)
+        try Task.checkCancellation()
         return .init(embedding:result.embedding,seconds:result.seconds,generation:generation,clip:selection.clip)
     }
     func enroll(_ prepared:TranscriptEnrollment,name:String,into id:String?) async throws {

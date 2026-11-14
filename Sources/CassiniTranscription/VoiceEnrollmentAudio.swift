@@ -9,7 +9,12 @@ public enum VoiceEnrollmentAudio {
         public let samples:[Float]
         public let clip:VoiceClip
     }
+    private enum DecodeComplete: Error { case selected }
     public static func prepare(_ meeting:LibraryMeeting,speaker:String) throws -> Selection? {
+        try prepare(meeting,speaker:speaker,decode:MeetingAudioDecoder.decode)
+    }
+    static func prepare(_ meeting:LibraryMeeting,speaker:String,decode:(URL,([Float],Int) throws -> Void) throws -> Void) throws -> Selection? {
+        try Task.checkCancellation()
         guard meeting.state.origin == .own, speaker != "me", speaker != "others" else { return nil }
         let tracks=TranscriptSpeaker.assign(meeting.audioTracks,received:false).filter {
             (meeting.mergedInto[$0.speaker.id] ?? $0.speaker.id) == speaker &&
@@ -47,11 +52,14 @@ public enum VoiceEnrollmentAudio {
                 }
                 position += pcm.count
             }
-            try MeetingAudioDecoder.decode(track.url) { block, rate in
-                try Task.checkCancellation()
-                if resampler == nil { resampler=try MeetingResampler(rate:rate) }
-                append(resampler!.feed(block))
-            }
+            do {
+                try decode(track.url) { block, rate in
+                    try Task.checkCancellation()
+                    if resampler == nil { resampler=try MeetingResampler(rate:rate) }
+                    append(resampler!.feed(block))
+                    if position >= ranges.last!.upperBound { throw DecodeComplete.selected }
+                }
+            } catch DecodeComplete.selected {}
             if resampler != nil { append(resampler!.feed([],final:true)) }
             guard output.count-before == expected else { throw TranscriptionFailure.audioFormat }
         }

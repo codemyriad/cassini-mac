@@ -53,6 +53,8 @@ public struct SavedVoicesSnapshot: Sendable {
     public let voices: [SavedVoice]
     public let clips: [String:VoiceClip]
     public let readOnly: Bool
+    public let contributions: [String:String]
+    public func voiceID(meeting:String,speaker:String) -> String? { contributions[meeting+"\u{1f}"+speaker] }
 }
 public enum SavedVoicesError: Error { case newerVersion, invalidName, invalidPrint, unavailable, changedGeneration, unsafeStorage, missingVoice }
 
@@ -136,7 +138,7 @@ public actor SavedVoicesStore {
                 if $0.seconds != $1.seconds { return $0.seconds > $1.seconds }
                 return $0.name.localizedStandardCompare($1.name) == .orderedAscending
             }
-            return .init(generation:d.generation,voices:sorted,clips:d.clips,readOnly:d.version > 1)
+            return .init(generation:d.generation,voices:sorted,clips:d.clips,readOnly:d.version > 1,contributions:d.contributions.mapValues(\.voiceID))
         },write:false)
     }
     public func rename(_ id: String, to name: String) throws {

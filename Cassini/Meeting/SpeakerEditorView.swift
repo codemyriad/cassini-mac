@@ -15,6 +15,7 @@ struct SpeakerEditorView:View {
                 nameEntry
                 savedVoices
                 rememberVoice
+                if edit.voiceChangeFailed { Text(UXText.text("savedVoices.changeFailed")).foregroundStyle(CassiniTheme.error) }
                 if edit.speakerChangeFailed {failure}
                 footer(meeting,speaker)
             }
@@ -116,13 +117,13 @@ struct SpeakerEditorView:View {
             HStack(alignment:.top,spacing:12) {
                 VStack(alignment:.leading,spacing:5) {
                     Text(UXText.text("speakers.rememberVoice.title"))
-                    Text(UXText.text(edit.voiceEnrollment == nil ? "speakers.rememberVoice.notPrepared":"speakers.rememberVoice.cardBody.computer.unnamed"))
+                    Text(UXText.text(edit.voiceEnrollment == nil ? "speakers.rememberVoice.notPrepared":"savedVoices.privacy.mac"))
                         .accessibilityIdentifier("speaker-remember-explanation")
                         .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
                         .fixedSize(horizontal:false,vertical:true)
                 }
                 Spacer(minLength:0)
-                SpeakerRememberSwitch(isOn:$edit.rememberVoice,enabled:!edit.working && edit.voiceEnrollment != nil)
+                SpeakerRememberSwitch(isOn:$edit.rememberVoice,enabled:edit.canChangeRememberVoice)
                     .frame(width:38,height:22)
                     .accessibilityIdentifier("speaker-remember-voice")
             }
@@ -153,10 +154,10 @@ struct SpeakerEditorView:View {
 struct SpeakerEditFailureNotice:View {
     @State private var edit=MeetingRenameCoordinator.shared
     var body:some View {
-        if edit.speakerChangeFailed && edit.presentation==nil {
+        if (edit.speakerChangeFailed || edit.voiceChangeFailed) && edit.presentation==nil {
             HStack {
-                Text(UXText.text("speakers.changeFailed"))
-                Button(UXText.text("common.tryAgain")) {edit.retrySpeakerEdit()}.disabled(!edit.canEditSpeakers(edit.meeting))
+                Text(UXText.text(edit.voiceChangeFailed ? "savedVoices.changeFailed":"speakers.changeFailed"))
+                if edit.canRetrySpeakerEdit { Button(UXText.text("common.tryAgain")) {edit.retrySpeakerEdit()}.disabled(!edit.canEditSpeakers(edit.meeting)) }
                 Button {edit.dismissSpeakerFailure()} label: {Image(systemName:"xmark")}.accessibilityLabel(UXText.text("common.close"))
             }.font(.system(size:13)).padding(14)
                 .foregroundStyle(CassiniTheme.toastUsesInverse ? CassiniTheme.onInverse : CassiniTheme.ink)
