@@ -37,7 +37,7 @@ assert all(report[name] is True for name in ('preparedOffMain','mainActorProgres
     'nativeAccessibilitySeekDoesNotSnap','nativeAccessibilityTenSecondStep','nativeStopClearsSnap',
     'mergeWhilePreparedResolvesReadoutAndHeaders','mergeWhilePreparedResolvesBar','mergedSpeakerRowStopsCachedListening',
     'suspendedMergeResolvesReadoutAndHeaders','unlistedSpeechIsNotSilence','mergedPreparationRecovers',
-    'asideHasExactListeningTint','asideNativeListenButton','asideButtonAccessibility','asideButtonGeometry','unchangedRowDoesNotRestyle',
+    'asideHasExactListeningTint','asideNativeListenButton','asideButtonAccessibility','asideButtonGeometry','speakerModalBlocksLibraryUndo','speakerMergeHasNativeKeyboardFocus','speakerNativeFocusCycle','speakerNativeFocusSkipsDisabled','disabledEnvironmentBlocksInlineListen','enabledEnvironmentRestoresInlineListen','unchangedRowDoesNotRestyle',
     'clockKeepsSelectionAndInlineButton','bodyUsesEightPercentAndClearsAside','focusedTranscriptShiftReturnPlays',
     'asideActionSelectsOwnRunAndHost','explicitReplayResumesTranscriptFollow',
     'inlineButtonFocusableWithoutFullKeyboardAccess','tabSkipsSelectableTranscript',

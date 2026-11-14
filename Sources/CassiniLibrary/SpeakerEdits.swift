@@ -56,6 +56,19 @@ public enum SpeakerEdits {
             }
         }
     }
+    /// A bounded excerpt from the longest audible turn, including chip-only speakers.
+    /// Derived off the main actor alongside sample preparation, never while rendering.
+    public static func quote(_ meeting:LibraryMeeting,speaker:String) -> String? {
+        let turns=SpeakerTurn.grouping(meeting.transcriptItems.filter {$0.endMs > $0.startMs})
+        var longest:SpeakerTurn?
+        for turn in turns where turn.speaker == speaker {
+            if longest == nil || turn.endMs-turn.startMs > longest!.endMs-longest!.startMs {longest=turn}
+        }
+        guard let longest else {return nil}
+        let text=longest.text.split(whereSeparator: { $0.isWhitespace }).joined(separator:" ")
+        guard !text.isEmpty else {return nil}
+        return String(text.prefix(240)) + (text.count > 240 ? "…" : "")
+    }
     public static func talkTime(_ meeting:LibraryMeeting,speaker:String) -> Int64 {
         MeetingPresentation.spans(meeting.transcriptItems.filter {$0.speaker==speaker}).reduce(0) {$0+$1.end-$1.start}
     }

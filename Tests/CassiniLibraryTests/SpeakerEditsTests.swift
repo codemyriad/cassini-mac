@@ -28,6 +28,22 @@ struct SpeakerEditsTests {
     private func document(_ meeting:LibraryMeeting) throws -> JSON {
         try JSONParser.parse(Data(contentsOf:meeting.folder.appendingPathComponent("meeting.json")))
     }
+    @Test func dialogQuoteUsesAudibleChronologicalTurnsAndBoundsLongText() throws {
+        let (root,original)=try fixture();defer {try? FileManager.default.removeItem(at:root)}
+        var meeting=original
+        meeting.transcriptItems=[
+            .init(speaker:"b",startMs:500,endMs:700,text:"  Yes.  "),
+            .init(speaker:"a",startMs:0,endMs:1000,text:"First"),
+            .init(speaker:"a",startMs:2000,endMs:4000,text:"  Longer\n  quote  "),
+            .init(speaker:"a",startMs:5000,endMs:5000,text:"Not audible")]
+        #expect(SpeakerEdits.quote(meeting,speaker:"a") == "Longer quote")
+        #expect(SpeakerEdits.quote(meeting,speaker:"b") == "Yes.")
+        #expect(SpeakerEdits.quote(meeting,speaker:"missing") == nil)
+        meeting.transcriptItems=[.init(speaker:"a",startMs:0,endMs:1000,text:String(repeating:"é",count:300))]
+        #expect(SpeakerEdits.quote(meeting,speaker:"a") == String(repeating:"é",count:240)+"…")
+        meeting.transcriptItems=[.init(speaker:"a",startMs:0,endMs:0,text:"Silent")]
+        #expect(SpeakerEdits.quote(meeting,speaker:"a") == nil)
+    }
     @Test(arguments:["a\nb","a\u{0000}b","a\u{200D}b",String(repeating:"x",count:65)])
     func invalidNamesNeverWrite(_ value:String) throws {
         let (root,m)=try fixture();defer {try? FileManager.default.removeItem(at:root)}

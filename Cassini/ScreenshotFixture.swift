@@ -76,6 +76,10 @@ enum ScreenshotFixture {
                 if name == "search" && LibrarySearchModel.shared.hits.count == 4 { break }
                 try? await Task.sleep(for:.milliseconds(100))
             }
+            if name == "meeting", CommandLine.arguments.contains("--speaker-editor-preview"),
+               let meeting=MeetingNavigation.shared.detail?.meeting {
+                await MeetingRenameCoordinator.shared.previewSpeaker(meeting)
+            }
             try? await Task.sleep(for:.seconds(1))
             guard (name != "recording" || MeetingNavigation.shared.detail?.meeting.state.lifecycle == .recording),
                   (name != "meeting" || MeetingNavigation.shared.detail != nil),
@@ -115,8 +119,9 @@ enum ScreenshotFixture {
         guard let screen = window.screen ?? NSScreen.main else { NSApp.terminate(nil); return }
         // The board-size job selects a larger display mode before launch. Keep
         // every edge on screen; never pass by clipping an offscreen window.
+        let shortSpeakerWindow = LibraryLaunchContext.argument("-CassiniScreenshotSize") == "760x480"
         let frame = NSRect(x: screen.visibleFrame.minX + 24, y: screen.visibleFrame.minY + 16,
-                           width: boardSize ? 1120 : 960, height: boardSize ? 720 : 640)
+                           width: shortSpeakerWindow ? 760 : boardSize ? 1120 : 960, height: shortSpeakerWindow ? 480 : boardSize ? 720 : 640)
         guard screen.visibleFrame.contains(frame) else { NSApp.terminate(nil); return }
         window.setFrame(frame, display: true)
         window.makeKeyAndOrderFront(nil)
