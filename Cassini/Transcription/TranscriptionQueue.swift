@@ -1300,13 +1300,13 @@ import Darwin
         guard LibraryImportCoordinator.isSupportedDropURL(wavURL),
               LibraryImportCoordinator.isSupportedDropURL(m4aURL),
               LibraryImportCoordinator.isSupportedDropURL(mp3URL),
-              !LibraryImportCoordinator.isSupportedDropURL(flacURL),
+              LibraryImportCoordinator.isSupportedDropURL(flacURL),
               !LibraryImportCoordinator.isSupportedDropURL(ogaURL),
               !LibraryImportCoordinator.isSupportedDropURL(theoraOggURL) else {
             throw NSError(domain: "ImportLifecycleSelfTest", code: 30, userInfo: [NSLocalizedDescriptionKey: "Drop URL classification mismatch"])
         }
-        let multiNames = LibraryDropState.formattedUnsupportedFileNames([flacURL, theoraOggURL], locale: Locale(identifier: "en_GB"))
-        guard multiNames.contains("Lossless take.flac") && multiNames.contains("Screen clip.ogg") else {
+        let multiNames = LibraryDropState.formattedUnsupportedFileNames([ogaURL, theoraOggURL], locale: Locale(identifier: "en_GB"))
+        guard multiNames.contains("Archive audio.oga") && multiNames.contains("Screen clip.ogg") else {
             throw NSError(domain: "ImportLifecycleSelfTest", code: 31, userInfo: [NSLocalizedDescriptionKey: "Expected unsupported drop state to name rejected files, got \(multiNames)"])
         }
 
@@ -1409,7 +1409,7 @@ import Darwin
             throw NSError(domain: "ImportLifecycleSelfTest", code: 33, userInfo: [NSLocalizedDescriptionKey: "Succeeded WAV import left transient card behind"])
         }
 
-        // 3. Verify batch import of MP3 + M4A + Broken MP3 + Unsupported FLAC:
+        // 3. Verify batch import of MP3 + M4A + Broken MP3 + Malformed FLAC:
         //    MP3 and M4A import cleanly while Broken MP3 keeps its `Needs attention` card (`W4.6`) even after banner notice dismissal!
         importer.openBatch([mp3URL, m4aURL, brokenMp3URL, flacURL])
         await importer.waitForShutdown()
@@ -1423,9 +1423,13 @@ import Darwin
             }
         }
         guard !scannedAfterBatch.contains(where: { $0.title == "Lossless take" }) else {
-            throw NSError(domain: "ImportLifecycleSelfTest", code: 35, userInfo: [NSLocalizedDescriptionKey: "Open FLAC file was unexpectedly imported"])
+            throw NSError(domain: "ImportLifecycleSelfTest", code: 35, userInfo: [NSLocalizedDescriptionKey: "Malformed FLAC file was unexpectedly imported"])
         }
 
+        guard let flacCard = importer.transientItems.first(where: { $0.fileName == "Lossless take.flac" }),
+              case .failed(let flacDetail) = flacCard.state, !flacDetail.isEmpty else {
+            throw NSError(domain: "ImportLifecycleSelfTest", code: 37, userInfo: [NSLocalizedDescriptionKey: "Malformed FLAC did not retain Needs attention card"])
+        }
         guard let failedCard = importer.transientItems.first(where: { $0.fileName == "Damaged recording.mp3" }),
               case .failed(let failureDetail) = failedCard.state,
               !failureDetail.isEmpty,

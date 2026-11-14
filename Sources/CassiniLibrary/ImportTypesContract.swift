@@ -6,7 +6,7 @@ import CassiniKit
 
 /// Shared cross-platform audio import contract loaded from `Schema/import-types.json`
 /// (`cassini-ux/import-types@1`). Consumes only `status == "decided"` entries (`opus-ogg`,
-/// `mp3`, `m4a`, `wav`), excludes `status == "open"` (`flac`), and enforces O(1) header
+/// `mp3`, `m4a`, `wav`, `flac`), and enforces O(1) header
 /// sniffing for ambiguous Ogg containers so Ogg video and FLAC-in-Ogg are rejected.
 public struct ImportTypesContract: Sendable {
     public struct ContentValidation: Sendable, Equatable {
@@ -18,6 +18,15 @@ public struct ImportTypesContract: Sendable {
         public let ambiguousExtensions: [String]
         public let rejectedExtensions: [String]
         public let rejectedMimePrefixes: [String]
+        public let rule: String
+    }
+
+    public struct HeaderValidation: Sendable, Equatable {
+        public let minProbeBytes: Int
+        public let magic: Data
+        public let firstMetadataBlockType: Int
+        public let streamInfoLength: Int
+        public let rejectedMimeTypes: [String]
         public let rule: String
     }
 
@@ -33,6 +42,7 @@ public struct ImportTypesContract: Sendable {
         public let decisions: [String]
         public let openTrackers: [String]
         public let contentValidation: ContentValidation?
+        public let headerValidation: HeaderValidation?
         public let note: String
 
         public var bareExtensions: [String] {
@@ -89,12 +99,12 @@ public struct ImportTypesContract: Sendable {
         entries.filter { $0.status == "open" }
     }
 
-    /// Dotted extensions across `status == "decided"` entries (`[".opus", ".ogg", ".mp3", ".m4a", ".wav"]`).
+    /// Dotted extensions across `status == "decided"` entries (`[".opus", ".ogg", ".mp3", ".m4a", ".wav", ".flac"]`).
     public var decidedExtensions: [String] {
         decidedEntries.flatMap(\.extensions)
     }
 
-    /// Bare lowercase extensions across `status == "decided"` entries (`["opus", "ogg", "mp3", "m4a", "wav"]`).
+    /// Bare lowercase extensions across `status == "decided"` entries (`["opus", "ogg", "mp3", "m4a", "wav", "flac"]`).
     public var decidedBareExtensions: [String] {
         decidedEntries.flatMap(\.bareExtensions)
     }
@@ -103,7 +113,7 @@ public struct ImportTypesContract: Sendable {
         Set(decidedBareExtensions)
     }
 
-    /// UTIs across `status == "decided"` entries (never includes `flac` or broad `public.audio`).
+    /// UTIs across `status == "decided"` entries (never includes broad `public.audio`).
     public var decidedUTIIdentifiers: [String] {
         var seen = Set<String>()
         var ordered: [String] = []
@@ -127,9 +137,9 @@ public struct ImportTypesContract: Sendable {
         return ordered
     }
 
-    /// Minimum header probe byte count needed across all `contentValidation` entries (`1024`).
+    /// Minimum header probe byte count needed across all content and header validation entries (`1024`).
     public var maxProbeBytes: Int {
-        decidedEntries.compactMap { $0.contentValidation?.minProbeBytes }.max() ?? 1024
+        decidedEntries.flatMap { [$0.contentValidation?.minProbeBytes, $0.headerValidation?.minProbeBytes].compactMap { $0 } }.max() ?? 1024
     }
 
     public static func loadBundled() throws -> ImportTypesContract {
@@ -242,6 +252,30 @@ public struct ImportTypesContract: Sendable {
                 contentValidation = nil
             }
 
+            let headerValidation: HeaderValidation?
+            if let hv = item["headerValidation"] {
+                guard contentValidation == nil, compatMimes.isEmpty, id == "flac",
+                      let minProbe = hv["minProbeBytes"]?.int, (42...65536).contains(minProbe),
+                      hv["magicHex"]?.string == "664c6143",
+                      hv["firstMetadataBlockType"]?.int == 0,
+                      hv["streamInfoLength"]?.int == 34,
+                      let rule = hv["rule"]?.string, !rule.isEmpty else {
+                    throw ContractError.invalidContract("\(loc).headerValidation invalid native FLAC rule")
+                }
+                let rejected = try requireStringList(hv["rejectedMimeTypes"], where: "\(loc).headerValidation.rejectedMimeTypes")
+                guard Set(["audio/x-flac+ogg", "audio/x-oggflac", "audio/ogg", "application/ogg"]).isSubset(of: Set(rejected)),
+                      Set(rejected).isDisjoint(with: mimeTypes) else {
+                    throw ContractError.invalidContract("\(loc).headerValidation invalid rejected MIME types")
+                }
+                headerValidation = HeaderValidation(minProbeBytes: minProbe, magic: Data("fLaC".utf8),
+                    firstMetadataBlockType: 0, streamInfoLength: 34, rejectedMimeTypes: rejected, rule: rule)
+            } else {
+                guard id != "flac" || status != "decided" else {
+                    throw ContractError.invalidContract("\(loc) requires headerValidation")
+                }
+                headerValidation = nil
+            }
+
             parsedEntries.append(TypeEntry(
                 id: id,
                 label: label,
@@ -254,6 +288,7 @@ public struct ImportTypesContract: Sendable {
                 decisions: decisions,
                 openTrackers: openTrackers,
                 contentValidation: contentValidation,
+                headerValidation: headerValidation,
                 note: note
             ))
         }
@@ -367,7 +402,7 @@ public struct ImportTypesContract: Sendable {
     }
 
     /// Validates a candidate filename, optional MIME type, and optional leading file bytes against
-    /// `decided` types, rejecting `open` types (`flac`), `video/*`, `.oga`/`.ogv`/`.ogx`, and
+    /// `decided` types, rejecting `open` types, `video/*`, `.oga`/`.ogv`/`.ogx`, and
     /// non-Opus or multiplexed Ogg streams.
     public func validateCandidate(
         fileName: String,
@@ -437,6 +472,21 @@ public struct ImportTypesContract: Sendable {
             return ValidationResult(accepted: false, typeID: nil, reason: "MIME type '\(baseMime)' is not accepted for '\(entry.id)'")
         }
 
+        if let hv = entry.headerValidation {
+            guard let headerBytes else {
+                return ValidationResult(accepted: false, typeID: nil, reason: "header validation required for '\(entry.id)'")
+            }
+            let bytes = [UInt8](headerBytes)
+            guard !hv.rejectedMimeTypes.contains(baseMime ?? ""),
+                  bytes.count >= hv.minProbeBytes,
+                  headerBytes.starts(with: hv.magic),
+                  Int(bytes[4] & 0x7f) == hv.firstMetadataBlockType,
+                  (Int(bytes[5]) << 16 | Int(bytes[6]) << 8 | Int(bytes[7])) == hv.streamInfoLength,
+                  (Int(bytes[18]) << 12 | Int(bytes[19]) << 4 | Int(bytes[20]) >> 4) != 0 else {
+                return ValidationResult(accepted: false, typeID: nil, reason: "invalid native FLAC STREAMINFO header")
+            }
+        }
+
         if let cv = entry.contentValidation {
             let needsSniff = cv.ambiguousExtensions.contains(ext) || baseMime == nil || (baseMime.map(compatMimes.contains) ?? false)
             if needsSniff && headerBytes == nil {
@@ -448,7 +498,7 @@ public struct ImportTypesContract: Sendable {
                     return ValidationResult(accepted: false, typeID: nil, reason: "content validation failed for '\(entry.id)': \(detail)")
                 }
             }
-        } else if let headerBytes {
+        } else if entry.headerValidation == nil, let headerBytes {
             if headerBytes.starts(with: Data("fLaC".utf8)) {
                 return ValidationResult(accepted: false, typeID: nil, reason: "native FLAC stream disguised as '\(ext)'")
             }
@@ -500,7 +550,7 @@ public struct ImportTypesContract: Sendable {
     }
 
     /// Returns `true` when `url` is readable and its leading header bytes identify a known
-    /// unsupported or undecided container/codec (such as native `fLaC`, Ogg video Theora/OGM/Dirac/Daala/Skeleton,
+    /// unsupported container/codec (such as native `fLaC` under another extension, Ogg video Theora/OGM/Dirac/Daala/Skeleton,
     /// multiplexed Ogg BOS streams, FLAC-in-Ogg, Ogg Vorbis/Speex, or QuickTime `.mov`) disguised
     /// under a decided extension. Damaged/corrupt files of a decided extension return `false` so
     /// dropping them transitions from `Importing…` into the `Needs attention` card (`W4.6`).
@@ -508,6 +558,11 @@ public struct ImportTypesContract: Sendable {
         let ext = Self.dottedExtension(for: url.lastPathComponent)
         guard decidedEntries.contains(where: { $0.extensions.contains(ext) }) else {
             return true
+        }
+        // Let every .flac reach authoritative import validation, including malformed or
+        // disguised streams, so failed drops retain the Needs attention card (D102).
+        if decidedEntries.contains(where: { $0.extensions.contains(ext) && $0.headerValidation != nil }) {
+            return false
         }
         let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
         guard fd >= 0 else { return false }
@@ -543,7 +598,7 @@ public struct ImportTypesContract: Sendable {
         probe.removeSubrange(bytesRead..<probe.count)
         let bytes = [UInt8](probe)
 
-        // Native FLAC (`fLaC`) is undecided (`status == "open"`) regardless of filename extension.
+        // Native FLAC is accepted only under its own .flac extension.
         if bytes.starts(with: [0x66, 0x4C, 0x61, 0x43]) {
             return true
         }

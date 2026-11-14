@@ -16,7 +16,7 @@ public enum DecodedAudioImportError: LocalizedError, Equatable, Sendable {
     }
 }
 
-/// Offline audio decoder and Ogg Opus muxer for `MP3`, `M4A`, and `WAV` imports (`L-25` / `D-1028`).
+/// Offline audio decoder and Ogg Opus muxer for `MP3`, `M4A`, `WAV`, and native `FLAC` imports (`L-25` / `D-1028`).
 /// Streams PCM in bounded chunks, mixes multichannel audio to mono 48 kHz Float32, and encodes
 /// 20 ms (960-sample) Opus packets via software `AVAudioConverter` without opening any audio device.
 enum DecodedAudioImport {
@@ -27,7 +27,7 @@ enum DecodedAudioImport {
 
     static func requiresTranscode(typeID: String) -> Bool {
         switch typeID {
-        case "mp3", "m4a", "wav":
+        case "mp3", "m4a", "wav", "flac":
             return true
         default:
             return false
@@ -322,6 +322,12 @@ enum DecodedAudioImport {
     }
 
     private static func validateContainerHeader(at url: URL, typeID: String) throws {
+        if typeID == "flac" {
+            guard ImportTypesContract.shared.validateFile(at: url, fileNameOverride: "source.flac").typeID == "flac" else {
+                throw DecodedAudioImportError.unsupportedFormat(typeID)
+            }
+            return
+        }
         let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw DecodedAudioImportError.unreadableAudio }
         defer { close(fd) }
@@ -365,11 +371,9 @@ enum DecodedAudioImport {
     }
 
     private static func isAllowedAudioFormatID(_ formatID: AudioFormatID, for typeID: String) -> Bool {
-        // Explicitly forbid FLAC (`kAudioFormatFLAC`) across all decoded paths until L-09 / D-938 resolves.
-        if formatID == kAudioFormatFLAC {
-            return false
-        }
         switch typeID {
+        case "flac":
+            return formatID == kAudioFormatFLAC
         case "mp3":
             return formatID == kAudioFormatMPEGLayer3
         case "m4a":
