@@ -37,6 +37,39 @@ private final class SearchFixture {
 }
 
 struct SearchTests {
+    @Test func starsNarrowTypedHitsAndCombineWithEveryOtherFilterWithoutWritingMeetings() async throws {
+        let fixture = try SearchFixture(), meetings = try fixture.meetings(), before = try fixture.bytes()
+        let index = try SearchIndex(cache:fixture.cache); try await index.replace(meetings)
+        let all = try await index.search("budget",now:fixture.now,timeZone:fixture.zone)
+        let key = try #require(all.first?.meetingKey)
+        let stars: Set<String> = [key]
+        let filtered = try await index.search("budget",filter:.init(starredKeys:stars),now:fixture.now,timeZone:fixture.zone)
+        #expect(!filtered.isEmpty && filtered.allSatisfy { $0.meetingKey == key })
+        #expect(try await index.search("budget",filter:.init(starredKeys:[])).isEmpty)
+        let combined = try await index.search("budget",filter:.init(speaker:"Marta",date:.today,own:true,starredKeys:stars),now:fixture.now,timeZone:fixture.zone)
+        let baseline = try await index.search("budget",filter:.init(speaker:"Marta",date:.today,own:true),now:fixture.now,timeZone:fixture.zone)
+        #expect(combined.map(\.id) == baseline.filter { stars.contains($0.meetingKey) }.map(\.id))
+        #expect(try await index.search("not spoken here",filter:.init(starredKeys:stars)).isEmpty)
+        let received = Set(meetings.filter { $0.state.origin != .own }.map(\.libraryKey))
+        #expect(try await index.search("record",filter:.init(own:true,starredKeys:received)).isEmpty)
+        // Changing only stars must take effect without rebuilding the transcript index.
+        #expect(try await index.search("budget",filter:.init(starredKeys:Set(all.map(\.meetingKey))),now:fixture.now,timeZone:fixture.zone).map(\.id) == all.map(\.id))
+        #expect(try fixture.bytes() == before)
+    }
+    @Test func thisYearUsesLocalJanuaryBoundaryAndExcludesUnknownAndFutureDays() throws {
+        let now = try #require(MeetingTime.parseInstant("2026-11-14T12:00:00Z"))
+        for name in ["Europe/Rome","America/New_York","Pacific/Kiritimati"] {
+            let zone = try #require(TimeZone(identifier:name))
+            var calendar = Calendar(identifier:.gregorian); calendar.timeZone = zone
+            let start = try #require(calendar.date(from:DateComponents(year:2026,month:1,day:1)))
+            #expect(SearchDate.year.contains(start,now:now,timeZone:zone))
+            #expect(!SearchDate.year.contains(start.addingTimeInterval(-0.001),now:now,timeZone:zone))
+            let tomorrow = try #require(calendar.date(byAdding:.day,value:1,to:calendar.startOfDay(for:now)))
+            #expect(!SearchDate.year.contains(tomorrow,now:now,timeZone:zone))
+            #expect(!SearchDate.year.contains(meetingTime:nil,now:now,timeZone:zone))
+        }
+    }
+
     @Test func recordingLabelsAndUnknownTimesRefreshWithoutChangingTranscriptCache() async throws {
         let fixture = try SearchFixture()
         var meeting = try #require(fixture.meetings().first { $0.transcriptItems.contains { $0.text.lowercased().contains("budget") } })

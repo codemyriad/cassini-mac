@@ -3,6 +3,60 @@ import AppKit
 import XCTest
 
 final class LibraryBoards: XCTestCase {
+    @MainActor func testStarsPersistAndSearchCarriesLibraryChoiceThenResetsOtherFilters() throws {
+        let defaultsID = UUID().uuidString
+        let app = try launch("library",fixture:"main",extra:["-CassiniDefaultsID",defaultsID])
+        defer { app.terminate() }
+        var window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["meeting-more-actions"].waitForExistence(timeout:20),app.debugDescription)
+        window.buttons["meeting-more-actions"].click()
+        let star = app.menuItems["Star"]
+        XCTAssertTrue(star.waitForExistence(timeout:5),app.debugDescription); star.click()
+        let filters = window.descendants(matching:.any)["library-filters"]
+        XCTAssertTrue(filters.exists,app.debugDescription)
+        filters.radioButtons["Starred"].click()
+        XCTAssertFalse(window.staticTexts["library-starred-empty"].exists)
+        capture(window,name:"library-starred")
+        app.terminate()
+        let relaunched = try launch("library",fixture:"main",extra:["-CassiniDefaultsID",defaultsID])
+        defer { relaunched.terminate() }
+        window = relaunched.windows["cassini-library-window"]
+        let starredChoice = window.descendants(matching:.any)["library-filters"].radioButtons["Starred"]
+        XCTAssertTrue(starredChoice.waitForExistence(timeout:20),relaunched.debugDescription)
+        XCTAssertTrue(selected(starredChoice),starredChoice.debugDescription)
+        window.searchFields["library-search-field"].click()
+        let starred = window.buttons["search-starred"]
+        XCTAssertTrue(starred.waitForExistence(timeout:5),relaunched.debugDescription)
+        XCTAssertTrue(selected(starred))
+        window.descendants(matching:.any).matching(identifier:"search-date").firstMatch.click()
+        XCTAssertTrue(relaunched.menuItems["This year"].exists); relaunched.menuItems["This year"].click()
+        window.searchFields["library-search-field"].typeText("budget")
+        let count = window.staticTexts["search-count"]
+        let ready = NSPredicate { _,_ in self.visibleText(count) == "2 places in 1 meeting" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:ready,object:nil)],timeout:10),.completed)
+        XCTAssertTrue(window.buttons["search-play"].exists)
+        capture(window,name:"search-starred")
+        relaunched.typeKey(.escape,modifierFlags:[])
+        XCTAssertTrue(window.descendants(matching:.any)["library-filters"].waitForExistence(timeout:5),"Escape closes Search before reopening it")
+        window.searchFields["library-search-field"].click()
+        XCTAssertTrue(window.buttons["search-starred"].waitForExistence(timeout:5))
+        XCTAssertTrue(selected(window.buttons["search-starred"]))
+        let dateChoice = window.popUpButtons["search-date"]
+        XCTAssertEqual(dateChoice.title,"Any date",dateChoice.debugDescription)
+        relaunched.typeKey(.escape,modifierFlags:[])
+        let row = window.outlines.staticTexts.matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout:5)); row.rightClick()
+        let unstar = relaunched.menuItems["Unstar"]
+        XCTAssertTrue(unstar.waitForExistence(timeout:5),relaunched.debugDescription); unstar.click()
+        XCTAssertTrue(window.staticTexts["library-starred-empty"].waitForExistence(timeout:5),relaunched.debugDescription)
+        relaunched.terminate()
+        let empty = try launch("library",fixture:"main",extra:["-CassiniDefaultsID",defaultsID])
+        defer { empty.terminate() }
+        let emptyWindow = empty.windows["cassini-library-window"]
+        XCTAssertTrue(emptyWindow.staticTexts["library-starred-empty"].waitForExistence(timeout:20),empty.debugDescription)
+        XCTAssertTrue(emptyWindow.staticTexts["meeting-empty-selection"].waitForExistence(timeout:5),"Refresh cannot select an unstarred meeting behind an empty Starred list")
+    }
+
     /// D-963: both Stop routes preserve the meeting and expose Resume after the
     /// asynchronous metadata commit. Retained partial words are not a live draft.
     @MainActor func testActiveTranscribingStatusDetailsAndStopKeepsProgress() throws {
@@ -1056,9 +1110,12 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(sheet.radioButtons["Markdown"].isSelected)
         capture(window,name:"export")
         XCTAssertFalse(sheet.radioButtons["Plain text"].exists)
-        sheet.disclosureTriangles.firstMatch.click()
+        // SwiftUI includes the leading padding in this AX frame. The chevron
+        // is 25 points from its left edge; its label is not an activation target.
+        sheet.disclosureTriangles["export-more-formats"].coordinate(withNormalizedOffset:.zero)
+            .withOffset(CGVector(dx:25,dy:8)).click()
         for label in ["Plain text", "Subtitles (SRT)", "Subtitles (WebVTT)"] {
-            XCTAssertTrue(sheet.radioButtons[label].exists, app.debugDescription)
+            XCTAssertTrue(sheet.radioButtons[label].waitForExistence(timeout:5), app.debugDescription)
             sheet.radioButtons[label].click()
             XCTAssertEqual(selected(sheet.radioButtons[label]), true)
             XCTAssertEqual(selected(sheet.radioButtons["Cassini file"]), false)

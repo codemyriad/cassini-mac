@@ -28,24 +28,32 @@ struct LibrarySearchView: View {
         VStack(alignment:.leading,spacing:0) {
             LibrarySearchField(text:$model.query,large:false,focusRequest:model.focusRequest,onChange:{ model.refresh() },onCancel:{ model.close() })
                 .frame(height:28).padding(.horizontal,10).padding(.top,6).padding(.bottom,8)
-            HStack(spacing:6) {
-                Menu {
-                    Button(UXText.text("search.filter.anySpeaker")) { model.speaker = nil; model.refresh() }
-                    Divider()
-                    ForEach(model.names,id:\.self) { name in Button(name) { model.speaker = name; model.refresh() } }
-                } label: {
-                    Text(model.speaker.map { UXText.text("search.filter.speaker",["name":$0]) } ?? UXText.text("search.filter.speakerNone"))
-                        .foregroundStyle(model.speaker != nil ? CassiniTheme.onAccent : CassiniTheme.ink)
-                }.menuIndicator(.hidden).menuStyle(.borderlessButton).buttonStyle(.plain).fixedSize()
-                    .modifier(SearchChip(active:model.speaker != nil)).accessibilityIdentifier("search-speaker")
-                Menu {
-                    ForEach(SearchDate.allCases,id:\.self) { date in Button(dateText(date)) { model.date = date; model.refresh() } }
-                } label: { Text(dateText(model.date)) }.menuIndicator(.hidden).menuStyle(.borderlessButton).buttonStyle(.plain).fixedSize()
-                    .modifier(SearchChip(active:model.date != .any)).accessibilityIdentifier("search-date")
-                Button(UXText.text("search.filter.recordedByMe")) { model.own.toggle(); model.refresh() }.buttonStyle(.plain)
-                    .modifier(SearchChip(active:model.own)).accessibilityAddTraits(model.own ? .isSelected : [])
-                    .accessibilityIdentifier("search-own")
-            }.padding(.horizontal,10).padding(.bottom,10)
+            ScrollView(.horizontal,showsIndicators:false) {
+                HStack(spacing:6) {
+                    Button(UXText.text("search.filter.starred")) { model.starred.toggle(); model.refresh() }.buttonStyle(.plain)
+                        .modifier(SearchChip(active:model.starred)).accessibilityAddTraits(model.starred ? .isSelected : [])
+                        .accessibilityIdentifier("search-starred")
+                    Menu {
+                        Button(UXText.text("search.filter.anySpeaker")) { model.speaker = nil; model.refresh() }
+                        Divider()
+                        ForEach(model.names,id:\.self) { name in Button(name) { model.speaker = name; model.refresh() } }
+                    } label: {
+                        Text(model.speaker.map { UXText.text("search.filter.speaker",["name":$0]) } ?? UXText.text("search.filter.speakerNone"))
+                            .foregroundStyle(model.speaker != nil ? CassiniTheme.onAccent : CassiniTheme.ink)
+                    }.menuIndicator(.hidden).menuStyle(.borderlessButton).buttonStyle(.plain).fixedSize()
+                        .modifier(SearchChip(active:model.speaker != nil)).accessibilityIdentifier("search-speaker")
+                    Menu {
+                        ForEach(SearchDate.allCases,id:\.self) { date in Button(dateText(date)) { model.date = date; model.refresh() } }
+                    } label: {
+                        Text(dateText(model.date))
+                            .foregroundStyle(model.date != .any ? CassiniTheme.onAccent : CassiniTheme.ink)
+                    }.menuIndicator(.hidden).menuStyle(.borderlessButton).buttonStyle(.plain).fixedSize()
+                        .modifier(SearchChip(active:model.date != .any)).accessibilityIdentifier("search-date")
+                    Button(UXText.text("search.filter.recordedByMe")) { model.own.toggle(); model.refresh() }.buttonStyle(.plain)
+                        .modifier(SearchChip(active:model.own)).accessibilityAddTraits(model.own ? .isSelected : [])
+                        .accessibilityIdentifier("search-own")
+                }.padding(.horizontal,10).padding(.bottom,10)
+            }.frame(height:38)
             Text(model.count).font(.system(size:12,weight:.semibold)).foregroundStyle(CassiniTheme.ink2)
                 .padding(.horizontal,18).padding(.bottom,6).accessibilityIdentifier("search-count")
         }.frame(maxWidth:.infinity,alignment:.leading)
@@ -137,7 +145,7 @@ struct LibrarySearchView: View {
     }
     private func name(_ id: String, meeting: LibraryMeeting) -> String { meeting.speaker(for:id)?.displayName ?? UXText.text("common.speaker.unnamed",["n":"1"]) }
     private func dateText(_ value: SearchDate) -> String {
-        UXText.text(value == .any ? "search.filter.anyDate" : value == .today ? "search.filter.date.today" : value == .week ? "search.filter.date.week" : "search.filter.date.month")
+        UXText.text(value == .any ? "search.filter.anyDate" : value == .today ? "search.filter.date.today" : value == .week ? "search.filter.date.week" : value == .month ? "search.filter.date.month" : "search.filter.date.year")
     }
     private func marked(_ text: String, spans: [SearchSpan], selected: Bool = false) -> Text {
         let value = NSMutableAttributedString(string:text)

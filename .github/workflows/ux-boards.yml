@@ -48,6 +48,19 @@ jobs:
     - name: Prepare hosted display (fixtures are in the shared app)
       run: |
         python3 scripts/hosted-display.py
+    - name: Filter and export control regressions
+      timeout-minutes: 3
+      env:
+        TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
+        TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'
+      run: |
+        set -o pipefail
+        xcodebuild test-without-building -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" \
+          -destination 'platform=macOS' -parallel-testing-enabled NO \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testStarsPersistAndSearchCarriesLibraryChoiceThenResetsOtherFilters \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testExportBoardAndKeyboardChoices \
+          -resultBundlePath build/UXFilters.xcresult \
+          2>&1 | tee build/ux-filters.log
     - name: Speaker and meeting regressions
       timeout-minutes: 7
       env:
@@ -85,7 +98,10 @@ jobs:
           -resultBundlePath build/UXBoards.xcresult \
           2>&1 | tee build/ux-boards.log
     - name: Render dark Library boards
-      timeout-minutes: 9
+      # Run43623183819 passed the Starred search regression at9 min, then
+      # the guard killed the next progressing test. Leave headroom for the
+      # full dark subset and result-bundle finalization on hosted runners.
+      timeout-minutes: 12
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
         TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'
@@ -110,6 +126,7 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSettingsTranscriptionModelChoices \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testParakeetRecommendationCapabilityAndPersistedDismissal \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSettingsRecordingPreferenceAndTabs \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testStarsPersistAndSearchCarriesLibraryChoiceThenResetsOtherFilters \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testLibrary \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testFirstRun \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSearchBoardFiltersAndOpeningTheHit \
