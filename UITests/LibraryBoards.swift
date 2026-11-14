@@ -1006,9 +1006,16 @@ final class LibraryBoards: XCTestCase {
         liveRow.click()
         XCTAssertTrue(title.waitForExistence(timeout:5))
         app.typeKey(XCUIKeyboardKey(rawValue:"\u{F70D}"),modifierFlags:.shift)
-        XCTAssertTrue(app.menuItems["library-keyboard-rename"].waitForExistence(timeout:5),"Live selection retains the Library keyboard menu")
+        let keyboardMenu = app.menuItems["library-keyboard-rename"]
+        XCTAssertTrue(keyboardMenu.waitForExistence(timeout:5),"Live selection retains the Library keyboard menu")
         app.typeKey(.escape,modifierFlags:[])
+        let dismissed = NSPredicate { _,_ in !keyboardMenu.exists }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:dismissed,object:nil)],timeout:5),.completed)
         app.typeKey("f",modifierFlags:.command)
+        // Search attaches a new native field and requests focus asynchronously.
+        // Mount and focus it before Escape, which otherwise goes to the old row.
+        XCTAssertTrue(window.staticTexts["search-count"].waitForExistence(timeout:5))
+        window.searchFields["library-search-field"].click()
         app.typeKey(.escape,modifierFlags:[])
         XCTAssertTrue(title.waitForExistence(timeout:5),"Search cancellation preserves the live pane")
         app.typeKey("[",modifierFlags:.command)
