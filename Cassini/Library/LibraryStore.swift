@@ -258,7 +258,7 @@ final class LibraryStore {
                 let validKeys = Set(meetings.map(\.libraryKey))
                 let surviving = selectedKeys.intersection(validKeys)
                 if surviving.isEmpty {
-                    let initial = context.screenshot ? (meetings.first(where:{ $0.title == "Budget review" })?.libraryKey ?? meetings.first?.libraryKey) : (meetings.first(where: { $0.state.lifecycle == .saved }) ?? meetings.first)?.libraryKey
+                    let initial = context.screenshot ? (visibleMeetings.first(where:{ $0.title == "Budget review" })?.libraryKey ?? visibleMeetings.first?.libraryKey) : (visibleMeetings.first(where: { $0.state.lifecycle == .saved }) ?? visibleMeetings.first)?.libraryKey
                     selectedKeys = initial.map { [$0] } ?? []
                 } else if surviving != selectedKeys {
                     selectedKeys = surviving

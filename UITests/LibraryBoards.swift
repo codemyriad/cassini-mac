@@ -33,16 +33,24 @@ final class LibraryBoards: XCTestCase {
         window.searchFields["library-search-field"].typeText("budget")
         capture(window,name:"search-starred")
         relaunched.typeKey(.escape,modifierFlags:[])
+        XCTAssertTrue(window.descendants(matching:.any)["library-filters"].waitForExistence(timeout:5),"Escape closes Search before reopening it")
         window.searchFields["library-search-field"].click()
         XCTAssertTrue(window.buttons["search-starred"].waitForExistence(timeout:5))
         XCTAssertTrue(selected(window.buttons["search-starred"]))
-        XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"search-date").firstMatch.label.contains("Any date"))
+        let dateChoice = window.popUpButtons["search-date"]
+        XCTAssertEqual(visibleText(dateChoice),"Any date",dateChoice.debugDescription)
         relaunched.typeKey(.escape,modifierFlags:[])
         let row = window.outlines.staticTexts.matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout:5)); row.rightClick()
         let unstar = relaunched.menuItems["Unstar"]
         XCTAssertTrue(unstar.waitForExistence(timeout:5),relaunched.debugDescription); unstar.click()
         XCTAssertTrue(window.staticTexts["library-starred-empty"].waitForExistence(timeout:5),relaunched.debugDescription)
+        relaunched.terminate()
+        let empty = try launch("library",fixture:"main",extra:["-CassiniDefaultsID",defaultsID])
+        defer { empty.terminate() }
+        let emptyWindow = empty.windows["cassini-library-window"]
+        XCTAssertTrue(emptyWindow.staticTexts["library-starred-empty"].waitForExistence(timeout:20),empty.debugDescription)
+        XCTAssertTrue(emptyWindow.staticTexts["meeting-empty-selection"].waitForExistence(timeout:5),"Refresh cannot select an unstarred meeting behind an empty Starred list")
     }
 
     /// D-963: both Stop routes preserve the meeting and expose Resume after the
@@ -1098,9 +1106,11 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(sheet.radioButtons["Markdown"].isSelected)
         capture(window,name:"export")
         XCTAssertFalse(sheet.radioButtons["Plain text"].exists)
-        sheet.disclosureTriangles.firstMatch.click()
+        // The native disclosure's label is not an activation target on macOS 26.
+        // Click the triangle itself and wait for its animated content to appear.
+        sheet.disclosureTriangles["export-more-formats"].coordinate(withNormalizedOffset:CGVector(dx:0.05,dy:0.5)).click()
         for label in ["Plain text", "Subtitles (SRT)", "Subtitles (WebVTT)"] {
-            XCTAssertTrue(sheet.radioButtons[label].exists, app.debugDescription)
+            XCTAssertTrue(sheet.radioButtons[label].waitForExistence(timeout:5), app.debugDescription)
             sheet.radioButtons[label].click()
             XCTAssertEqual(selected(sheet.radioButtons[label]), true)
             XCTAssertEqual(selected(sheet.radioButtons["Cassini file"]), false)

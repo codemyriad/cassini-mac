@@ -238,7 +238,7 @@ struct LibraryView: View {
                 recordCoordinator.showingFirst = true
             }
             if store.context.screenshot, ["meeting","export"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""), navigation.detail == nil,
-               let meeting = store.meetings.first(where: { $0.title == (LibraryLaunchContext.argument("-CassiniScreenshot") == "export" ? "Budget review" : "Client call, Rossi & Partners") }) {
+               let meeting = store.visibleMeetings.first(where: { $0.title == (LibraryLaunchContext.argument("-CassiniScreenshot") == "export" ? "Budget review" : "Client call, Rossi & Partners") }) {
                 store.selectedKey = meeting.libraryKey
                 navigation.open(meeting,frozen:true)
                 if LibraryLaunchContext.argument("-CassiniScreenshot") == "export" {
