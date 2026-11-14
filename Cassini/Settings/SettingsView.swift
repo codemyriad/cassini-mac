@@ -4,11 +4,11 @@ import AppKit
 import Observation
 import CassiniLibrary
 
-enum SettingsTab: String, CaseIterable { case recording, updates, transcription, library, browser
+enum SettingsTab: String, CaseIterable { case recording, transcription, library, browser
     var title: String {
-        UXText.text(self == .recording ? "settings.tab.recording" : self == .updates ? "settings.updates.title" : self == .transcription ? "settings.tab.transcription" : self == .library ? "settings.tab.library" : "settings.tab.browserCompanion")
+        UXText.text(self == .recording ? "settings.tab.recording" : self == .transcription ? "settings.tab.transcription" : self == .library ? "settings.tab.library" : "settings.tab.browserCompanion")
     }
-    var icon: String { self == .recording ? "mic" : self == .updates ? "arrow.triangle.2.circlepath" : self == .transcription ? "text.alignleft" : self == .library ? "folder" : "macwindow" }
+    var icon: String { self == .recording ? "mic" : self == .transcription ? "text.alignleft" : self == .library ? "folder" : "macwindow" }
 }
 @MainActor @Observable final class SettingsNavigation {
     static let shared = SettingsNavigation()
@@ -22,7 +22,6 @@ struct CassiniSettingsView: View {
     var body: some View {
         TabView(selection:$navigation.tab) {
             SettingsRecordingView().tabItem { Label(SettingsTab.recording.title,systemImage:SettingsTab.recording.icon) }.tag(SettingsTab.recording)
-            SettingsUpdatesView().tabItem { Label(SettingsTab.updates.title,systemImage:SettingsTab.updates.icon) }.tag(SettingsTab.updates)
             SettingsTranscriptionView().tabItem { Label(SettingsTab.transcription.title,systemImage:SettingsTab.transcription.icon) }.tag(SettingsTab.transcription)
             SettingsLibraryView().tabItem { Label(SettingsTab.library.title,systemImage:SettingsTab.library.icon) }.tag(SettingsTab.library)
             SettingsBrowserView().tabItem { Label(SettingsTab.browser.title,systemImage:SettingsTab.browser.icon) }.tag(SettingsTab.browser)
@@ -45,17 +44,16 @@ struct CassiniSettingsView: View {
 private struct SettingsUpdatesView: View {
     @State private var updates = ApplicationUpdates.shared
     var body: some View {
-        SettingsPage {
-            VStack(alignment:.leading,spacing:16) {
-                Text(UXText.text("settings.updates.title")).fontWeight(.bold)
-                Toggle(UXText.text("settings.updates.automatic"),isOn:$updates.automaticChecks)
-                    .toggleStyle(.switch).disabled(!updates.available)
-                    .accessibilityIdentifier("settings-automatic-updates")
-                Button(UXText.text("app.checkForUpdates")) { updates.checkForUpdates() }
-                    .disabled(!updates.canCheckForUpdates).accessibilityIdentifier("settings-check-updates")
-            }.padding(18).frame(maxWidth:.infinity,alignment:.leading)
-                .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
-        }
+        // D34.2 keeps Sparkle's preferences; HARMONY §10 keeps four tabs.
+        VStack(alignment:.leading,spacing:16) {
+            Text(UXText.text("settings.updates.title")).fontWeight(.bold)
+            Toggle(UXText.text("settings.updates.automatic"),isOn:$updates.automaticChecks)
+                .toggleStyle(.switch).disabled(!updates.available)
+                .accessibilityIdentifier("settings-automatic-updates")
+            Button(UXText.text("app.checkForUpdates")) { updates.checkForUpdates() }
+                .disabled(!updates.canCheckForUpdates).accessibilityIdentifier("settings-check-updates")
+        }.padding(18).frame(maxWidth:.infinity,alignment:.leading)
+            .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
     }
 }
 private struct SettingsRecordingView: View {
@@ -94,6 +92,7 @@ private struct SettingsRecordingView: View {
                 Toggle(UXText.text("settings.general.menuBar"),isOn:$showMenuBar)
                     .toggleStyle(.switch).accessibilityIdentifier("settings-show-menu-bar")
             }.padding(18).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
+            SettingsUpdatesView()
         }.sheet(isPresented:$navigation.capturingShortcut) {
             VStack(alignment:.leading,spacing:18) {
                 Text(UXText.text("settings.recording.shortcut.title")).font(.system(size:17,weight:.bold))
@@ -154,9 +153,10 @@ private struct SettingsBrowserView: View {
             VStack(alignment:.leading,spacing:16) {
                 Text(UXText.text("settings.browser.description")).foregroundStyle(CassiniTheme.ink2).lineSpacing(4)
                 BrowserConnectionStateView(identifier:"settings-browser-status")
-                if CompanionSetup.storeListingPublic {
+                if CompanionSetup.storeListingPublic || CaptureCollection.shared.connected {
                     Button(UXText.text("companion.local.add")) { CompanionSetup.shared.showLocalGuide(from:.settings) }
                         .buttonStyle(.link).disabled(!CompanionSetup.shared.canAdd)
+                        .accessibilityIdentifier("settings-add-local-companion")
                 }
             }.padding(18).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
         }
@@ -165,6 +165,7 @@ private struct SettingsBrowserView: View {
 
 private struct SettingsTranscriptionView: View {
     @State private var models = SpeechModelController.shared
+    @State private var updates = ApplicationUpdates.shared
     private var weightSize: String {
         let url = Bundle.main.url(forResource:"whistle",withExtension:"cact",subdirectory:"Whistle")
         let count = url.flatMap { try? $0.resourceValues(forKeys:[.fileSizeKey]).fileSize } ?? 16_919_407
@@ -243,6 +244,13 @@ private struct SettingsTranscriptionView: View {
                 HStack(alignment:.top,spacing:10) {
                     Text("•").accessibilityHidden(true)
                     Text(UXText.text("settings.transcription.network.download")).foregroundStyle(CassiniTheme.ink2).lineSpacing(4).fixedSize(horizontal:false,vertical:true)
+                }
+                if updates.available {
+                    HStack(alignment:.top,spacing:10) {
+                        Text("•").accessibilityHidden(true)
+                        Text(UXText.text("settings.transcription.network.updates"))
+                            .foregroundStyle(CassiniTheme.ink2).lineSpacing(4).fixedSize(horizontal:false,vertical:true)
+                    }.accessibilityIdentifier("settings-network-updates")
                 }
             }
         }.task { await models.refresh() }

@@ -12,8 +12,8 @@ import unittest
 from unittest.mock import patch
 
 SCRIPT = Path(__file__).with_name('render-local-ux.py')
-BOARDS = ('meeting', 'recording', 'received', 'export', 'search',
-          'settings-recording', 'settings-transcription')
+BOARDS = ('first-run', 'meeting', 'recording', 'received', 'export', 'search',
+          'settings-recording', 'settings-transcription', 'settings-library', 'settings-browser')
 
 LAUNCHER = r'''
 import base64
@@ -62,7 +62,7 @@ class RenderLocalUX(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.app = self.root / ('Private fixture path ' * 8) / 'Cassini.app'
-        for folder in ('main', 'received-only'):
+        for folder in ('main', 'received-only', 'empty'):
             (self.app / 'Contents/Resources/Fixtures/Library' / folder).mkdir(parents=True)
         self.launcher = self.root / 'open-fixture.py'
         self.launcher.write_text(LAUNCHER)
@@ -128,7 +128,7 @@ class RenderLocalUX(unittest.TestCase):
             with self.subTest(board=board):
                 self.render(board)
                 fixture = Path(self.arguments[self.arguments.index('-CassiniFixture') + 1])
-                self.assertEqual(fixture.name, 'received-only' if board == 'received' else 'main')
+                self.assertEqual(fixture.name, 'received-only' if board == 'received' else 'empty' if board == 'first-run' else 'main')
                 if board.startswith('settings-'):
                     self.assertIn('-CassiniSettingsID', self.arguments)
 

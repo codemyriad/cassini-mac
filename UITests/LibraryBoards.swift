@@ -658,6 +658,17 @@ final class LibraryBoards: XCTestCase {
             let settings = app.windows["cassini-settings-window"]
             XCTAssertTrue(waitForPresent(settings,timeout:10))
             settings.toolbars.buttons["Browser companion"].click()
+            if kind == "health-ready" {
+                // SwiftUI's link-style Button is exposed as an AXLink on macOS.
+                let local = settings.descendants(matching:.any).matching(identifier:"settings-add-local-companion").firstMatch
+                XCTAssertTrue(waitForPresent(local,timeout:10),"A healthy connection still permits adding another browser: " + app.debugDescription)
+                XCTAssertTrue(local.isEnabled)
+                local.click()
+                XCTAssertTrue(waitForPresent(settings.sheets.buttons["companion-local-done"],timeout:10),app.debugDescription)
+                app.typeKey(.escape,modifierFlags:[])
+                let guideClosed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:settings.sheets.firstMatch)
+                XCTAssertEqual(XCTWaiter.wait(for:[guideClosed],timeout:5),.completed,app.debugDescription)
+            }
             let message = settings.staticTexts["companion-reload-message"]
             if kind == "health-reload" {
                 XCTAssertTrue(waitForPresent(message,timeout:10),app.debugDescription)
@@ -885,7 +896,11 @@ final class LibraryBoards: XCTestCase {
         let shortcutClosed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:window.sheets.firstMatch)
         XCTAssertEqual(XCTWaiter.wait(for:[shortcutClosed],timeout:5),.completed,app.debugDescription)
         XCTAssertFalse(window.sheets.firstMatch.exists)
-        window.toolbars.buttons["Updates"].click()
+        XCTAssertFalse(window.toolbars.buttons["Updates"].exists,"Updates belongs to Recording; Settings keeps the four shared tabs")
+        for title in ["Recording", "Transcription", "Library", "Browser companion"] {
+            XCTAssertTrue(window.toolbars.buttons[title].exists,window.debugDescription)
+        }
+        window.scrollViews.firstMatch.scroll(byDeltaX:0,deltaY:-500)
         let updatesToggle = window.descendants(matching:.any).matching(identifier:"settings-automatic-updates").firstMatch
         XCTAssertTrue(updatesToggle.waitForExistence(timeout:5),window.debugDescription)
         XCTAssertTrue(window.buttons["settings-check-updates"].exists,window.debugDescription)

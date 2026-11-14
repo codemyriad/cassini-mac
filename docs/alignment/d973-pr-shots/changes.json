@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "app": "mac",
+  "repo": "codemyriad/cassini-mac",
+  "pr": 309,
+  "git_images": false,
+  "no_baseline": false,
+  "rows": [
+    {
+      "screen": "settings-browser",
+      "label": "Settings browser",
+      "scheme": "dark",
+      "lang": "en",
+      "device": "desktop",
+      "status": "changed",
+      "changed_pct": 1.849611,
+      "bbox": [
+        160,
+        31,
+        540,
+        81
+      ],
+      "before": "before/settings-browser.dark.png",
+      "after": "after/settings-browser.dark.png",
+      "diff": "diff/settings-browser.dark.png"
+    },
+    {
+      "screen": "settings-browser",
+      "label": "Settings browser",
+      "scheme": "light",
+      "lang": "en",
+      "device": "desktop",
+      "status": "changed",
+      "changed_pct": 1.724976,
+      "bbox": [
+        160,
+        31,
+        540,
+        81
+      ],
+      "before": "before/settings-browser.light.png",
+      "after": "after/settings-browser.light.png",
+      "diff": "diff/settings-browser.light.png"
+    },
+    {
+      "screen": "settings-recording",
+      "label": "Settings recording",
+      "scheme": "dark",
+      "lang": "en",
+      "device": "desktop",
+      "status": "changed",
+      "changed_pct": 22.228377,
+      "bbox": [
+        32,
+        31,
+        668,
+        545
+      ],
+      "before": "before/settings-recording.dark.png",
+      "after": "after/settings-recording.dark.png",
+      "diff": "diff/settings-recording.dark.png"
+    },
+    {
+      "screen": "settings-recording",
+      "label": "Settings recording",
+      "scheme": "light",
+      "lang": "en",
+      "device": "desktop",
+      "status": "changed",
+      "changed_pct": 21.520894,
+      "bbox": [
+        32,
+        31,
+        668,
+        545
+      ],
+      "before": "before/settings-recording.light.png",
+      "after": "after/settings-recording.light.png",
+      "diff": "diff/settings-recording.light.png"
+    }
+  ],
+  "ui_code_changed": false,
+  "root": "ui/src/test/screenshots",
+  "requested_base_sha": "fd18c36c8f7dd9e44446ebf257e71bf307b9e11e",
+  "base": {
+    "sha": "fd18c36c8f7dd9e44446ebf257e71bf307b9e11e",
+    "run_id": "local",
+    "runner": "unknown",
+    "image": "unknown"
+  },
+  "head": {
+    "sha": "973a66c0f05df844bc97a180b446301f72129a2c",
+    "run_id": "local",
+    "runner": "unknown",
+    "image": "unknown"
+  }
+}
