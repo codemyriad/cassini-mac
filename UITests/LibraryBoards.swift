@@ -12,22 +12,22 @@ final class LibraryBoards: XCTestCase {
         window.buttons["meeting-more-actions"].click()
         let star = app.menuItems["Star"]
         XCTAssertTrue(star.waitForExistence(timeout:5),app.debugDescription); star.click()
-        let filters = window.segmentedControls["library-filters"]
+        let filters = window.descendants(matching:.any)["library-filters"]
         XCTAssertTrue(filters.exists,app.debugDescription)
-        filters.buttons["Starred"].click()
+        filters.radioButtons["Starred"].click()
         XCTAssertFalse(window.staticTexts["library-starred-empty"].exists)
         capture(window,name:"library-starred")
         app.terminate()
         let relaunched = try launch("library",fixture:"main",extra:["-CassiniDefaultsID",defaultsID])
         defer { relaunched.terminate() }
         window = relaunched.windows["cassini-library-window"]
-        let starredChoice = window.segmentedControls["library-filters"].buttons["Starred"]
+        let starredChoice = window.descendants(matching:.any)["library-filters"].radioButtons["Starred"]
         XCTAssertTrue(starredChoice.waitForExistence(timeout:20),relaunched.debugDescription)
-        XCTAssertTrue(starredChoice.isSelected || String(describing:starredChoice.value ?? "") == "1",starredChoice.debugDescription)
+        XCTAssertTrue(selected(starredChoice),starredChoice.debugDescription)
         window.searchFields["library-search-field"].click()
         let starred = window.buttons["search-starred"]
         XCTAssertTrue(starred.waitForExistence(timeout:5),relaunched.debugDescription)
-        XCTAssertTrue(starred.isSelected)
+        XCTAssertTrue(selected(starred))
         window.descendants(matching:.any).matching(identifier:"search-date").firstMatch.click()
         XCTAssertTrue(relaunched.menuItems["This year"].exists); relaunched.menuItems["This year"].click()
         window.searchFields["library-search-field"].typeText("budget")
@@ -35,7 +35,7 @@ final class LibraryBoards: XCTestCase {
         relaunched.typeKey(.escape,modifierFlags:[])
         window.searchFields["library-search-field"].click()
         XCTAssertTrue(window.buttons["search-starred"].waitForExistence(timeout:5))
-        XCTAssertTrue(window.buttons["search-starred"].isSelected)
+        XCTAssertTrue(selected(window.buttons["search-starred"]))
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"search-date").firstMatch.label.contains("Any date"))
         relaunched.typeKey(.escape,modifierFlags:[])
         let row = window.outlines.staticTexts.matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-")).firstMatch
