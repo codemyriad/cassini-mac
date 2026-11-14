@@ -7,6 +7,11 @@ pin=json.loads((folder/'UPSTREAM.json').read_text())
 raw=(folder/'strings.json').read_bytes()
 assert hashlib.sha256(raw).hexdigest()==pin['sha256']
 assert (root/'Sources/CassiniLibrary/Localization/strings.json').read_bytes() == raw
+import_pin=json.loads((folder/'import-types-UPSTREAM.json').read_text())
+import_raw=(folder/'import-types.json').read_bytes()
+assert import_pin['repository']=='cassini-ux' and import_pin['path']=='contract/import-types.json'
+assert hashlib.sha256(import_raw).hexdigest()==import_pin['sha256']
+assert (root/'Sources/CassiniLibrary/Schema/import-types.json').read_bytes() == import_raw
 entries={e['id']:e for e in json.loads(raw)['entries']}
 mac_entries={e['id']:e for e in json.loads((root/'Sources/CassiniLibrary/Localization/mac.json').read_text())['entries']}
 # D7 Q5 explicitly requires this published line for reserve-stop behavior.

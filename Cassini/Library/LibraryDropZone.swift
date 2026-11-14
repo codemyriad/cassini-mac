@@ -21,6 +21,15 @@ enum LibraryDropState: Equatable {
     var showsWindowOutline: Bool {
         self == .enteredWindow
     }
+
+    static func formattedUnsupportedFileNames(_ urls: [URL], locale: Locale = UXText.locale) -> String {
+        let names = urls.map(\.lastPathComponent).filter { !$0.isEmpty }
+        guard let first = names.first else { return "" }
+        if names.count == 1 { return first }
+        let formatter = ListFormatter()
+        formatter.locale = locale
+        return formatter.string(from: names) ?? first
+    }
 }
 
 /// Incoming-tray glyph from `Library-Mac.dc.html` / `DropImport.dc.html` (`M12 4v10 M8 10l4 4 4-4 M4 16v3.5h16V16`).
@@ -151,7 +160,7 @@ struct LibraryDropListOverlay: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(CassiniTheme.ink)
                     .multilineTextAlignment(.center)
-                Text(UXText.text("import.drop.formats.current"))
+                Text(UXText.mac("import.drop.formats"))
                     .font(.system(size: 11.5))
                     .foregroundStyle(CassiniTheme.ink2)
                     .multilineTextAlignment(.center)
@@ -165,7 +174,7 @@ struct LibraryDropListOverlay: View {
             .accessibilityIdentifier("library-drop-overlay-supported")
         case .unsupportedOverList(let fileName):
             let shape = RoundedRectangle(cornerRadius: 10)
-            let formats = UXText.text("import.drop.formats.current")
+            let formats = UXText.mac("import.drop.formats")
             VStack(spacing: 8) {
                 ImportErrorAlertIcon(size: 28)
                     .foregroundStyle(CassiniTheme.error)
@@ -173,6 +182,7 @@ struct LibraryDropListOverlay: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(CassiniTheme.error)
                     .multilineTextAlignment(.center)
+                    .lineLimit(3)
                 Text(UXText.text("import.drop.cantImport.detail", ["formats": formats]))
                     .font(.system(size: 11.5))
                     .foregroundStyle(CassiniTheme.ink2)
@@ -245,7 +255,7 @@ struct LibraryWindowDropDestination: NSViewRepresentable {
                 return []
             }
             if supported.isEmpty {
-                onStateChange?(.unsupportedOverList(fileName: files[0].lastPathComponent))
+                onStateChange?(.unsupportedOverList(fileName: LibraryDropState.formattedUnsupportedFileNames(files)))
                 return []
             }
             onStateChange?(.supportedOverList)

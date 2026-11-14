@@ -441,6 +441,15 @@ struct LibraryView: View {
                         .foregroundStyle(CassiniTheme.ink)
                         .lineLimit(1)
                     Spacer(minLength: 2)
+                    if isFailed {
+                        Button(UXText.text("common.done")) {
+                            importer.dismissTransientItem(item.id)
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(CassiniTheme.accentInk)
+                        .accessibilityIdentifier("dismiss-failed-import-" + item.fileName)
+                    }
                 }
                 HStack(spacing: 6) {
                     Text(store.format.rowTime(item.startedAt))
@@ -450,7 +459,7 @@ struct LibraryView: View {
                     if let presentation {
                         catalogStatusBadge(presentation, onAccent: false)
                     }
-                    Text(item.fileName)
+                    Text(failureDetail ?? item.fileName)
                         .foregroundStyle(CassiniTheme.ink2)
                         .lineLimit(1)
                 }
@@ -466,7 +475,7 @@ struct LibraryView: View {
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
         .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
-        .accessibilityIdentifier("importing-" + item.fileName)
+        .accessibilityIdentifier((isFailed ? "failed-import-" : "importing-") + item.fileName)
     }
     private var toolbarControl: some View {
         HStack(spacing: 4) {

@@ -183,13 +183,40 @@ targets:
             CFBundleTypeRole: Viewer
             LSHandlerRank: Alternate
             LSItemContentTypes:
+              - org.xiph.opus
               - org.xiph.ogg-audio
+          - CFBundleTypeName: MP3 Audio
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.mp3
+          - CFBundleTypeName: MPEG-4 Audio
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - com.apple.m4a-audio
+              - public.mpeg-4-audio
+          - CFBundleTypeName: Waveform Audio
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - com.microsoft.waveform-audio
           - CFBundleTypeName: ZIP Archive
             CFBundleTypeRole: Viewer
             LSHandlerRank: Alternate
             LSItemContentTypes:
               - public.zip-archive
         UTImportedTypeDeclarations:
+          - UTTypeIdentifier: org.xiph.opus
+            UTTypeDescription: Ogg Opus Audio
+            UTTypeConformsTo:
+              - public.audio
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - opus
+              public.mime-type:
+                - audio/opus
+                - audio/x-opus+ogg
           - UTTypeIdentifier: org.xiph.ogg-audio
             UTTypeDescription: Ogg Opus Audio
             UTTypeConformsTo:
@@ -197,7 +224,6 @@ targets:
             UTTypeTagSpecification:
               public.filename-extension:
                 - opus
-                - oga
                 - ogg
               public.mime-type:
                 - audio/ogg
