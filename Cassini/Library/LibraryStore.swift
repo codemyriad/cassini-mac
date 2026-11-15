@@ -183,6 +183,7 @@ final class LibraryStore {
         for root in [context.root] + context.previousRoots { scanners[root] = LibraryScanner(root:root,activity:activity) }
         selectedKey = selection?.libraryKey ?? selectedKey; start()
     }
+    private(set) var importedSelection: String?
     @discardableResult func selectImported(_ meeting: LibraryMeeting) -> LibraryMeeting {
         let folder = LibraryLocation.canonical(meeting.folder)
         // A restored/readable retained folder may not be in the last watcher
@@ -192,6 +193,8 @@ final class LibraryStore {
         let displayed = LibraryScan.merging([.init(meetings:others,issues:[]),.init(meetings:[meeting],issues:[])],retaining:retained)
             .meetings.first { LibraryLocation.canonical($0.folder) == folder } ?? meeting
         selectionFolderWhenAvailable = folder; selectionWhenAvailable = nil
+        preferences.filter = .all
+        importedSelection = displayed.libraryKey
         selectedKey = displayed.libraryKey
         refresh(affected:meeting.folder)
         return displayed

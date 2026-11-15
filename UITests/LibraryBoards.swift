@@ -1491,9 +1491,10 @@ final class LibraryBoards: XCTestCase {
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20))
         let fixtures = try fixtureDirectory()
-        for (index, name) in ["tone.wav", "tone.m4a", "tone.mp3", "tone.flac", "meeting.opus"].enumerated() {
-            let file = name == "meeting.opus" ? fixtures.appendingPathComponent(name)
-                : fixtures.appendingPathComponent("qa-imports/" + name)
+        for name in ["tone-wav.wav", "tone-m4a.m4a", "tone-mp3.mp3", "tone-flac.flac", "tone-opus.opus"] {
+            let before = meetingRowIdentifiers(window, prefix: "meeting-Received-")
+            let file = fixtures.appendingPathComponent("qa-imports/" + name)
+            let expectedTitle = file.deletingPathExtension().lastPathComponent
             app.typeKey("o", modifierFlags: .command)
             let panel = app.windows["open-panel"]
             XCTAssertTrue(panel.waitForExistence(timeout: 10), app.debugDescription)
@@ -1505,19 +1506,27 @@ final class LibraryBoards: XCTestCase {
             capture(panel, name: "qa-import-picker-\(name)")
             open.click()
             let imported = NSPredicate { _, _ in
-                self.meetingRowCount(window, prefix: "meeting-Received-") == index + 1
+                let added = self.meetingRowIdentifiers(window, prefix: "meeting-Received-").subtracting(before)
+                guard added.count == 1, let identifier = added.first else { return false }
+                let fragments = window.outlines.staticTexts.matching(identifier: identifier).allElementsBoundByIndex
+                let nativeRow = window.outlines.outlineRows.containing(.staticText, identifier: identifier).firstMatch
+                return nativeRow.exists && nativeRow.isSelected
+                    && self.visibleText(window.staticTexts["meeting-title"]) == expectedTitle
                     && window.buttons["meeting-play"].exists
+                    && !fragments.isEmpty && fragments.allSatisfy { self.sidebarVisible($0, in: window) }
             }
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: imported, object: nil)], timeout: 20), .completed, app.debugDescription)
-            capture(window, name: "qa-imported-\(name)")
+            XCTAssertEqual(visibleText(window.staticTexts["meeting-title"]), expectedTitle)
             XCTAssertTrue(visibleText(window.staticTexts["meeting-subtitle"]).contains("Imported"), window.debugDescription)
+            capture(window, name: "qa-imported-\(name)")
         }
         // A mixed batch must preserve successful imports and expose the failed
         // item, without manufacturing a meeting from a truncated container.
         let batch = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniQABatch-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: batch, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: batch) }
-        try FileManager.default.copyItem(at: fixtures.appendingPathComponent("qa-imports/tone.wav"), to: batch.appendingPathComponent("duplicate.wav"))
+        try FileManager.default.copyItem(at: fixtures.appendingPathComponent("qa-imports/tone-wav.wav"), to: batch.appendingPathComponent("duplicate.wav"))
+        try FileManager.default.copyItem(at: fixtures.appendingPathComponent("qa-imports/tone-batch.wav"), to: batch.appendingPathComponent("tone-batch.wav"))
         try Data("fLaC".utf8).write(to: batch.appendingPathComponent("truncated.flac"))
         app.typeKey("o", modifierFlags: .command)
         let panel = app.windows["open-panel"]
@@ -1538,21 +1547,27 @@ final class LibraryBoards: XCTestCase {
         let failed = window.outlines.buttons.matching(NSPredicate(
             format: "identifier == %@ AND label == %@", "failed-import-truncated.flac", "Done"
         )).firstMatch
-        XCTAssertTrue(failed.waitForExistence(timeout: 20), app.debugDescription)
+        let completed = NSPredicate { _, _ in
+            self.meetingRowCount(window, prefix: "meeting-Received-") == 6
+                && self.sidebarVisible(failed, in: window)
+                && window.staticTexts.matching(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@",
+                    "Skipped 1 duplicate", "Skipped 1 duplicate")).firstMatch.exists
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: completed, object: nil)], timeout: 30), .completed, app.debugDescription)
+        // No manual scrolling: Done and every fragment of the attention card
+        // must be inside the live sidebar viewport below All/Starred.
+        let card = window.outlines.descendants(matching: .any).matching(identifier: "failed-import-truncated.flac")
+        XCTAssertGreaterThan(card.count, 0)
+        for fragment in card.allElementsBoundByIndex {
+            XCTAssertTrue(sidebarVisible(fragment, in: window), fragment.debugDescription)
+        }
         capture(window, name: "qa-mixed-batch-failure")
-        XCTAssertEqual(meetingRowCount(window, prefix: "meeting-Received-"), 5)
-        // D-1055 records the import scroll-position bug separately. Preserve
-        // its pixels above, then use the user's scroll workaround to dismiss.
-        window.scrollViews.firstMatch.scroll(byDeltaX: 0, deltaY: 1000)
-        let revealed = NSPredicate { _, _ in failed.exists && failed.isHittable }
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: revealed, object: nil)], timeout: 5), .completed, app.debugDescription)
-        capture(window, name: "qa-mixed-batch-revealed")
         failed.click()
         let dismissed = NSPredicate { _, _ in !failed.exists }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: dismissed, object: nil)], timeout: 5), .completed)
         capture(window, name: "qa-mixed-batch-dismissed")
 
-        // Back up all five imported meetings through the actual Save panel,
+        // Back up all six imported meetings through the actual Save panel,
         // then restore the resulting archive into a different fresh Library.
         let backupDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniQABackup-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: backupDirectory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
@@ -1571,7 +1586,7 @@ final class LibraryBoards: XCTestCase {
         nativeSaveButton(in: app).click()
         let receipt = window.staticTexts["export-zip-success"]
         XCTAssertTrue(receipt.waitForExistence(timeout: 30), app.debugDescription)
-        XCTAssertTrue(visibleText(receipt).contains("5"), receipt.debugDescription)
+        XCTAssertTrue(visibleText(receipt).contains("6"), receipt.debugDescription)
         capture(window, name: "qa-backup-exported")
         let archives = try FileManager.default.contentsOfDirectory(at: backupDirectory, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "zip" }
@@ -1596,7 +1611,7 @@ final class LibraryBoards: XCTestCase {
         capture(restorePanel, name: "qa-backup-import-panel")
         restorePanel.buttons["Open"].click()
         let restored = NSPredicate { _, _ in
-            self.meetingRowCount(restoredWindow, prefix: "meeting-Received-") == 5
+            self.meetingRowCount(restoredWindow, prefix: "meeting-Received-") == 6
                 && restoredWindow.buttons["meeting-play"].exists
         }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: restored, object: nil)], timeout: 30), .completed, restoredApp.debugDescription)
@@ -1604,11 +1619,24 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(visibleText(restoredWindow.staticTexts["meeting-subtitle"]).contains("Imported"), restoredWindow.debugDescription)
     }
 
-    private func meetingRowCount(_ window: XCUIElement, prefix: String) -> Int {
-        // SwiftUI exposes a row's title, duration and badge as separate static
-        // texts sharing one identifier. Count meeting identities, not fragments.
+    private func sidebarVisible(_ element: XCUIElement, in window: XCUIElement) -> Bool {
+        guard element.exists, element.isHittable else { return false }
+        let filters = window.descendants(matching: .any)["library-filters"]
+        let outline = window.outlines.firstMatch
+        guard filters.exists, outline.exists else { return false }
+        let viewport = outline.frame.intersection(window.frame)
+        let frame = element.frame
+        return !frame.isEmpty && viewport.contains(frame) && frame.minY >= filters.frame.maxY
+    }
+
+    private func meetingRowIdentifiers(_ window: XCUIElement, prefix: String) -> Set<String> {
+        // A row's title, duration and badge share an identifier.
         let fragments = window.outlines.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", prefix))
-        return Set(fragments.allElementsBoundByIndex.map(\.identifier)).count
+        return Set(fragments.allElementsBoundByIndex.map(\.identifier))
+    }
+
+    private func meetingRowCount(_ window: XCUIElement, prefix: String) -> Int {
+        meetingRowIdentifiers(window, prefix: prefix).count
     }
 
     @MainActor func testCaptureWritesIntoLibraryAndSaves() throws {
