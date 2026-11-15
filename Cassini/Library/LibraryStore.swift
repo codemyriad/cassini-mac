@@ -94,7 +94,12 @@ final class LibraryStore {
     static let shared = LibraryStore()
     private(set) var context: LibraryLaunchContext
     private(set) var snapshot: LibraryScan?
-    var selectedKeys: Set<String> = []
+    var selectedKeys: Set<String> = [] {
+        didSet {
+            importedSelectionRequest.selectionChanged(to: selectedKeys,
+                awaitingPublication: selectionFolderWhenAvailable != nil)
+        }
+    }
     var selectedKey: String? {
         get { selectedKeys.count == 1 ? selectedKeys.first : nil }
         set { selectedKeys = newValue.map { [$0] } ?? [] }
@@ -174,6 +179,7 @@ final class LibraryStore {
     }
     func stop() { started = false; epoch &+= 1; watchers.forEach { $0.stop() }; watchers = []; pending.removeAll(); scanning = false }
     func reloadLocation() {
+        importedSelectionRequest.reset()
         let selection = selected
         let folder = selectionFolderWhenAvailable ?? selection.map { LibraryLocation.canonical($0.folder) }
         selectionFolderWhenAvailable = folder
@@ -183,7 +189,9 @@ final class LibraryStore {
         for root in [context.root] + context.previousRoots { scanners[root] = LibraryScanner(root:root,activity:activity) }
         selectedKey = selection?.libraryKey ?? selectedKey; start()
     }
-    private(set) var importedSelection: String?
+    private var importedSelectionRequest = ImportedSelectionRequest()
+    var importedSelection: String? { importedSelectionRequest.key }
+    func consumeImportedSelection(_ key: String) { importedSelectionRequest.consume(key) }
     @discardableResult func selectImported(_ meeting: LibraryMeeting) -> LibraryMeeting {
         let folder = LibraryLocation.canonical(meeting.folder)
         // A restored/readable retained folder may not be in the last watcher
@@ -194,7 +202,7 @@ final class LibraryStore {
             .meetings.first { LibraryLocation.canonical($0.folder) == folder } ?? meeting
         selectionFolderWhenAvailable = folder; selectionWhenAvailable = nil
         preferences.filter = .all
-        importedSelection = displayed.libraryKey
+        importedSelectionRequest.request(displayed.libraryKey)
         selectedKey = displayed.libraryKey
         refresh(affected:meeting.folder)
         return displayed

@@ -397,7 +397,10 @@ struct LibraryView: View {
                         LibraryDropListOverlay(state: dropState)
                     }
                     .onChange(of: importScrollTarget, initial: true) { _, target in
-                        if let target { proxy.scrollTo(target, anchor: .center) }
+                        if let target {
+                            proxy.scrollTo(target, anchor: .center)
+                            store.consumeImportedSelection(target)
+                        }
                     }
                 }
                 .cassiniPinnedTopBar {
