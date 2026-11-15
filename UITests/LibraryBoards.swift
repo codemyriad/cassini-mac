@@ -1460,6 +1460,37 @@ final class LibraryBoards: XCTestCase {
         }
     }
 
+    @MainActor func testQAImportFormatsThroughOpenPanel() throws {
+        let app = try launch("first-run", fixture: "empty", extra: [
+            "--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString
+        ])
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20))
+        let fixtures = try fixtureDirectory()
+        for (index, name) in ["tone.wav", "tone.m4a", "tone.mp3", "tone.flac", "meeting.opus"].enumerated() {
+            let file = name == "meeting.opus" ? fixtures.appendingPathComponent(name)
+                : fixtures.appendingPathComponent("qa-imports/" + name)
+            app.typeKey("o", modifierFlags: .command)
+            let panel = app.windows["open-panel"]
+            XCTAssertTrue(panel.waitForExistence(timeout: 10), app.debugDescription)
+            app.typeKey("g", modifierFlags: [.command, .shift])
+            app.typeText(file.path)
+            app.typeKey(.return, modifierFlags: [])
+            let open = app.buttons["Open"].firstMatch
+            XCTAssertTrue(open.waitForExistence(timeout: 5), app.debugDescription)
+            capture(panel, name: "qa-import-picker-\(name)")
+            open.click()
+            let imported = NSPredicate { _, _ in
+                window.outlines.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "meeting-Received-")).count == index + 1
+                    && window.buttons["meeting-play"].exists
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: imported, object: nil)], timeout: 20), .completed, app.debugDescription)
+            capture(window, name: "qa-imported-\(name)")
+            XCTAssertTrue(visibleText(window.staticTexts["meeting-subtitle"]).contains("Imported"), window.debugDescription)
+        }
+    }
+
     @MainActor func testCaptureWritesIntoLibraryAndSaves() throws {
         let id = UUID().uuidString
         let app = try launch("first-run", fixture: "empty", extra: ["--fixture-library-recording", "-CassiniCaptureID", id])
