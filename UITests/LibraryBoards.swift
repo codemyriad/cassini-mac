@@ -1534,12 +1534,22 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(panel.buttons["Open"].isEnabled, app.debugDescription)
         capture(panel, name: "qa-mixed-batch-picker")
         panel.buttons["Open"].click()
-        let failed = window.buttons["dismiss-failed-import-truncated.flac"]
+        // SwiftUI propagates the card identifier over its child button's ID.
+        let failed = window.outlines.buttons.matching(NSPredicate(
+            format: "identifier == %@ AND label == %@", "failed-import-truncated.flac", "Done"
+        )).firstMatch
         XCTAssertTrue(failed.waitForExistence(timeout: 20), app.debugDescription)
         capture(window, name: "qa-mixed-batch-failure")
         XCTAssertEqual(meetingRowCount(window, prefix: "meeting-Received-"), 5)
+        // D-1055 records the import scroll-position bug separately. Preserve
+        // its pixels above, then use the user's scroll workaround to dismiss.
+        window.scrollViews.firstMatch.scroll(byDeltaX: 0, deltaY: 1000)
+        let revealed = NSPredicate { _, _ in failed.exists && failed.isHittable }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: revealed, object: nil)], timeout: 5), .completed, app.debugDescription)
+        capture(window, name: "qa-mixed-batch-revealed")
         failed.click()
-        XCTAssertFalse(failed.exists)
+        let dismissed = NSPredicate { _, _ in !failed.exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: dismissed, object: nil)], timeout: 5), .completed)
         capture(window, name: "qa-mixed-batch-dismissed")
     }
 

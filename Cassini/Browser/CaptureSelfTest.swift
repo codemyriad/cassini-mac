@@ -355,6 +355,12 @@ final class CaptureProbeProcess: @unchecked Sendable {
             let suggestionView = MeetingView(model:MeetingDetailModel(meeting:suggestionMeeting,frozen:true),format:LibraryStore.shared.format)
             try require(!suggestionView.showsCompanionSuggestion,"A connected companion does not show Set up again")
             stage = "owned recording surfaces and silent-mic boundary"
+            if !RecordingSpectrogram.enabled {
+                let disabledStrip = RecordingSpectrogramView(style: .row)
+                try require(!disabledStrip.wantsLayer && disabledStrip.layer == nil,
+                            "Disabled spectrogram allocates no compositor layers")
+                report["disabledSpectrogramHasNoLayers"] = true
+            }
             try require(RecordingOverview.active && RecordingOverview.recordCommandTitle == UXText.text("common.stop"),"File Record command reflects an owned recording")
             try require(LibraryMoveCoordinator.shared.requiresRecordingConfirmation,"Move requires confirmation during an owned capture")
             try await wait { LibraryStore.shared.selected.map { collection.captures[$0.id] != nil } == true }

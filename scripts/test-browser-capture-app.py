@@ -44,6 +44,8 @@ a.output.parent.mkdir(parents=True,exist_ok=True)
 a.output.with_suffix('.stderr.txt').write_text(stderr)
 assert process.returncode == 0, (process.returncode,stdout,stderr)
 report = json.loads(stdout)
+if platform.machine() == 'x86_64':
+    assert report['disabledSpectrogramHasNoLayers'] is True, report
 for name in [
     'autoRecordUsesBrowserMicrophone','browserMeNeverAuthorizesHardware','firstRecordingDoesNotWaitForNotifications',
     'firstStartDeliveredWhileAcceptanceGated',

@@ -469,7 +469,11 @@ private final class RecordingSpectrogramScrollLayer: CAReplicatorLayer {
     private var lanes: [LaneLayers] = []
     init(style: SpectrogramStripStyle, lane: SpectrogramLane = .me) {
         self.style = style; rowLane = lane; super.init(frame:.zero)
-        wantsLayer = true; setAccessibilityElement(false)
+        setAccessibilityElement(false)
+        // The diagnostic kill switch also excludes compositor resources. Even
+        // an empty gradient layer can invoke Metal on a headless Intel host.
+        guard RecordingSpectrogram.enabled else { return }
+        wantsLayer = true
         // Disable implicit actions only on our layers. Let AppKit coalesce the
         // implicit transaction at its normal frame boundary, instead of forcing
         // an explicit CA/WindowServer commit from every paint callback.
