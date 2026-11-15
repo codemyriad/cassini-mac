@@ -1423,6 +1423,43 @@ final class LibraryBoards: XCTestCase {
         window.sheets.buttons["Not now"].click()
         XCTAssertFalse(window.buttons["recording-stop"].exists)
     }
+    /// D-1055: retain rendered evidence without navigating away to refresh a row.
+    /// Inputs are generated PCM; this checks the app workflow, not hardware consent.
+    @MainActor func testQAConsecutiveRecordingsRetireLiveRows() throws {
+        let app = try launch("first-run", fixture: "empty", extra: [
+            "--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString
+        ])
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20), app.debugDescription)
+        capture(window, name: "qa-first-launch")
+        for number in 1...2 {
+            app.typeKey("r", modifierFlags: .command)
+            let start = window.sheets.buttons["record-first-start"]
+            XCTAssertTrue(start.waitForExistence(timeout: 10), app.debugDescription)
+            capture(window, name: "qa-consent-\(number)")
+            start.click()
+            XCTAssertTrue(window.buttons["recording-stop"].waitForExistence(timeout: 10), app.debugDescription)
+            let advanced = NSPredicate { _, _ in self.recordedSeconds(window) >= 2 }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: advanced, object: nil)], timeout: 10), .completed)
+            capture(window, name: "qa-live-\(number)")
+            let rows = window.outlines.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "meeting-Recording-"))
+            XCTAssertEqual(rows.count, number, window.debugDescription)
+            window.buttons["recording-stop"].click()
+            let saved = NSPredicate { _, _ in
+                window.buttons["meeting-play"].exists && window.buttons["meeting-play"].isEnabled
+                    && !window.staticTexts["Saving…"].exists
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: saved, object: nil)], timeout: 15), .completed, app.debugDescription)
+            // Capture BEFORE another selection/search/relaunch could repair SwiftUI caching.
+            capture(window, name: "qa-immediate-saved-\(number)")
+            XCTAssertFalse(window.buttons["recording-stop"].exists)
+            XCTAssertEqual(rows.count, number)
+            let stale = window.outlines.staticTexts.matching(NSPredicate(format: "value BEGINSWITH %@ OR label BEGINSWITH %@", "Recording ", "Recording "))
+            XCTAssertEqual(stale.count, 0, window.debugDescription)
+        }
+    }
+
     @MainActor func testCaptureWritesIntoLibraryAndSaves() throws {
         let id = UUID().uuidString
         let app = try launch("first-run", fixture: "empty", extra: ["--fixture-library-recording", "-CassiniCaptureID", id])
