@@ -50,6 +50,11 @@ This developer command builds and ad-hoc signs the local host and registers it o
 
 The browser/native interface is documented in [the portable v1 protocol](docs/browser-recording-protocol.md) for reuse by the GNOME recorder. The production PCM sink and browser capture paths have automated generated-tone coverage. The Core Audio hardware test is available but currently blocked on macOS system-audio consent on the development Mac; real meeting/device compatibility still needs live validation.
 
+## Test tiers and CI resources
+
+See [the D-1064 audit](docs/ci-optimization-d1064.md) for fast local checks,
+asset-backed/GUI tiers, shared iOS/Mac runner locking and workspace cleanup.
+
 ## Recording tests
 
 ```sh

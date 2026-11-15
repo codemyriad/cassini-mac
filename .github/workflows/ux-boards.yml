@@ -293,6 +293,9 @@ jobs:
     if: ${{ always() && !cancelled() && (inputs.mode == '' || inputs.mode == 'all' || inputs.mode == 'spectrogram') && (inputs.products_ready || needs.build.result == 'success' && needs.release.result == 'success') }}
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_MAC_GUI_RUNNER || 'macos-15' }}
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: python3 scripts/ci-heavy.py /bin/bash --noprofile --norc -eo pipefail {0}
     steps:
     - uses: actions/checkout@v5
     # D66: the cold-host diagnostic42584372604 records mds_stores at182% CPU

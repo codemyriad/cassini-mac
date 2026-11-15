@@ -57,16 +57,6 @@ final class WindowScreenshots: XCTestCase {
         } else {
             XCTAssertFalse(window.sheets.firstMatch.exists)
         }
-        // Capturing the AX window includes its titlebar/toolbar AND attached sheet.
-        // A content-hosting view snapshot would omit those native surfaces.
-        let screenshot = window.screenshot()
-        XCTAssertGreaterThan(screenshot.pngRepresentation.count, 10_000)
-        if let attachment {
-            let image = XCTAttachment(screenshot: screenshot)
-            image.name = attachment
-            image.lifetime = .keepAlways
-            add(image)
-        }
         if withSheet {
             app.activate()
             let sheetReady = NSPredicate { _, _ in
@@ -79,6 +69,18 @@ final class WindowScreenshots: XCTestCase {
                 .completed,
                 app.debugDescription
             )
+        }
+        // Capturing the AX window includes its titlebar/toolbar AND attached sheet.
+        // A content-hosting view snapshot would omit those native surfaces.
+        let screenshot = window.screenshot()
+        XCTAssertGreaterThan(screenshot.pngRepresentation.count, 10_000)
+        if let attachment {
+            let image = XCTAttachment(screenshot: screenshot)
+            image.name = attachment
+            image.lifetime = .keepAlways
+            add(image)
+        }
+        if withSheet {
             app.typeKey(key, modifierFlags: [])
             let resultID = key == .escape ? "cassini-screenshot-kept" : "cassini-screenshot-stopped"
             XCTAssertTrue(app.windows[resultID].waitForExistence(timeout: 5), app.debugDescription)

@@ -9,7 +9,6 @@ name: CI
   push:
     branches:
     - main
-    - ux/1a-library-model
   schedule:
   - cron: 43 2 * * *
   workflow_dispatch: null
@@ -26,6 +25,7 @@ jobs:
   changes:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'labeled' || contains(fromJSON('["ui-shots","full-ci"]'), github.event.label.name) }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       shot: ${{ steps.paths.outputs.shot }}
       boards: ${{ steps.paths.outputs.boards }}
@@ -65,6 +65,7 @@ jobs:
         python3 scripts/test-render-local-ux.py
         python3 scripts/test-export-ux-boards.py
         python3 scripts/ci-test-xcode.py
+        python3 scripts/test-ci-heavy.py
         python3 scripts/verify-model-vendor.py
         python3 scripts/ci-changes.py
   build:
@@ -86,6 +87,9 @@ jobs:
     # About 2.5x its historical p95 (9.2 min); a
     # hang can't hold a shared macOS slot for 6 hours (D66 mac-P0-5, #130 review).
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: python3 scripts/ci-heavy.py /bin/bash --noprofile --norc -eo pipefail {0}
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
@@ -104,10 +108,11 @@ jobs:
       run: |
         python3 scripts/test-swift-test-runner.py
         # Keep transfer and supersession-lock deadlines independent of native writer/decoder load.
-        # The model, remaining and hosted bookmark partitions retain every test.
+        # Model, remaining, UTC Library/Search, asset-backed placement and hosted bookmark
+        # partitions retain every test once. Library and placement used to run twice.
         # Security-scoped bookmark creation requires the login session in native_sink.
         python3 scripts/run-swift-tests.py --output build/unit-tests/models -- swift test --skip-build --filter 'ModelDownloaderTests|ModelSupersessionTests'
-        python3 scripts/run-swift-tests.py --output build/unit-tests/remaining -- swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests|recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication'
+        python3 scripts/run-swift-tests.py --output build/unit-tests/remaining -- swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests|recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication|Library|SearchTests|SharedPlacementTests'
     - uses: actions/upload-artifact@v5
       continue-on-error: true
       if: always()
@@ -234,7 +239,7 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        shell: arch -arm64 /bin/bash --noprofile --norc -eo pipefail {0}
+        shell: python3 scripts/ci-heavy.py arch -arm64 /bin/bash --noprofile --norc -eo pipefail {0}
     env:
       CASSINI_CI_ARCH: arm64
       BOARDS: ${{ needs.changes.outputs.boards != 'false' }}
@@ -655,7 +660,7 @@ jobs:
     timeout-minutes: 25
     defaults:
       run:
-        shell: arch -x86_64 /bin/bash --noprofile --norc -eo pipefail {0}
+        shell: python3 scripts/ci-heavy.py arch -x86_64 /bin/bash --noprofile --norc -eo pipefail {0}
     env:
       CASSINI_CI_ARCH: x86_64
       EXPORTS: ${{ needs.changes.outputs.exports != 'false' }}

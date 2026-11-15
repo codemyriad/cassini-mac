@@ -25,8 +25,12 @@ jobs:
     env:
       # The architecture of this row's products, whatever machine builds them.
       CASSINI_CI_ARCH: ${{ matrix.arch }}
+    defaults:
+      run:
+        shell: python3 scripts/ci-heavy.py /bin/bash --noprofile --norc -eo pipefail {0}
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/ci-workspace
       - id: xcode
         run: bash scripts/ci-select-xcode.sh
       - run: swift --version
