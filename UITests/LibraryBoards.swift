@@ -1565,7 +1565,9 @@ final class LibraryBoards: XCTestCase {
         app.typeKey("g", modifierFlags: [.command, .shift])
         app.typeText(backupDirectory.path + "/")
         app.typeKey(.return, modifierFlags: [])
-        capture(app.descendants(matching: .any).matching(identifier: "save-panel").firstMatch, name: "qa-backup-save-panel")
+        // The Save panel's AX container alone renders an empty backing view.
+        // Capture its parent window, including the attached native sheet.
+        capture(window, name: "qa-backup-save-panel")
         nativeSaveButton(in: app).click()
         let receipt = window.staticTexts["export-zip-success"]
         XCTAssertTrue(receipt.waitForExistence(timeout: 30), app.debugDescription)
