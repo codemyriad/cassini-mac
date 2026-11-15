@@ -328,6 +328,9 @@ class FoldedJobs(unittest.TestCase):
         self.assertIn("needs.changes.outputs.full_ci != 'true'", smoke)
         self.assertEqual(self.CI.count('--filter ' + bookmark + '\n'), 2)
         self.assertIn("--filter 'Library|SearchTests' --skip " + bookmark, kit)
+        library_step = kit[kit.index("    - name: Golden vectors and read-only Library tests"): ]
+        self.assertIn("CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus", library_step)
+        self.assertIn("CASSINI_EXPORT_REPORT_DIR: ${{ github.workspace }}/build/export-cases", library_step)
         for suite in ['ModelDownloaderTests', 'ModelSupersessionTests', bookmark,
                       'ModelManifestTests', 'D52WorstCaseRecordTests', 'CassiniLibraryTests.GoldenTests',
                       'CassiniSearchTests.SearchTests', 'SharedPlacementTests.testCleanFolders']:

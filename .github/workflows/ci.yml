@@ -212,6 +212,8 @@ jobs:
         TZ: UTC
         LANG: C
         CASSINI_LIBRARY_RESULTS: ux-library-vector-results
+        CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus
+        CASSINI_EXPORT_REPORT_DIR: ${{ github.workspace }}/build/export-cases
       run: |
         set -o pipefail
         swift test --skip-build --filter 'Library|SearchTests' --skip recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication 2>&1 | tee ux-library-tests.log
