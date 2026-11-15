@@ -48,6 +48,42 @@ jobs:
     - name: Prepare hosted display (fixtures are in the shared app)
       run: |
         python3 scripts/hosted-display.py
+    - name: QA user workflows in light and dark
+      timeout-minutes: 8
+      env:
+        TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
+        TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'
+      run: |
+        set -o pipefail
+        qa_failed=0
+        for scheme in light dark; do
+          TEST_RUNNER_CASSINI_SCREENSHOT_SCHEME="$scheme" xcodebuild test-without-building \
+            -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" \
+            -destination 'platform=macOS' -parallel-testing-enabled NO \
+            -only-testing:CassiniWindowScreenshots/LibraryBoards/testQAConsecutiveRecordingsRetireLiveRows \
+            -only-testing:CassiniWindowScreenshots/LibraryBoards/testQAImportFormatsThroughOpenPanel \
+            -only-testing:CassiniWindowScreenshots/LibraryBoards/testQASettingsPagesAndSavedVoicesMenu \
+            -resultBundlePath "build/QA-$scheme.xcresult" \
+            2>&1 | tee "build/qa-$scheme.log" || qa_failed=1
+        done
+        exit "$qa_failed"
+    - name: Export QA window screenshots
+      if: always()
+      run: |
+        for scheme in light dark; do
+          if [ -d "build/QA-$scheme.xcresult" ]; then
+            xcrun xcresulttool export attachments --path "build/QA-$scheme.xcresult" \
+              --output-path "build/qa-attachments-$scheme"
+          fi
+        done
+    - uses: actions/upload-artifact@v5
+      if: always()
+      with:
+        retention-days: 14
+        name: ux-qa-workflows
+        path: |
+          build/qa-attachments-light
+          build/qa-attachments-dark
     - name: Filter and export control regressions
       timeout-minutes: 3
       env:
@@ -95,15 +131,16 @@ jobs:
         set -o pipefail
         xcodebuild test-without-building -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" \
           -destination 'platform=macOS' -parallel-testing-enabled NO -only-testing:CassiniWindowScreenshots/LibraryBoards \
+          -skip-testing:CassiniWindowScreenshots/LibraryBoards/testQAConsecutiveRecordingsRetireLiveRows \
+          -skip-testing:CassiniWindowScreenshots/LibraryBoards/testQAImportFormatsThroughOpenPanel \
+          -skip-testing:CassiniWindowScreenshots/LibraryBoards/testQASettingsPagesAndSavedVoicesMenu \
           -resultBundlePath build/UXBoards.xcresult \
           2>&1 | tee build/ux-boards.log
     - name: Render dark Library boards
       # Run43623183819 passed the Starred search regression at9 min, then
       # the guard killed the next progressing test. Leave headroom for the
       # full dark subset and result-bundle finalization on hosted runners.
-      # D-1055 adds consecutive recordings, five native imports plus a mixed
-      # batch, and Settings navigation in dark appearance as well.
-      timeout-minutes: 16
+      timeout-minutes: 12
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
         TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'
@@ -113,9 +150,6 @@ jobs:
         dark_start=$SECONDS
         xcodebuild test-without-building -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" \
           -destination 'platform=macOS' -parallel-testing-enabled NO \
-          -only-testing:CassiniWindowScreenshots/LibraryBoards/testQAConsecutiveRecordingsRetireLiveRows \
-          -only-testing:CassiniWindowScreenshots/LibraryBoards/testQAImportFormatsThroughOpenPanel \
-          -only-testing:CassiniWindowScreenshots/LibraryBoards/testQASettingsPagesAndSavedVoicesMenu \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testFrenchLibraryAndFirstRunFitAtBoardSize \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMoveToTrashMenusAndFirstRun \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingDetailsFromTheMoreMenu \

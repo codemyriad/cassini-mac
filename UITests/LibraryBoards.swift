@@ -1467,8 +1467,7 @@ final class LibraryBoards: XCTestCase {
             let advanced = NSPredicate { _, _ in self.recordedSeconds(window) >= 2 }
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: advanced, object: nil)], timeout: 10), .completed)
             capture(window, name: "qa-live-\(number)")
-            let rows = window.outlines.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "meeting-Recording-"))
-            XCTAssertEqual(rows.count, number, window.debugDescription)
+            XCTAssertEqual(meetingRowCount(window, prefix: "meeting-Recording-"), number, window.debugDescription)
             window.buttons["recording-stop"].click()
             let saved = NSPredicate { _, _ in
                 window.buttons["meeting-play"].exists && window.buttons["meeting-play"].isEnabled
@@ -1478,7 +1477,7 @@ final class LibraryBoards: XCTestCase {
             // Capture BEFORE another selection/search/relaunch could repair SwiftUI caching.
             capture(window, name: "qa-immediate-saved-\(number)")
             XCTAssertFalse(window.buttons["recording-stop"].exists)
-            XCTAssertEqual(rows.count, number)
+            XCTAssertEqual(meetingRowCount(window, prefix: "meeting-Recording-"), number)
             let stale = window.outlines.staticTexts.matching(NSPredicate(format: "value BEGINSWITH %@ OR label BEGINSWITH %@", "Recording ", "Recording "))
             XCTAssertEqual(stale.count, 0, window.debugDescription)
         }
@@ -1506,7 +1505,7 @@ final class LibraryBoards: XCTestCase {
             capture(panel, name: "qa-import-picker-\(name)")
             open.click()
             let imported = NSPredicate { _, _ in
-                window.outlines.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "meeting-Received-")).count == index + 1
+                self.meetingRowCount(window, prefix: "meeting-Received-") == index + 1
                     && window.buttons["meeting-play"].exists
             }
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: imported, object: nil)], timeout: 20), .completed, app.debugDescription)
@@ -1532,10 +1531,17 @@ final class LibraryBoards: XCTestCase {
         let failed = window.buttons["dismiss-failed-import-truncated.flac"]
         XCTAssertTrue(failed.waitForExistence(timeout: 20), app.debugDescription)
         capture(window, name: "qa-mixed-batch-failure")
-        XCTAssertEqual(window.outlines.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "meeting-Received-")).count, 5)
+        XCTAssertEqual(meetingRowCount(window, prefix: "meeting-Received-"), 5)
         failed.click()
         XCTAssertFalse(failed.exists)
         capture(window, name: "qa-mixed-batch-dismissed")
+    }
+
+    private func meetingRowCount(_ window: XCUIElement, prefix: String) -> Int {
+        // SwiftUI exposes a row's title, duration and badge as separate static
+        // texts sharing one identifier. Count meeting identities, not fragments.
+        let fragments = window.outlines.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", prefix))
+        return Set(fragments.allElementsBoundByIndex.map(\.identifier)).count
     }
 
     @MainActor func testCaptureWritesIntoLibraryAndSaves() throws {
