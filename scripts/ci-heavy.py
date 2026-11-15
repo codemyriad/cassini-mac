@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Run a CI shell under the iOS host flock, releasing only after its children exit.
+"""Run a CI shell under the iOS host flock; stop interrupted commands before unlocking.
 
 Hosted runners pass through. The lock inode is retained (also used by iOS
 scripts/test-events.py), so waiting jobs cannot acquire different inodes.
@@ -56,7 +56,7 @@ def run(command):
         finally:
             # Cancellation must not free the lock while an owned compiler/test
             # child is still running, or kill another runner's processes.
-            if process is not None:
+            if process is not None and process.returncode is None:
                 for sig in (signal.SIGINT, signal.SIGTERM):
                     signal.signal(sig, signal.SIG_IGN)
                 try:
@@ -64,7 +64,7 @@ def run(command):
                     try: process.wait(timeout=5)
                     except subprocess.TimeoutExpired: pass
                     os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
+                except (ProcessLookupError, PermissionError):
                     pass
                 process.wait()
             if handle.writable():

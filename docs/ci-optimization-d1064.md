@@ -55,7 +55,10 @@ restore compiled Swift objects from a different source fingerprint.
   writing a report. No test assertion depends on crash-report arrival.
 - Use an absolute workspace path for the CI shell wrapper so nested
   `working-directory` conformance steps resolve it correctly (caught and fixed
-  during draft CI; a nested-directory regression now covers this).
+  during draft CI; a nested-directory regression now covers this). Normal
+  completed commands are not signalled again: Homebrew can leave a protected
+  helper in their former process group. Cancellation still tears down the owned
+  running group; a regression preserves successful/nonzero normal exit status.
 - Settle the native sheet (foreground plus both actions hittable) **before** its
   screenshot, using the existing predicate previously checked only afterward.
   UI relaunches that verify preference persistence/cold routing remain necessary.
@@ -98,7 +101,7 @@ Measurements on this Mac (Xcode 27, warm prebuilt test bundles):
 | --- | --- | --- |
 | CI contract checks | 68 tests, 3.83 s | 71 tests, 2.42 s |
 | Library/Search coverage | 728 executions across two passes, 16.91 s | 364 executions in one pass, 8.19 s |
-| Host lock regressions | absent | 7 event-driven process/cleanup tests |
+| Host lock regressions | absent | 8 event-driven process/cleanup tests |
 
 Library figures reproduce the duplicated partition using two consecutive runs
 (8.72 + 8.19 s), not a whole-suite benchmark. Unique coverage stays 364 tests:

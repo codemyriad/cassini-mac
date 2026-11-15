@@ -31,6 +31,23 @@ class HostLock(unittest.TestCase):
         process.communicate(timeout=10)
         for stream in [process.stdin, process.stdout, process.stderr]: stream.close()
 
+    def test_completed_command_exit_status_is_not_overridden_by_group_teardown(self):
+        # Package managers can leave a protected OS helper in their former
+        # group. Normal command completion must not signal that group again.
+        code = """
+import os, runpy, sys
+def unexpected_signal(*args):
+    raise PermissionError('protected helper in completed command group')
+os.killpg = unexpected_signal
+sys.argv = [sys.argv[1], sys.executable, '-c', 'raise SystemExit(17)']
+runpy.run_path(sys.argv[0], run_name='__main__')
+"""
+        result = subprocess.run([sys.executable, '-c', code, str(ROOT/'scripts/ci-heavy.py')],
+                                env=self.env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 17, result.stderr)
+        with self.lock.open('a+') as probe:
+            fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
     def test_absolute_wrapper_preserves_nested_working_directory(self):
         nested = Path(self.temp.name)/'nested conformance'; nested.mkdir()
         process = self.start('import os; print(os.getcwd())', cwd=nested)
