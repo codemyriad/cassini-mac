@@ -92,9 +92,9 @@ Measurements on this Mac (Xcode 27, warm prebuilt test bundles):
 
 | Local work | Before | After |
 | --- | --- | --- |
-| CI contract checks | 68 tests, 3.83 s | 70 tests; measured below in PR |
+| CI contract checks | 68 tests, 3.83 s | 70 tests, 2.74 s |
 | Library/Search coverage | 728 executions across two passes, 16.91 s | 364 executions in one pass, 8.19 s |
-| Host lock regressions | absent | 4 event-driven process tests, 0.14 s |
+| Host lock regressions | absent | 6 event-driven process/cleanup tests |
 
 Library figures reproduce the duplicated partition using two consecutive runs
 (8.72 + 8.19 s), not a whole-suite benchmark. Unique coverage stays 364 tests:

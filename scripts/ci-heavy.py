@@ -51,7 +51,8 @@ def run(command):
                 handle.write('cassini-mac CI ' + os.environ.get('GITHUB_RUN_ID', 'local') + '\n'); handle.flush()
             process = subprocess.Popen(command, start_new_session=True,
                                        env=dict(os.environ, CASSINI_HEAVY_LOCK_HELD='1'))
-            return process.wait()
+            status = process.wait()
+            return status if status >= 0 else 128 - status
         finally:
             # Cancellation must not free the lock while an owned compiler/test
             # child is still running, or kill another runner's processes.

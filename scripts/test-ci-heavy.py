@@ -70,5 +70,47 @@ class HostLock(unittest.TestCase):
             self.assertEqual(process.wait(timeout=10), 23)
             self.assertFalse(self.lock.exists())
 
+    def test_gui_read_only_descriptor_uses_same_inode_without_changing_note(self):
+        self.lock.write_text('headless owner\n')
+        # Simulate the standard GUI user's EACCES on write without changing
+        # accounts or file ownership on the developer machine.
+        code = """
+import pathlib, runpy, sys
+original = pathlib.Path.open
+lock_path = sys.argv[1]
+def open_read_only(self, mode='r', *args, **kwargs):
+    if str(self) == lock_path and mode == 'a+':
+        raise PermissionError('standard GUI account')
+    return original(self, mode, *args, **kwargs)
+pathlib.Path.open = open_read_only
+sys.argv = [sys.argv[2], sys.executable, '-u', '-c', 'import sys; print("ready"); sys.stdin.readline()']
+runpy.run_path(sys.argv[0], run_name='__main__')
+"""
+        process = subprocess.Popen([sys.executable, '-c', code, str(self.lock), str(ROOT/'scripts/ci-heavy.py')],
+                                   env=self.env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True)
+        self.addCleanup(self.stop, process)
+        self.assertIn('Waiting for shared', process.stdout.readline())
+        self.assertEqual(process.stdout.readline().strip(), 'ready')
+        with self.lock.open('r') as probe:
+            with self.assertRaises(BlockingIOError): fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        process.stdin.write('finish\n'); process.stdin.flush()
+        self.assertEqual(process.wait(timeout=10), 0)
+        self.assertEqual(self.lock.read_text(), 'headless owner\n')
+
+    def test_cleanup_removes_only_self_hosted_job_products(self):
+        workspace = Path(self.temp.name)/'workspace'; workspace.mkdir()
+        for name in ['build', '.build', 'Library', 'Sources']:
+            (workspace/name).mkdir(); (workspace/name/'keep').write_text('sentinel')
+        cleanup = ROOT/'.github/actions/ci-workspace/cleanup.cjs'
+        for environment in ['github-hosted', 'self-hosted']:
+            subprocess.run(['node', str(cleanup)], check=True, capture_output=True,
+                           env=dict(os.environ, RUNNER_ENVIRONMENT=environment, GITHUB_WORKSPACE=str(workspace)))
+            for name in ['build', '.build']:
+                self.assertEqual((workspace/name).exists(), environment == 'github-hosted')
+            for name in ['Library', 'Sources']:
+                self.assertEqual((workspace/name/'keep').read_text(), 'sentinel')
+
+
 
 if __name__ == '__main__': unittest.main()
