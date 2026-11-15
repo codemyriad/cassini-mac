@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import platform
 import signal
 import subprocess
 import uuid
@@ -22,7 +23,13 @@ subprocess.run(['codesign','--verify','--deep','--strict',str(a.app)],check=True
 key = str(uuid.uuid4())
 command = [str(a.app.resolve()/'Contents/MacOS/Cassini'), '--browser-capture-self-test', '--fixture-library-recording',
     '-CassiniCaptureID',key,'-CassiniDiskFree',str(20<<30),'-CassiniDiskTotal',str(100<<30),'-ApplePersistenceIgnoreState','YES']
-process = subprocess.Popen(command,env=dict(os.environ,CASSINI_HOSTED_SCREENSHOTS='1'),stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,start_new_session=True)
+environment = dict(os.environ, CASSINI_HOSTED_SCREENSHOTS='1')
+# Hosted Intel's headless Metal driver aborts while compositing IOSurfaces
+# ("Target device architecture is nil"). This probe checks capture ownership,
+# not GPU rendering; dedicated spectrogram jobs retain the real native views.
+if platform.machine() == 'x86_64':
+    environment['CASSINI_SPECTRO'] = '0'
+process = subprocess.Popen(command,env=environment,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,start_new_session=True)
 try:
     stdout, stderr = process.communicate(timeout=150)
 except subprocess.TimeoutExpired:

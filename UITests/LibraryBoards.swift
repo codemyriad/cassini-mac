@@ -1525,7 +1525,13 @@ final class LibraryBoards: XCTestCase {
         app.typeKey("g", modifierFlags: [.command, .shift])
         app.typeText(batch.path + "/")
         app.typeKey(.return, modifierFlags: [])
+        // Go to Folder leaves the folder selected in the preceding column.
+        // Focus a file before Select All so Open receives the batch contents.
+        let firstFile = panel.textFields.matching(NSPredicate(format: "value == %@", "duplicate.wav")).firstMatch
+        XCTAssertTrue(firstFile.waitForExistence(timeout: 5), app.debugDescription)
+        firstFile.click()
         app.typeKey("a", modifierFlags: .command)
+        XCTAssertTrue(panel.buttons["Open"].isEnabled, app.debugDescription)
         capture(panel, name: "qa-mixed-batch-picker")
         panel.buttons["Open"].click()
         let failed = window.buttons["dismiss-failed-import-truncated.flac"]
