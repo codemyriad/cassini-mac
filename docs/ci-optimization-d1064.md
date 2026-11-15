@@ -100,11 +100,11 @@ Measurements on this Mac (Xcode 27, warm prebuilt test bundles):
 | Local work | Before | After |
 | --- | --- | --- |
 | CI contract checks | 68 tests, 3.83 s | 71 tests, 2.42 s |
-| Library/Search coverage | 728 executions across two passes, 16.91 s | 364 executions in one pass, 8.19 s |
+| Library/Search coverage | 730 executions across two passes, 16.91 s | 365 executions in one pass, 8.19 s |
 | Host lock regressions | absent | 8 event-driven process/cleanup tests |
 
 Library figures reproduce the duplicated partition using two consecutive runs
-(8.72 + 8.19 s), not a whole-suite benchmark. Unique coverage stays 364 tests:
-15 XCTest + 349 Swift Testing. No throughput/latency assertions use these times.
+(8.72 + 8.19 s), not a whole-suite benchmark. Unique coverage stays 365 tests:
+16 XCTest + 349 Swift Testing. No throughput/latency assertions use these times.
 Actual whole-CI timings and test counts are recorded in the ticket/PR after
 Actions completes; runner queuing, cold caches and test tiers affect comparison.
