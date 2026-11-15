@@ -20,6 +20,8 @@ name: UX Library boards
         - boards
         - spectrogram
         description: Slice to execute
+permissions:
+  contents: read
 jobs:
   build:
     if: ${{ !inputs.products_ready }}

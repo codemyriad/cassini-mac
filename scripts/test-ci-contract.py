@@ -83,6 +83,14 @@ class Selection(unittest.TestCase):
 
 
 class RunnerHygiene(unittest.TestCase):
+    def test_workflows_limit_default_token_and_bound_executable_jobs(self):
+        for workflow in (ROOT/'.github/workflows').glob('*.yml'):
+            body = workflow.read_text()
+            self.assertIn('\npermissions:\n  contents: read\n', body, workflow.name)
+            for job in re.findall(r'^  [\w-]+:\n.*?(?=^  [\w-]+:|^\S|\Z)', body.split('\njobs:\n')[1], re.M|re.S):
+                if '    runs-on:' in job:
+                    self.assertRegex(job, r'(?m)^    timeout-minutes: \d+$', workflow.name)
+
     def test_self_hosted_jobs_and_product_restore_share_the_ios_lock(self):
         for workflow in (ROOT/'.github/workflows').glob('*.yml'):
             for job in re.findall(r'^  [\w-]+:\n.*?(?=^  [\w-]+:|^\S|\Z)', workflow.read_text(), re.M|re.S):

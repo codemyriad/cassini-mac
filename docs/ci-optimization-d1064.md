@@ -32,7 +32,8 @@ restore compiled Swift objects from a different source fingerprint.
   No cleanup touches another workspace, the user's Library, or shared caches.
 - Give `changes` its missing ten-minute timeout; all executable jobs now have
   explicit bounds. Reusable-workflow call jobs inherit the callee's bounds.
-  Existing workflows use `contents: read`; screenshot diff alone also needs
+  All workflows now use `contents: read` (including standalone boards/screenshots,
+  which previously inherited defaults); screenshot diff alone also needs
   `actions: read`. No new permission is requested.
 - Remove the obsolete `ux/1a-library-model` push trigger (avoids push plus PR work).
   PR code pushes cancel older runs of the same PR. Keep the existing isolated
@@ -92,7 +93,7 @@ Measurements on this Mac (Xcode 27, warm prebuilt test bundles):
 
 | Local work | Before | After |
 | --- | --- | --- |
-| CI contract checks | 68 tests, 3.83 s | 70 tests, 2.74 s |
+| CI contract checks | 68 tests, 3.83 s | 71 tests, 2.42 s |
 | Library/Search coverage | 728 executions across two passes, 16.91 s | 364 executions in one pass, 8.19 s |
 | Host lock regressions | absent | 6 event-driven process/cleanup tests |
 
