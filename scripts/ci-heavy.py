@@ -11,6 +11,43 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import time
+
+
+def process_table():
+    rows = subprocess.check_output(['ps', '-axo', 'pid=,ppid=,stat='], text=True)
+    return {int(pid): (int(parent), state) for pid, parent, state in
+            (row.split() for row in rows.splitlines())}
+
+
+def stop_owned(process):
+    # Snapshot before signalling: detached sessions otherwise become invisible
+    # when their wrapper exits and they are reparented to launchd.
+    table = process_table()
+    owned = {process.pid}
+    while True:
+        children = {pid for pid, (parent, _) in table.items() if parent in owned}
+        if children <= owned: break
+        owned |= children
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGKILL):
+        try: os.killpg(process.pid, sig)
+        except ProcessLookupError: pass
+        # Let wrappers clean up first; forcibly cover detached survivors too.
+        if sig == signal.SIGKILL:
+            for pid in owned:
+                try: os.kill(pid, sig)
+                except ProcessLookupError: pass
+        deadline = time.monotonic() + 5
+        while True:
+            process.poll()  # Reap our direct child as soon as possible.
+            table = process_table()
+            alive = {pid for pid in owned if pid in table and not table[pid][1].startswith('Z')}
+            if not alive:
+                process.wait()
+                return
+            if sig != signal.SIGKILL and time.monotonic() >= deadline: break
+            # This is a cancellation deadline, never a test settling delay.
+            time.sleep(0.05)
 
 
 def run(command):
@@ -59,14 +96,7 @@ def run(command):
             if process is not None and process.returncode is None:
                 for sig in (signal.SIGINT, signal.SIGTERM):
                     signal.signal(sig, signal.SIG_IGN)
-                try:
-                    os.killpg(process.pid, signal.SIGTERM)
-                    try: process.wait(timeout=5)
-                    except subprocess.TimeoutExpired: pass
-                    os.killpg(process.pid, signal.SIGKILL)
-                except (ProcessLookupError, PermissionError):
-                    pass
-                process.wait()
+                stop_owned(process)
             if handle.writable():
                 handle.seek(0); handle.truncate()
 

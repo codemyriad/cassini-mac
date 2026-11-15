@@ -4,6 +4,8 @@ import importlib.util
 from pathlib import Path
 import os
 import sys
+import signal
+import subprocess
 import tempfile
 import unittest
 spec=importlib.util.spec_from_file_location('runner',Path(__file__).with_name('run-swift-tests.py'))
@@ -39,6 +41,24 @@ class TestRunner(unittest.TestCase):
             root=Path(temporary)
             code=runner.run([sys.executable,'-c',"print('complete',flush=True);raise SystemExit(7)"],root,forward=False)
             self.assertEqual(code,7);self.assertEqual((root/'tests.log').read_text(),'complete\n')
+    def test_signals_reap_the_detached_child(self):
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=sig), tempfile.TemporaryDirectory() as temporary:
+                process = subprocess.Popen([
+                    sys.executable, str(Path(__file__).with_name('run-swift-tests.py')),
+                    '--output', temporary, '--', sys.executable, '-u', '-c',
+                    'import os,signal; print(os.getpid(),flush=True); signal.pause()'],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                try:
+                    child = int(process.stdout.readline())
+                    process.send_signal(sig)
+                    self.assertEqual(process.wait(timeout=10), 128 + sig)
+                    with self.assertRaises(ProcessLookupError): os.kill(child, 0)
+                finally:
+                    if process.poll() is None: process.kill()
+                    process.communicate(timeout=10)
+                    process.stdout.close(); process.stderr.close()
+
     def run_stalled_child(self, root, diagnose):
         idle = ManualIdle()
         command = [sys.executable,'-c',"import signal;print('entered',flush=True);signal.pause()"]

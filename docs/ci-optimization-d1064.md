@@ -17,11 +17,18 @@ restore compiled Swift objects from a different source fingerprint.
   account may lock the owner's existing 0644 file read-only. Provision that file
   before starting a multi-account host; failure to access it fails the job.
   The wrapper preserves architecture selection, child exit status and the lock
-  inode, and terminates its process group before releasing on cancellation.
+  inode, and stops its process group plus snapshotted descendants across sessions
+  before releasing on cancellation. The test runner handles SIGINT/SIGTERM
+  and reaps its own detached group; the outer wrapper waits for descendants
+  even if the shell exits first, escalating to SIGKILL for survivors.
   Hosted runners pass through. Locking is per shell step, so artifact transfers
-  and cache actions do not hold CPU capacity. Time spent waiting counts against
-  existing job/step deadlines; genuine host saturation can now fail explicitly
-  rather than run overlapping compilers/simulators. Local heavy commands retain
+  and cache actions do not hold CPU capacity. Explicit step deadlines in
+  lock-wrapped jobs include an additional ten-minute
+  acquisition allowance and one-minute cancellation margin; their job deadlines
+  also receive eleven minutes. The wrapper reports its own lock timeout before
+  these short step deadlines. Overall job deadlines remain a final bound: repeated
+  lock contention across many steps can still exhaust the job budget. Local
+  heavy commands retain
   `scripts/heavy.sh`; CI specifically uses iOS's flock API.
 - Register a post action **before cache actions**. After uploads and cache saves,
   self-hosted jobs remove job-owned `build` (including DerivedData) and `.build`.

@@ -91,6 +91,22 @@ class RunnerHygiene(unittest.TestCase):
                 if '    runs-on:' in job:
                     self.assertRegex(job, r'(?m)^    timeout-minutes: \d+$', workflow.name)
 
+    def test_locked_short_steps_allow_queue_and_cleanup_budgets(self):
+        # Original command budgets plus 600s acquisition and 60s cleanup.
+        for name, job_name, budgets in [
+            ('ci.yml', 'kit', [14, 19, 16]),
+            ('ci.yml', 'package_tests', [19, 23]),
+            ('ci-build-release.yml', 'release', [14]),
+            ('ux-boards.yml', 'spectrogram', [23]),
+        ]:
+            body = (ROOT/'.github/workflows'/name).read_text()
+            jobs = dict(re.findall(r'^  ([\w-]+):\n(.*?)(?=^  [\w-]+:|^\S|\Z)', body, re.M|re.S))
+            job = jobs[job_name]
+            step_limits = [int(n) for n in re.findall(r'^\s{6,8}timeout-minutes: (\d+)$', job, re.M)]
+            self.assertEqual(step_limits, budgets, name)
+            job_limit = int(re.search(r'^    timeout-minutes: (\d+)$', job, re.M)[1])
+            self.assertGreater(job_limit, max(budgets), name)
+
     def test_self_hosted_jobs_and_product_restore_share_the_ios_lock(self):
         for workflow in (ROOT/'.github/workflows').glob('*.yml'):
             for job in re.findall(r'^  [\w-]+:\n.*?(?=^  [\w-]+:|^\S|\Z)', workflow.read_text(), re.M|re.S):
@@ -124,7 +140,7 @@ class NativeSpectrogramScheduling(unittest.TestCase):
         for requirement in ['vars.CM_MAC_GUI_RUNNER',"|| 'macos-15' }}",'needs: [build, release]',
                             'inputs.products_ready','!cancelled()',
                             "release: 'true'",'github-hosted',
-                            'hosted-display.py','timeout-minutes: 15','timeout-minutes: 12',
+                            'hosted-display.py','timeout-minutes: 26','timeout-minutes: 23',
                             'if: always()','name: ux-spectrogram']:
             self.assertIn(requirement,native)
         self.assertNotIn("debug: 'true'",native)

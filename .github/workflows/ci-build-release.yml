@@ -12,7 +12,7 @@ jobs:
     name: Build Release app and package (universal, Xcode 16.4)
     # Ad-hoc CI packaging only; no production signing credentials are used here.
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_MAC_RUNNER || 'macos-15' }}
-    timeout-minutes: 20
+    timeout-minutes: 31
     defaults:
       run:
         shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" /bin/bash --noprofile --norc -eo pipefail {0}
@@ -48,7 +48,8 @@ jobs:
           retention-days: 3
           compression-level: 0
       - name: Package Cassini.app
-        timeout-minutes: 3
+        # Includes ten minutes for the host lock and one minute for cancellation.
+        timeout-minutes: 14
         run: python3 scripts/package-release.py build/Build/Products/Release/Cassini.app build/Cassini.zip
       - uses: actions/upload-artifact@v5
         with:

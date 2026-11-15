@@ -29,7 +29,8 @@ class HostLock(unittest.TestCase):
     def stop(self, process):
         if process.poll() is None: process.terminate()
         process.communicate(timeout=10)
-        for stream in [process.stdin, process.stdout, process.stderr]: stream.close()
+        for stream in [process.stdin, process.stdout, process.stderr]:
+            if stream is not None: stream.close()
 
     def test_completed_command_exit_status_is_not_overridden_by_group_teardown(self):
         # Package managers can leave a protected OS helper in their former
@@ -78,6 +79,17 @@ runpy.run_path(sys.argv[0], run_name='__main__')
             self.assertEqual(process.wait(timeout=10), 128 + signal.SIGTERM)
             self.assertEqual(self.lock.read_text(), 'iOS owner\n')
 
+    def test_lock_deadline_reports_queue_timeout_without_starting_command(self):
+        with self.lock.open('w+') as owner:
+            fcntl.flock(owner, fcntl.LOCK_EX)
+            owner.write('iOS owner\n'); owner.flush()
+            process = self.start('print("must not start")', CASSINI_CI_LOCK_SECONDS='1')
+            out, error = process.communicate(timeout=10)
+            self.assertNotEqual(process.returncode, 0)
+            self.assertNotIn('must not start', out)
+            self.assertIn('Timed out waiting for host heavy lock', error)
+            self.assertEqual(self.lock.read_text(), 'iOS owner\n')
+
     def test_cancellation_stops_owned_shell_before_unlock(self):
         process = self.start('import os,sys; print(os.getpid()); sys.stdin.readline()')
         process.stdout.readline()
@@ -86,6 +98,31 @@ runpy.run_path(sys.argv[0], run_name='__main__')
         with self.assertRaises(ProcessLookupError): os.kill(child, 0)
         with self.lock.open('a+') as probe:
             fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def test_cancellation_reaps_detached_test_before_next_holder(self):
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=sig):
+                output = Path(self.temp.name)/str(sig)
+                # Keep bash alive, matching the kit's multi-command Test step.
+                command = [sys.executable, str(ROOT/'scripts/ci-heavy.py'),
+                           'bash', '-c', '"$@"; status=$?; exit "$status"', 'fixture',
+                           sys.executable, str(ROOT/'scripts/run-swift-tests.py'),
+                           '--output', str(output), '--', sys.executable, '-u', '-c',
+                           'import os,signal; print(os.getpid(),flush=True); signal.pause()']
+                process = subprocess.Popen(command, env=self.env, stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE, text=True)
+                self.addCleanup(self.stop, process)
+                self.assertIn('Waiting for shared', process.stdout.readline())
+                child = int(process.stdout.readline())
+                # An external lock waiter checks the invariant at acquisition,
+                # before the cancelled ci-heavy process has necessarily exited.
+                probe = self.start('import os; os.kill('+str(child)+', 0)')
+                self.assertIn('Waiting for shared', probe.stdout.readline())
+                process.send_signal(sig)
+                self.assertEqual(process.wait(timeout=20), 128 + sig)
+                self.assertNotEqual(probe.wait(timeout=20), 0)
+                self.assertIn('ProcessLookupError', probe.stderr.read())
+                with self.assertRaises(ProcessLookupError): os.kill(child, 0)
 
     def test_hosted_and_nested_shells_pass_through_without_second_lock(self):
         for overrides in [dict(RUNNER_ENVIRONMENT='github-hosted'), dict(CASSINI_HEAVY_LOCK_HELD='1')]:
