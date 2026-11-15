@@ -1489,6 +1489,29 @@ final class LibraryBoards: XCTestCase {
             capture(window, name: "qa-imported-\(name)")
             XCTAssertTrue(visibleText(window.staticTexts["meeting-subtitle"]).contains("Imported"), window.debugDescription)
         }
+        // A mixed batch must preserve successful imports and expose the failed
+        // item, without manufacturing a meeting from a truncated container.
+        let batch = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniQABatch-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: batch, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: batch) }
+        try FileManager.default.copyItem(at: fixtures.appendingPathComponent("qa-imports/tone.wav"), to: batch.appendingPathComponent("duplicate.wav"))
+        try Data("fLaC".utf8).write(to: batch.appendingPathComponent("truncated.flac"))
+        app.typeKey("o", modifierFlags: .command)
+        let panel = app.windows["open-panel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 10))
+        app.typeKey("g", modifierFlags: [.command, .shift])
+        app.typeText(batch.path + "/")
+        app.typeKey(.return, modifierFlags: [])
+        app.typeKey("a", modifierFlags: .command)
+        capture(panel, name: "qa-mixed-batch-picker")
+        panel.buttons["Open"].click()
+        let failed = window.buttons["dismiss-failed-import-truncated.flac"]
+        XCTAssertTrue(failed.waitForExistence(timeout: 20), app.debugDescription)
+        capture(window, name: "qa-mixed-batch-failure")
+        XCTAssertEqual(window.outlines.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "meeting-Received-")).count, 5)
+        failed.click()
+        XCTAssertFalse(failed.exists)
+        capture(window, name: "qa-mixed-batch-dismissed")
     }
 
     @MainActor func testCaptureWritesIntoLibraryAndSaves() throws {
