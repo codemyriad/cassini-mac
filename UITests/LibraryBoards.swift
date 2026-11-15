@@ -1551,6 +1551,55 @@ final class LibraryBoards: XCTestCase {
         let dismissed = NSPredicate { _, _ in !failed.exists }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: dismissed, object: nil)], timeout: 5), .completed)
         capture(window, name: "qa-mixed-batch-dismissed")
+
+        // Back up all five imported meetings through the actual Save panel,
+        // then restore the resulting archive into a different fresh Library.
+        let backupDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniQABackup-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: backupDirectory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: backupDirectory) }
+        app.menuBars.menuBarItems["File"].click()
+        let exportAll = app.menuItems["Export All as ZIP…"]
+        XCTAssertTrue(exportAll.isEnabled, app.debugDescription)
+        exportAll.click()
+        XCTAssertTrue(nativeSaveButton(in: app).waitForExistence(timeout: 10), app.debugDescription)
+        app.typeKey("g", modifierFlags: [.command, .shift])
+        app.typeText(backupDirectory.path + "/")
+        app.typeKey(.return, modifierFlags: [])
+        capture(app.descendants(matching: .any).matching(identifier: "save-panel").firstMatch, name: "qa-backup-save-panel")
+        nativeSaveButton(in: app).click()
+        let receipt = window.staticTexts["export-zip-success"]
+        XCTAssertTrue(receipt.waitForExistence(timeout: 30), app.debugDescription)
+        XCTAssertTrue(visibleText(receipt).contains("5"), receipt.debugDescription)
+        capture(window, name: "qa-backup-exported")
+        let archives = try FileManager.default.contentsOfDirectory(at: backupDirectory, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "zip" }
+        XCTAssertEqual(archives.count, 1)
+        let archive = try XCTUnwrap(archives.first)
+        XCTAssertGreaterThan(try Data(contentsOf: archive).count, 0)
+        app.terminate()
+
+        let restoredApp = try launch("first-run", fixture: "empty", extra: [
+            "--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString
+        ])
+        defer { restoredApp.terminate() }
+        let restoredWindow = restoredApp.windows["cassini-library-window"]
+        XCTAssertTrue(restoredWindow.buttons["first-run-record"].waitForExistence(timeout: 20))
+        capture(restoredWindow, name: "qa-backup-fresh-library")
+        restoredApp.typeKey("o", modifierFlags: .command)
+        let restorePanel = restoredApp.windows["open-panel"]
+        XCTAssertTrue(restorePanel.waitForExistence(timeout: 10), restoredApp.debugDescription)
+        restoredApp.typeKey("g", modifierFlags: [.command, .shift])
+        restoredApp.typeText(archive.path)
+        restoredApp.typeKey(.return, modifierFlags: [])
+        capture(restorePanel, name: "qa-backup-import-panel")
+        restorePanel.buttons["Open"].click()
+        let restored = NSPredicate { _, _ in
+            self.meetingRowCount(restoredWindow, prefix: "meeting-Received-") == 5
+                && restoredWindow.buttons["meeting-play"].exists
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: restored, object: nil)], timeout: 30), .completed, restoredApp.debugDescription)
+        capture(restoredWindow, name: "qa-backup-restored")
+        XCTAssertTrue(visibleText(restoredWindow.staticTexts["meeting-subtitle"]).contains("Imported"), restoredWindow.debugDescription)
     }
 
     private func meetingRowCount(_ window: XCUIElement, prefix: String) -> Int {
