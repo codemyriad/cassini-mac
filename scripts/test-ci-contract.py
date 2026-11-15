@@ -96,7 +96,7 @@ class RunnerHygiene(unittest.TestCase):
             for job in re.findall(r'^  [\w-]+:\n.*?(?=^  [\w-]+:|^\S|\Z)', workflow.read_text(), re.M|re.S):
                 if 'vars.CM_MAC' in job:
                     with self.subTest(workflow=workflow.name):
-                        self.assertIn('shell: python3 scripts/ci-heavy.py ', job)
+                        self.assertIn('shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" ', job)
                         self.assertRegex(job, r'(?m)^    timeout-minutes: \d+$')
         action = (ROOT/'.github/actions/ci-products/action.yml').read_text()
         self.assertIn('uses: ./.github/actions/ci-workspace', action)
@@ -446,12 +446,12 @@ class RentedRunnerRouting(unittest.TestCase):
         # Every routed consumer of x86_64 products runs each of its own steps as x86_64.
         package=ci_job('package_tests')
         self.assertIn('      CASSINI_CI_ARCH: x86_64\n',package)
-        self.assertIn('    defaults:\n      run:\n        shell: python3 scripts/ci-heavy.py arch -x86_64 /bin/bash --noprofile --norc -eo pipefail {0}\n',package)
+        self.assertIn('    defaults:\n      run:\n        shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" arch -x86_64 /bin/bash --noprofile --norc -eo pipefail {0}\n',package)
         worker=self.worker()
         self.assertIn('      CASSINI_CI_ARCH: ${{ matrix.arch }}\n',worker)
-        self.assertIn('    defaults:\n      run:\n        shell: python3 scripts/ci-heavy.py arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}\n',worker)
+        self.assertIn('    defaults:\n      run:\n        shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}\n',worker)
         for job in [package,worker]:
-            self.assertNotRegex(job,r'(?m)^\s+shell: (?!python3 scripts/ci-heavy.py arch -)','no step may leave the product architecture')
+            self.assertNotRegex(job,r'(?m)^\s+shell: (?!python3 "\$\{\{ github\.workspace \}\}/scripts/ci-heavy\.py" arch -)','no step may leave the product architecture')
             self.assertNotIn('swift build',job)
         # Hosted runners install Python 3.12. A rented Mac cannot (the installer needs /Users/runner):
         # its Intel Whistle row uses the selected Xcode's universal Python, and the worker job checks
@@ -545,7 +545,7 @@ class RentedRunnerRouting(unittest.TestCase):
         self.assertEqual("runner.environment == 'github-hosted'",step_condition(kit,'- uses: actions/setup-python'))
         for job in [runtime,control]:
             self.assertIn('CASSINI_CI_ARCH: ${{ matrix.arch }}',job)
-            self.assertIn('shell: python3 scripts/ci-heavy.py arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}',job)
+            self.assertIn('shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}',job)
             self.assertEqual(re.findall(r'- runner: (\S+)\n\s+arch: (\S+)',job),
                              [('macos-15','arm64'),('macos-15-intel','x86_64')])
 
@@ -1531,7 +1531,7 @@ class PullRequestFourJobBudget(unittest.TestCase):
         self.assertIn('vars.CM_MAC_RUNNER', workers)
         self.assertIn("|| 'macos-15' }}", workers)
         self.assertIn('CASSINI_CI_ARCH: arm64', workers)
-        self.assertIn('shell: python3 scripts/ci-heavy.py arch -arm64 /bin/bash --noprofile --norc -eo pipefail {0}', workers)
+        self.assertIn('shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" arch -arm64 /bin/bash --noprofile --norc -eo pipefail {0}', workers)
         for marker in [
             'scripts/check-ux-copy.py',
             'Spikes/Spectrogram/CheckBudget.swift',

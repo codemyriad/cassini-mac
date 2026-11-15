@@ -19,9 +19,9 @@ class HostLock(unittest.TestCase):
         self.env = dict(os.environ, RUNNER_ENVIRONMENT='self-hosted',
                         CASSINI_HEAVY_LOCK=str(self.lock), CASSINI_HEAVY_LOCK_HELD='')
 
-    def start(self, code, **overrides):
+    def start(self, code, cwd=None, **overrides):
         process = subprocess.Popen([sys.executable, str(ROOT/'scripts/ci-heavy.py'), sys.executable, '-u', '-c', code],
-                                   env=dict(self.env, **overrides), stdin=subprocess.PIPE,
+                                   env=dict(self.env, **overrides), cwd=cwd, stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.addCleanup(self.stop, process)
         return process
@@ -30,6 +30,13 @@ class HostLock(unittest.TestCase):
         if process.poll() is None: process.terminate()
         process.communicate(timeout=10)
         for stream in [process.stdin, process.stdout, process.stderr]: stream.close()
+
+    def test_absolute_wrapper_preserves_nested_working_directory(self):
+        nested = Path(self.temp.name)/'nested conformance'; nested.mkdir()
+        process = self.start('import os; print(os.getcwd())', cwd=nested)
+        self.assertIn('Waiting for shared', process.stdout.readline())
+        self.assertEqual(Path(process.stdout.readline().strip()).resolve(), nested.resolve())
+        self.assertEqual(process.wait(timeout=10), 0)
 
     def test_shell_holds_ios_flock_until_exit_and_keeps_inode(self):
         process = self.start('import os,sys; print(os.environ["CASSINI_HEAVY_LOCK_HELD"]); sys.stdin.readline(); sys.exit(37)')

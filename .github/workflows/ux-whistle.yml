@@ -31,7 +31,7 @@ jobs:
     # on a machine of that architecture `arch` changes nothing.
     defaults:
       run:
-        shell: python3 scripts/ci-heavy.py arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}
+        shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products

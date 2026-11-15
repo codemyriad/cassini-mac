@@ -23,12 +23,12 @@ runs:
   using: composite
   steps:
     - uses: ./.github/actions/ci-workspace
-    - shell: python3 scripts/ci-heavy.py /bin/bash --noprofile --norc -eo pipefail {0}
+    - shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" /bin/bash --noprofile --norc -eo pipefail {0}
       run: bash scripts/ci-select-xcode.sh
     # CASSINI_CI_ARCH names the products a job runs when they are not the machine's own
     # architecture: x86_64 on a rented Apple Silicon Mac, executed through Rosetta 2.
     - id: arch
-      shell: python3 scripts/ci-heavy.py /bin/bash --noprofile --norc -eo pipefail {0}
+      shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" /bin/bash --noprofile --norc -eo pipefail {0}
       run: bash scripts/ci-product-arch.sh
     # D66 mac-P0-4 (rule 2): every download is strict (download-artifact retries the service
     # itself and logs it). A product that arrives incomplete (missing or truncated archive,
@@ -65,7 +65,7 @@ runs:
         name: ci-release
         path: build/ci-products
     - id: verify
-      shell: python3 scripts/ci-heavy.py /bin/bash --noprofile --norc -eo pipefail {0}
+      shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" /bin/bash --noprofile --norc -eo pipefail {0}
       env:
         RESTORE_SWIFTPM: ${{ inputs.swiftpm }}
         RESTORE_ASSETS: ${{ inputs.assets }}
@@ -116,7 +116,7 @@ runs:
         name: ci-release
         path: build/ci-products
     - if: steps.verify.outputs.retry != ' '
-      shell: python3 scripts/ci-heavy.py /bin/bash --noprofile --norc -eo pipefail {0}
+      shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" /bin/bash --noprofile --norc -eo pipefail {0}
       env:
         RETRY: ${{ steps.verify.outputs.retry }}
       run: |
