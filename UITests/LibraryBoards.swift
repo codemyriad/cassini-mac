@@ -195,6 +195,9 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:10),app.debugDescription)
         XCTAssertFalse(window.sheets.firstMatch.exists,"No confirmation")
         capture(window,name:"trash-after")
+        app.typeKey("z", modifierFlags: .command)
+        XCTAssertTrue(window.buttons["meeting-play"].waitForExistence(timeout: 10), app.debugDescription)
+        capture(window, name: "qa-trash-undo")
     }
     /// D52.3a: Recording details opens from the meeting's More menu and closes again.
     @MainActor func testRecordingDetailsFromTheMoreMenu() throws {
@@ -1137,6 +1140,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(sheet.radioButtons["Plain text"].exists)
         XCTAssertTrue(sheet.buttons["export-more-formats"].waitForExistence(timeout: 5), app.debugDescription)
         sheet.buttons["export-more-formats"].click()
+        capture(window, name: "qa-export-more-formats")
         for label in ["Plain text", "Subtitles (SRT)", "Subtitles (WebVTT)"] {
             XCTAssertTrue(sheet.radioButtons[label].waitForExistence(timeout: 5), app.debugDescription)
             sheet.radioButtons[label].click()
@@ -1423,6 +1427,218 @@ final class LibraryBoards: XCTestCase {
         window.sheets.buttons["Not now"].click()
         XCTAssertFalse(window.buttons["recording-stop"].exists)
     }
+    @MainActor func testQASettingsPagesAndSavedVoicesMenu() throws {
+        let app = try launch("settings-recording", fixture: "empty", extra: ["-CassiniSettingsID", UUID().uuidString])
+        defer { app.terminate() }
+        let window = app.windows["cassini-settings-window"]
+        XCTAssertTrue(window.buttons["settings-change-shortcut"].waitForExistence(timeout: 20), app.debugDescription)
+        for title in ["Recording", "Transcription", "Library", "Browser companion"] {
+            window.toolbars.buttons[title].click()
+            capture(window, name: "qa-settings-" + title)
+        }
+        app.menuBars.menuBarItems["Cassini talk"].click()
+        let voices = app.menuItems["Saved Voices…"]
+        XCTAssertTrue(voices.waitForExistence(timeout: 5), app.debugDescription)
+        voices.click()
+        let back = window.buttons["Back to Transcription settings"]
+        XCTAssertTrue(back.waitForExistence(timeout: 10), app.debugDescription)
+        capture(window, name: "qa-saved-voices")
+        back.click()
+        XCTAssertTrue(window.descendants(matching: .any)["settings-whistle-row"].waitForExistence(timeout: 5), app.debugDescription)
+    }
+
+    /// D-1055: retain rendered evidence without navigating away to refresh a row.
+    /// Inputs are generated PCM; this checks the app workflow, not hardware consent.
+    @MainActor func testQAConsecutiveRecordingsRetireLiveRows() throws {
+        let app = try launch("first-run", fixture: "empty", extra: [
+            "--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString
+        ])
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20), app.debugDescription)
+        capture(window, name: "qa-first-launch")
+        for number in 1...2 {
+            app.typeKey("r", modifierFlags: .command)
+            let start = window.sheets.buttons["record-first-start"]
+            XCTAssertTrue(start.waitForExistence(timeout: 10), app.debugDescription)
+            capture(window, name: "qa-consent-\(number)")
+            start.click()
+            XCTAssertTrue(window.buttons["recording-stop"].waitForExistence(timeout: 10), app.debugDescription)
+            let advanced = NSPredicate { _, _ in self.recordedSeconds(window) >= 2 }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: advanced, object: nil)], timeout: 10), .completed)
+            capture(window, name: "qa-live-\(number)")
+            XCTAssertEqual(meetingRowCount(window, prefix: "meeting-Recording-"), number, window.debugDescription)
+            window.buttons["recording-stop"].click()
+            let saved = NSPredicate { _, _ in
+                window.buttons["meeting-play"].exists && window.buttons["meeting-play"].isEnabled
+                    && !window.staticTexts["Saving…"].exists
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: saved, object: nil)], timeout: 15), .completed, app.debugDescription)
+            // Capture BEFORE another selection/search/relaunch could repair SwiftUI caching.
+            capture(window, name: "qa-immediate-saved-\(number)")
+            XCTAssertFalse(window.buttons["recording-stop"].exists)
+            XCTAssertEqual(meetingRowCount(window, prefix: "meeting-Recording-"), number)
+            let stale = window.outlines.staticTexts.matching(NSPredicate(format: "value BEGINSWITH %@ OR label BEGINSWITH %@", "Recording ", "Recording "))
+            XCTAssertEqual(stale.count, 0, window.debugDescription)
+        }
+    }
+
+    @MainActor func testQAImportFormatsThroughOpenPanel() throws {
+        let app = try launch("first-run", fixture: "empty", extra: [
+            "--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString
+        ])
+        defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20))
+        let fixtures = try fixtureDirectory()
+        for name in ["tone-wav.wav", "tone-m4a.m4a", "tone-mp3.mp3", "tone-flac.flac", "tone-opus.opus"] {
+            let before = meetingRowIdentifiers(window, prefix: "meeting-Received-")
+            let file = fixtures.appendingPathComponent("qa-imports/" + name)
+            let expectedTitle = file.deletingPathExtension().lastPathComponent
+            app.typeKey("o", modifierFlags: .command)
+            let panel = app.windows["open-panel"]
+            XCTAssertTrue(panel.waitForExistence(timeout: 10), app.debugDescription)
+            app.typeKey("g", modifierFlags: [.command, .shift])
+            app.typeText(file.path)
+            app.typeKey(.return, modifierFlags: [])
+            let open = app.buttons["Open"].firstMatch
+            XCTAssertTrue(open.waitForExistence(timeout: 5), app.debugDescription)
+            capture(panel, name: "qa-import-picker-\(name)")
+            open.click()
+            let imported = NSPredicate { _, _ in
+                let added = self.meetingRowIdentifiers(window, prefix: "meeting-Received-").subtracting(before)
+                guard added.count == 1, let identifier = added.first else { return false }
+                let fragments = window.outlines.staticTexts.matching(identifier: identifier).allElementsBoundByIndex
+                let nativeRow = window.outlines.outlineRows.containing(.staticText, identifier: identifier).firstMatch
+                return nativeRow.exists && nativeRow.isSelected
+                    && self.visibleText(window.staticTexts["meeting-title"]) == expectedTitle
+                    && window.buttons["meeting-play"].exists
+                    && !fragments.isEmpty && fragments.allSatisfy { self.sidebarVisible($0, in: window) }
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: imported, object: nil)], timeout: 20), .completed, app.debugDescription)
+            XCTAssertEqual(visibleText(window.staticTexts["meeting-title"]), expectedTitle)
+            XCTAssertTrue(visibleText(window.staticTexts["meeting-subtitle"]).contains("Imported"), window.debugDescription)
+            capture(window, name: "qa-imported-\(name)")
+        }
+        // A mixed batch must preserve successful imports and expose the failed
+        // item, without manufacturing a meeting from a truncated container.
+        let batch = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniQABatch-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: batch, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: batch) }
+        try FileManager.default.copyItem(at: fixtures.appendingPathComponent("qa-imports/tone-wav.wav"), to: batch.appendingPathComponent("duplicate.wav"))
+        try FileManager.default.copyItem(at: fixtures.appendingPathComponent("qa-imports/tone-batch.wav"), to: batch.appendingPathComponent("tone-batch.wav"))
+        try Data("fLaC".utf8).write(to: batch.appendingPathComponent("truncated.flac"))
+        app.typeKey("o", modifierFlags: .command)
+        let panel = app.windows["open-panel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 10))
+        app.typeKey("g", modifierFlags: [.command, .shift])
+        app.typeText(batch.path + "/")
+        app.typeKey(.return, modifierFlags: [])
+        // Go to Folder leaves the folder selected in the preceding column.
+        // Focus a file before Select All so Open receives the batch contents.
+        let firstFile = panel.textFields.matching(NSPredicate(format: "value == %@", "duplicate.wav")).firstMatch
+        XCTAssertTrue(firstFile.waitForExistence(timeout: 5), app.debugDescription)
+        firstFile.click()
+        app.typeKey("a", modifierFlags: .command)
+        XCTAssertTrue(panel.buttons["Open"].isEnabled, app.debugDescription)
+        capture(panel, name: "qa-mixed-batch-picker")
+        panel.buttons["Open"].click()
+        // SwiftUI propagates the card identifier over its child button's ID.
+        let failed = window.outlines.buttons.matching(NSPredicate(
+            format: "identifier == %@ AND label == %@", "failed-import-truncated.flac", "Done"
+        )).firstMatch
+        let completed = NSPredicate { _, _ in
+            self.meetingRowCount(window, prefix: "meeting-Received-") == 6
+                && self.sidebarVisible(failed, in: window)
+                && window.staticTexts.matching(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@",
+                    "Skipped 1 duplicate", "Skipped 1 duplicate")).firstMatch.exists
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: completed, object: nil)], timeout: 30), .completed, app.debugDescription)
+        // No manual scrolling: Done and every fragment of the attention card
+        // must be inside the live sidebar viewport below All/Starred.
+        let card = window.outlines.descendants(matching: .any).matching(identifier: "failed-import-truncated.flac")
+        XCTAssertGreaterThan(card.count, 0)
+        for fragment in card.allElementsBoundByIndex {
+            XCTAssertTrue(sidebarVisible(fragment, in: window), fragment.debugDescription)
+        }
+        capture(window, name: "qa-mixed-batch-failure")
+        failed.click()
+        let dismissed = NSPredicate { _, _ in !failed.exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: dismissed, object: nil)], timeout: 5), .completed)
+        capture(window, name: "qa-mixed-batch-dismissed")
+
+        // Back up all six imported meetings through the actual Save panel,
+        // then restore the resulting archive into a different fresh Library.
+        let backupDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniQABackup-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: backupDirectory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: backupDirectory) }
+        app.menuBars.menuBarItems["File"].click()
+        let exportAll = app.menuItems["Export All as ZIP…"]
+        XCTAssertTrue(exportAll.isEnabled, app.debugDescription)
+        exportAll.click()
+        XCTAssertTrue(nativeSaveButton(in: app).waitForExistence(timeout: 10), app.debugDescription)
+        app.typeKey("g", modifierFlags: [.command, .shift])
+        app.typeText(backupDirectory.path + "/")
+        app.typeKey(.return, modifierFlags: [])
+        // The Save panel's AX container alone renders an empty backing view.
+        // Capture its parent window, including the attached native sheet.
+        capture(window, name: "qa-backup-save-panel")
+        nativeSaveButton(in: app).click()
+        let receipt = window.staticTexts["export-zip-success"]
+        XCTAssertTrue(receipt.waitForExistence(timeout: 30), app.debugDescription)
+        XCTAssertTrue(visibleText(receipt).contains("6"), receipt.debugDescription)
+        capture(window, name: "qa-backup-exported")
+        let archives = try FileManager.default.contentsOfDirectory(at: backupDirectory, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "zip" }
+        XCTAssertEqual(archives.count, 1)
+        let archive = try XCTUnwrap(archives.first)
+        XCTAssertGreaterThan(try Data(contentsOf: archive).count, 0)
+        app.terminate()
+
+        let restoredApp = try launch("first-run", fixture: "empty", extra: [
+            "--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString
+        ])
+        defer { restoredApp.terminate() }
+        let restoredWindow = restoredApp.windows["cassini-library-window"]
+        XCTAssertTrue(restoredWindow.buttons["first-run-record"].waitForExistence(timeout: 20))
+        capture(restoredWindow, name: "qa-backup-fresh-library")
+        restoredApp.typeKey("o", modifierFlags: .command)
+        let restorePanel = restoredApp.windows["open-panel"]
+        XCTAssertTrue(restorePanel.waitForExistence(timeout: 10), restoredApp.debugDescription)
+        restoredApp.typeKey("g", modifierFlags: [.command, .shift])
+        restoredApp.typeText(archive.path)
+        restoredApp.typeKey(.return, modifierFlags: [])
+        capture(restorePanel, name: "qa-backup-import-panel")
+        restorePanel.buttons["Open"].click()
+        let restored = NSPredicate { _, _ in
+            self.meetingRowCount(restoredWindow, prefix: "meeting-Received-") == 6
+                && restoredWindow.buttons["meeting-play"].exists
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: restored, object: nil)], timeout: 30), .completed, restoredApp.debugDescription)
+        capture(restoredWindow, name: "qa-backup-restored")
+        XCTAssertTrue(visibleText(restoredWindow.staticTexts["meeting-subtitle"]).contains("Imported"), restoredWindow.debugDescription)
+    }
+
+    private func sidebarVisible(_ element: XCUIElement, in window: XCUIElement) -> Bool {
+        guard element.exists, element.isHittable else { return false }
+        let filters = window.descendants(matching: .any)["library-filters"]
+        let outline = window.outlines.firstMatch
+        guard filters.exists, outline.exists else { return false }
+        let viewport = outline.frame.intersection(window.frame)
+        let frame = element.frame
+        return !frame.isEmpty && viewport.contains(frame) && frame.minY >= filters.frame.maxY
+    }
+
+    private func meetingRowIdentifiers(_ window: XCUIElement, prefix: String) -> Set<String> {
+        // A row's title, duration and badge share an identifier.
+        let fragments = window.outlines.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", prefix))
+        return Set(fragments.allElementsBoundByIndex.map(\.identifier))
+    }
+
+    private func meetingRowCount(_ window: XCUIElement, prefix: String) -> Int {
+        meetingRowIdentifiers(window, prefix: prefix).count
+    }
+
     @MainActor func testCaptureWritesIntoLibraryAndSaves() throws {
         let id = UUID().uuidString
         let app = try launch("first-run", fixture: "empty", extra: ["--fixture-library-recording", "-CassiniCaptureID", id])
@@ -1505,6 +1721,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(waitForPresent(retry,timeout: 20), app.debugDescription)
         XCTAssertTrue(text("Could not write this meeting down. The audio is fine.", in: window))
         XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
+        capture(window, name: "qa-transcription-retry")
         retry.click()
         // Completion must publish real transcript rows and clear the running/error state.
         let transcribing = window.descendants(matching: .any)["meeting-transcribing"]
@@ -1516,6 +1733,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(me.waitForExistence(timeout:10),app.debugDescription)
         XCTAssertTrue(me.label.hasPrefix("Me,"),me.label)
         XCTAssertFalse(window.buttons["meeting-write-down"].exists)
+        capture(window, name: "qa-transcription-ready")
     }
     @MainActor func testQuitPausesWritingDownAndResumesOnRelaunch() throws {
         let base = ["--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString, "-CassiniTranscriptionFixture", "YES"]
@@ -1531,6 +1749,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:speech,object:nil)],timeout:10),.completed)
         window.buttons["recording-stop"].click()
         XCTAssertTrue(waitForPresent(window.descendants(matching:.any)["Transcribing…"],timeout:10),app.debugDescription)
+        capture(window, name: "qa-transcription-running")
         app.typeKey("q",modifierFlags:.command)
         let exited = NSPredicate { _,_ in app.state == .notRunning }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:exited,object:nil)],timeout:5),.completed)

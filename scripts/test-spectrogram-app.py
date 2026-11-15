@@ -111,7 +111,10 @@ def record_profile(app: Path, output: Path):
             if trace:
                 # Source completion/exit is the event. Finalize only afterwards.
                 if trace.poll() is None: trace.send_signal(signal.SIGINT)
-                try: trace.wait(timeout=20)
+                # Instruments may still be serializing its trace after the
+                # generated-input process exits. This is a bounded shutdown
+                # guard, separate from all uninstrumented performance budgets.
+                try: trace.wait(timeout=120)
                 except subprocess.TimeoutExpired: trace.kill(); trace.wait()
     (output/'profile.stdout.txt').write_text(stdout)
     proof['traceExitStatus'] = trace.returncode if trace else None

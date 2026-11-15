@@ -76,6 +76,17 @@ class ExportUXBoardsTests(unittest.TestCase):
         self.assertTrue((self.out / 'recording-menu.json').is_file())
         self.assertEqual(json.loads((self.out / 'shots.json').read_text()), doc)
 
+    def test_unpaired_qa_checkpoints_remain_raw_and_do_not_change_reference_pairs(self) -> None:
+        self.populate(extra_light=('qa-transcription-retry',), extra_dark=('qa-native-panel',))
+        originals = {path: path.read_bytes() for source in (self.light, self.dark) for path in source.iterdir()}
+        with patch('builtins.print'):
+            doc = exporter.export_boards(self.light, self.out, self.dark)
+        self.assertEqual(len(doc['shots']), 68)
+        self.assertFalse(any(row['screen'].startswith('qa-') for row in doc['shots']))
+        self.assertFalse(any(path.name.startswith('qa-') for path in self.out.rglob('*.png')))
+        for path, data in originals.items():
+            self.assertEqual(path.read_bytes(), data, 'Raw QA evidence must remain unchanged')
+
     def test_rejects_unpaired_mislabelled_duplicate_missing_or_unsafe_boards(self) -> None:
         for kwargs, pattern in (
             ({'extra_light': ('library',)}, 'Duplicate light screenshot: library'),

@@ -286,6 +286,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
     }
     static func run() async {
         guard CaptureFixture.enabled, let root = RecordingFixture.root else { NSApp.terminate(nil); return }
+        let headlessOwnership = CommandLine.arguments.contains("--fixture-headless-ownership")
         let collection = CaptureCollection.shared
         var profiles: [CaptureProbeProfile] = []
         var routingRoots: [URL] = []
@@ -355,6 +356,12 @@ final class CaptureProbeProcess: @unchecked Sendable {
             let suggestionView = MeetingView(model:MeetingDetailModel(meeting:suggestionMeeting,frozen:true),format:LibraryStore.shared.format)
             try require(!suggestionView.showsCompanionSuggestion,"A connected companion does not show Set up again")
             stage = "owned recording surfaces and silent-mic boundary"
+            if !RecordingSpectrogram.enabled {
+                let disabledStrip = RecordingSpectrogramView(style: .row)
+                try require(!disabledStrip.wantsLayer && disabledStrip.layer == nil,
+                            "Disabled spectrogram allocates no compositor layers")
+                report["disabledSpectrogramHasNoLayers"] = true
+            }
             try require(RecordingOverview.active && RecordingOverview.recordCommandTitle == UXText.text("common.stop"),"File Record command reflects an owned recording")
             try require(LibraryMoveCoordinator.shared.requiresRecordingConfirmation,"Move requires confirmation during an owned capture")
             try await wait { LibraryStore.shared.selected.map { collection.captures[$0.id] != nil } == true }
@@ -368,7 +375,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             let otherMeeting = try LibraryScanner(root:duplicates).scan().meetings.first.unwrap()
             try require(originalEditor.owned != nil && RecordingPageModel.editor(for:otherMeeting).owned == nil,"Recording controls match the folder as well as UUID")
             report["ownedEditorUsesFolderIdentity"] = true
-            MeetingNavigation.shared.open(originalMeeting)
+            MeetingNavigation.shared.open(originalMeeting, activate: !headlessOwnership)
             // Both inputs have admitted generated DC frames. Advance only the
             // silence clock so these browser recordings keep their media offsets.
             let ownedIDs = [first.snapshot.manifest.id, second.snapshot.manifest.id]
@@ -414,7 +421,7 @@ final class CaptureProbeProcess: @unchecked Sendable {
             try LibraryLocation(primary:root,previous:[previous],pendingMoves:[.init(source:previous,folderName:deferred.directory.lastPathComponent)]).write(file:LibraryLaunchContext.locationFile)
             LibraryStore.shared.reloadLocation()
             try await wait { LibraryStore.shared.loaded }
-            MeetingNavigation.shared.open(originalMeeting)
+            MeetingNavigation.shared.open(originalMeeting, activate: !headlessOwnership)
             let exporter = MeetingExportCoordinator.shared
             exporter.show(otherMeeting)
             try require(exporter.showing,"Private export presentation is active before background Move")
@@ -957,6 +964,12 @@ final class CaptureProbeProcess: @unchecked Sendable {
             LibraryStore.shared.stop()
             report["audioDevicesOpened"] = false; report["browserProfilesTouched"] = false
             report["nativeMessagingProcesses"] = true; report["exactProductProfile"] = true
+            if headlessOwnership {
+                let visible = NSApp.windows.filter(\.isVisible)
+                let descriptions = visible.map { "\($0.title) [\($0.accessibilityIdentifier() ?? "unidentified")]" }
+                try require(visible.isEmpty, "Headless ownership proof presents no windows: \(descriptions)")
+                report["headlessOwnershipNoVisibleWindows"] = true
+            }
             try FileHandle.standardOutput.write(contentsOf:JSONSerialization.data(withJSONObject:report,options:.sortedKeys))
             try FileManager.default.removeItem(at:root)
             for url in routingRoots { try? FileManager.default.removeItem(at:url) }

@@ -4,7 +4,26 @@ import CassiniLibrary
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Keep the private ownership proof outside SwiftUI scene creation on headless
+/// hosts. Normal launches (including all UI evidence) use the complete app.
 @main
+@MainActor enum CassiniEntry {
+    static func main() {
+        #if DEBUG
+        if CaptureFixture.enabled && CommandLine.arguments.contains("--browser-capture-self-test") &&
+            CommandLine.arguments.contains("--fixture-headless-ownership") {
+            let application = NSApplication.shared
+            let delegate = AppDelegate()
+            application.delegate = delegate
+            application.setActivationPolicy(.prohibited)
+            withExtendedLifetime(delegate) { application.run() }
+            return
+        }
+        #endif
+        CassiniApp.main()
+    }
+}
+
 struct CassiniApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var recorder = RecordingController.shared

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Export every LibraryBoards PNG attachment (34 light + 34 dark pairs) and write shots.json."""
+"""Export LibraryBoards reference PNG pairs and write shots.json; retain QA checkpoints separately."""
 from __future__ import annotations
 import argparse, json, os, platform, re, shutil, struct, subprocess, zlib
 from pathlib import Path
@@ -107,7 +107,10 @@ def export_scheme(src: Path, target: Path, scheme: str) -> tuple[dict[str, bytes
             if att.get('isAssociatedWithFailure') or not human.endswith('.png'):
                 continue
             name = re.sub(r'_\d+_[^/]+$', '', human[:-4])
-            if name == 'save-panel-failure':
+            # Intermediate QA checkpoints are retained in the raw walkthrough
+            # artifact. They may be one-appearance states or native panels,
+            # rather than the paired, fixed-size reference boards below.
+            if name == 'save-panel-failure' or name.startswith('qa-'):
                 continue
             assert NAME_RE.fullmatch(name), f'Invalid screenshot name: {name!r}'
             assert name not in pngs, f'Duplicate {scheme} screenshot: {name}'

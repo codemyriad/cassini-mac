@@ -166,12 +166,37 @@ struct WindowAccessor: NSViewRepresentable {
     var onWindow: (NSWindow?) -> Void
 
     func makeNSView(context: Context) -> NSView {
-        let v = NSView()
-        DispatchQueue.main.async { onWindow(v.window) }
+        let v = WindowAttachmentView()
+        v.onWindow = onWindow
+        v.deliverWindow()
         return v
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async { onWindow(nsView.window) }
+        guard let view = nsView as? WindowAttachmentView else { return }
+        view.onWindow = onWindow
+        view.deliverWindow()
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: ()) {
+        (nsView as? WindowAttachmentView)?.onWindow = { _ in }
+    }
+}
+
+/// SwiftUI may attach the view after both initial representable callbacks.
+/// Observe that event, and deliver the latest callback outside view updates.
+private final class WindowAttachmentView: NSView {
+    var onWindow: (NSWindow?) -> Void = { _ in }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        deliverWindow()
+    }
+
+    func deliverWindow() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.onWindow(self.window)
+        }
     }
 }

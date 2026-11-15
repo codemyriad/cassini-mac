@@ -286,103 +286,122 @@ struct LibraryView: View {
         Text(UXText.text(search.visible ? "search.title" : "library.title")).font(.system(size: 15, weight: .bold))
             .accessibilityAddTraits(.isHeader).accessibilityIdentifier("library-toolbar-title")
     }
+    // Attention takes precedence while failures remain. Only reveal an imported
+    // selection once its row is present in the watcher snapshot.
+    private var importScrollTarget: String? {
+        guard store.preferences.filter == .all else { return nil }
+        if let failed = importer.transientItems.first(where: {
+            if case .failed = $0.state { return true }; return false
+        }) { return "import-" + failed.id }
+        if let key = store.importedSelection, store.selectedKey == key,
+           store.visibleMeetings.contains(where: { $0.libraryKey == key }) { return key }
+        return nil
+    }
     private var split: some View {
         let todayTitle = UXText.text("format.today")
         let firstGroupIsToday = store.groups.first?.title == todayTitle
         return HStack(spacing: 0) {
             VStack(spacing: 0) {
-                ZStack {
-                    List(selection: Binding(get: { store.selectedKeys }, set: {
-                        let changed = $0 != store.selectedKeys
-                        store.selectedKeys = $0
-                        if changed, let window = NSApp.keyWindow,
-                           LibraryKeyboardMenu.hasListFocus(in: window) {
-                            openSelection(userInitiated: true)
-                        }
-                    })) {
-                        if store.preferences.filter == .all && !importer.transientItems.isEmpty && !firstGroupIsToday {
-                            Section {
-                                ForEach(importer.transientItems) { item in
-                                    transientImportRow(item)
-                                }
-                            } header: {
-                                Text(todayTitle).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2).textCase(nil)
-                                    .accessibilityIdentifier("library-day-header-importing")
+                ScrollViewReader { proxy in
+                    ZStack {
+                        List(selection: Binding(get: { store.selectedKeys }, set: {
+                            let changed = $0 != store.selectedKeys
+                            store.selectedKeys = $0
+                            if changed, let window = NSApp.keyWindow,
+                               LibraryKeyboardMenu.hasListFocus(in: window) {
+                                openSelection(userInitiated: true)
                             }
-                        }
-                        if store.preferences.filter == .starred && store.visibleMeetings.isEmpty {
-                            Text(UXText.text("library.starred.empty"))
-                                .foregroundStyle(CassiniTheme.ink2)
-                                .listRowBackground(Color.clear).listRowSeparator(.hidden)
-                                .accessibilityIdentifier("library-starred-empty")
-                        }
-                        ForEach(Array(store.groups.enumerated()), id: \.element.id) { groupIndex, group in
-                            Section {
-                                if store.preferences.filter == .all && groupIndex == 0 && firstGroupIsToday {
+                        })) {
+                            if store.preferences.filter == .all && !importer.transientItems.isEmpty && !firstGroupIsToday {
+                                Section {
                                     ForEach(importer.transientItems) { item in
                                         transientImportRow(item)
                                     }
+                                } header: {
+                                    Text(todayTitle).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2).textCase(nil)
+                                        .accessibilityIdentifier("library-day-header-importing")
                                 }
-                                ForEach(group.meetings, id: \.libraryKey) { meeting in
-                                    row(meeting).tag(meeting.libraryKey)
-                                        .background {
-                                            LibraryRowOpenAnchor {
-                                                guard !LibraryMoveCoordinator.shared.busy else { return }
-                                                readTranscript(meeting)
-                                            }.accessibilityHidden(true)
-                                            if store.primarySelectedKey == meeting.libraryKey { LibraryMenuAnchor() }
+                            }
+                            if store.preferences.filter == .starred && store.visibleMeetings.isEmpty {
+                                Text(UXText.text("library.starred.empty"))
+                                    .foregroundStyle(CassiniTheme.ink2)
+                                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                                    .accessibilityIdentifier("library-starred-empty")
+                            }
+                            ForEach(Array(store.groups.enumerated()), id: \.element.id) { groupIndex, group in
+                                Section {
+                                    if store.preferences.filter == .all && groupIndex == 0 && firstGroupIsToday {
+                                        ForEach(importer.transientItems) { item in
+                                            transientImportRow(item)
                                         }
-                                        .simultaneousGesture(TapGesture().onEnded {
-                                            if NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
-                                                store.selectedKey = meeting.libraryKey
-                                                openSelection(userInitiated: true)
-                                                LibraryKeyboardMenu.focusList()
+                                    }
+                                    ForEach(group.meetings, id: \.libraryKey) { meeting in
+                                        row(meeting).tag(meeting.libraryKey).id(meeting.libraryKey)
+                                            .background {
+                                                LibraryRowOpenAnchor {
+                                                    guard !LibraryMoveCoordinator.shared.busy else { return }
+                                                    readTranscript(meeting)
+                                                }.accessibilityHidden(true)
+                                                if store.primarySelectedKey == meeting.libraryKey { LibraryMenuAnchor() }
                                             }
-                                        })
-                                        .contextMenu {
-                                            Button(UXText.text(store.isStarred(meeting) ? "meeting.unstar" : "meeting.star")) { store.toggleStar(meeting) }
-                                                .accessibilityIdentifier("library-star")
-                                            Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = meeting.libraryKey; rename.show(meeting) }
-                                                .disabled(store.selectedKeys.count > 1 || !rename.canRename(meeting)).accessibilityIdentifier("library-rename")
-                                            Button(UXText.text("common.exportEllipsis")) { store.selectedKey = meeting.libraryKey; exporter.show(meeting) }
-                                                .disabled(store.selectedKeys.count > 1 || !MeetingExportCoordinator.canExport(meeting))
-                                                .onAppear {
-                                                    if !store.selectedKeys.contains(meeting.libraryKey) {
-                                                        store.selectedKey = meeting.libraryKey
-                                                    }
+                                            .simultaneousGesture(TapGesture().onEnded {
+                                                if NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
+                                                    store.selectedKey = meeting.libraryKey
+                                                    openSelection(userInitiated: true)
+                                                    LibraryKeyboardMenu.focusList()
                                                 }
-                                            if !store.selectedKeys.isEmpty {
-                                                Button(UXText.text("export.zip.selected")) { bulkExporter.exportSelected() }
-                                                    .disabled(!bulkExporter.canExportSelected)
-                                                    .accessibilityIdentifier("library-export-selected-zip")
+                                            })
+                                            .contextMenu {
+                                                Button(UXText.text(store.isStarred(meeting) ? "meeting.unstar" : "meeting.star")) { store.toggleStar(meeting) }
+                                                    .accessibilityIdentifier("library-star")
+                                                Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = meeting.libraryKey; rename.show(meeting) }
+                                                    .disabled(store.selectedKeys.count > 1 || !rename.canRename(meeting)).accessibilityIdentifier("library-rename")
+                                                Button(UXText.text("common.exportEllipsis")) { store.selectedKey = meeting.libraryKey; exporter.show(meeting) }
+                                                    .disabled(store.selectedKeys.count > 1 || !MeetingExportCoordinator.canExport(meeting))
+                                                    .onAppear {
+                                                        if !store.selectedKeys.contains(meeting.libraryKey) {
+                                                            store.selectedKey = meeting.libraryKey
+                                                        }
+                                                    }
+                                                if !store.selectedKeys.isEmpty {
+                                                    Button(UXText.text("export.zip.selected")) { bulkExporter.exportSelected() }
+                                                        .disabled(!bulkExporter.canExportSelected)
+                                                        .accessibilityIdentifier("library-export-selected-zip")
+                                                }
+                                                Button(UXText.text("export.zip.all")) { bulkExporter.exportAll() }
+                                                    .disabled(!bulkExporter.canExportAll)
+                                                    .accessibilityIdentifier("library-export-all-zip")
+                                                if store.selectedKeys.count <= 1 && trash.canTrash(meeting) { Divider(); trashButton(meeting) }
                                             }
-                                            Button(UXText.text("export.zip.all")) { bulkExporter.exportAll() }
-                                                .disabled(!bulkExporter.canExportAll)
-                                                .accessibilityIdentifier("library-export-all-zip")
-                                            if store.selectedKeys.count <= 1 && trash.canTrash(meeting) { Divider(); trashButton(meeting) }
-                                        }
-                                        .listRowSeparator(.hidden)
-                                        .listRowBackground(Color.clear)
-                                        .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
-                                        .accessibilityIdentifier("meeting-" + meeting.libraryKey)
+                                            .listRowSeparator(.hidden)
+                                            .listRowBackground(Color.clear)
+                                            .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+                                            .accessibilityIdentifier("meeting-" + meeting.libraryKey)
+                                    }
+                                } header: {
+                                    Text(group.title).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2).textCase(nil)
+                                        .accessibilityIdentifier("library-day-header-" + (group.meetings.first?.libraryKey ?? "empty"))
                                 }
-                            } header: {
-                                Text(group.title).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2).textCase(nil)
-                                    .accessibilityIdentifier("library-day-header-" + (group.meetings.first?.libraryKey ?? "empty"))
+                            }
+                            if !store.meetings.isEmpty, store.meetings.allSatisfy({ $0.state.origin == .received }) {
+                                Text(UXText.text("received.libraryHint")).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
                             }
                         }
-                        if !store.meetings.isEmpty, store.meetings.allSatisfy({ $0.state.origin == .received }) {
-                            Text(UXText.text("received.libraryHint")).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
-                                .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                        .listStyle(.sidebar)
+                        .scrollContentBackground(.hidden)
+                        .cassiniTopScrollEdge()
+                        .opacity(dropState.dimsListContent ? 0.30 : 1.0)
+                        .accessibilityLabel(UXText.text("library.listPane.a11y"))
+
+                        LibraryDropListOverlay(state: dropState)
+                    }
+                    .onChange(of: importScrollTarget, initial: true) { _, target in
+                        if let target {
+                            proxy.scrollTo(target, anchor: .center)
+                            store.consumeImportedSelection(target)
                         }
                     }
-                    .listStyle(.sidebar)
-                    .scrollContentBackground(.hidden)
-                    .cassiniTopScrollEdge()
-                    .opacity(dropState.dimsListContent ? 0.30 : 1.0)
-                    .accessibilityLabel(UXText.text("library.listPane.a11y"))
-
-                    LibraryDropListOverlay(state: dropState)
                 }
                 .cassiniPinnedTopBar {
                     VStack(spacing:8) {
@@ -484,6 +503,7 @@ struct LibraryView: View {
                 .font(.system(size: 11.5))
             }
         }
+        .id("import-" + item.id)
         .help(failureDetail ?? "")
         .contextMenu {
             if isFailed {
