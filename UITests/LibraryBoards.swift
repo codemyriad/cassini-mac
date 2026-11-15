@@ -1423,6 +1423,26 @@ final class LibraryBoards: XCTestCase {
         window.sheets.buttons["Not now"].click()
         XCTAssertFalse(window.buttons["recording-stop"].exists)
     }
+    @MainActor func testQASettingsPagesAndSavedVoicesMenu() throws {
+        let app = try launch("settings-recording", fixture: "empty", extra: ["-CassiniSettingsID", UUID().uuidString])
+        defer { app.terminate() }
+        let window = app.windows["cassini-settings-window"]
+        XCTAssertTrue(window.buttons["settings-change-shortcut"].waitForExistence(timeout: 20), app.debugDescription)
+        for title in ["Recording", "Transcription", "Library", "Browser companion"] {
+            window.toolbars.buttons[title].click()
+            capture(window, name: "qa-settings-" + title)
+        }
+        app.menuBars.menuBarItems["Cassini talk"].click()
+        let voices = app.menuItems["Saved Voices…"]
+        XCTAssertTrue(voices.waitForExistence(timeout: 5), app.debugDescription)
+        voices.click()
+        let back = window.buttons["Back to Transcription settings"]
+        XCTAssertTrue(back.waitForExistence(timeout: 10), app.debugDescription)
+        capture(window, name: "qa-saved-voices")
+        back.click()
+        XCTAssertTrue(window.descendants(matching: .any)["settings-whistle-row"].waitForExistence(timeout: 5), app.debugDescription)
+    }
+
     /// D-1055: retain rendered evidence without navigating away to refresh a row.
     /// Inputs are generated PCM; this checks the app workflow, not hardware consent.
     @MainActor func testQAConsecutiveRecordingsRetireLiveRows() throws {
