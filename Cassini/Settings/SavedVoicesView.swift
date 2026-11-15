@@ -33,11 +33,13 @@ struct SavedVoicesView: View {
                 Button { SettingsNavigation.shared.savedVoices=false } label: {
                     Label(UXText.text("savedVoices.back"),systemImage:"chevron.left")
                 }.buttonStyle(.plain).foregroundStyle(CassiniTheme.accent)
+                    .accessibilityIdentifier("saved-voices-back")
                 Text(UXText.text("savedVoices.privacy.mac")).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
                 if voices.readOnly { Text(UXText.text("savedVoices.newerVersion")).foregroundStyle(CassiniTheme.warnInk) }
                 voiceModel
                 if voices.voices.isEmpty {
                     Text(UXText.text("savedVoices.empty")).foregroundStyle(CassiniTheme.ink2).padding(.vertical,16)
+                        .accessibilityIdentifier("saved-voices-empty")
                 } else {
                     VStack(spacing:0) {
                         ForEach(voices.voices) { voice in

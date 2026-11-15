@@ -105,7 +105,7 @@ struct LibraryView: View {
                             trash.move(detail.meeting, undoManager: undoManager ?? NSApp.keyWindow?.undoManager)
                         } label: { Image(systemName: "trash").frame(width: 22, height: 26) }
                             .disabled(!trash.canTrash(detail.meeting))
-                            .help(UXText.text("meeting.moveToRecentlyDeleted")).accessibilityLabel(UXText.text("meeting.moveToRecentlyDeleted"))
+                            .help(UXText.text("common.moveToTrash")).accessibilityLabel(UXText.text("common.moveToTrash"))
                             .accessibilityIdentifier("meeting-trash")
                     }.buttonStyle(.borderless).foregroundStyle(CassiniTheme.ink).padding(.horizontal, 10).frame(height: 28)
                         .background(CassiniTheme.ink.opacity(0.1), in: Capsule())

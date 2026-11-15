@@ -23,11 +23,23 @@ struct AppCommands: Commands {
     var body: some Commands {
         let _ = ApplicationWindows.install(window:openWindow,settings:openSettings)
         CommandGroup(after: .appInfo) {
-            Button(UXText.text("savedVoices.menuItem")) { SavedVoicesController.shared.open() }.disabled(speakerDialog)
             Button(UXText.text("app.checkForUpdates")) { ApplicationUpdates.shared.checkForUpdates() }
                 .disabled(speakerDialog || !ApplicationUpdates.shared.canCheckForUpdates)
         }
-        CommandGroup(replacing:.help) { }
+        CommandGroup(after: .appSettings) {
+            Button(UXText.text("savedVoices.menuItem")) {
+                SavedVoicesController.shared.open()
+            }
+            .disabled(speakerDialog)
+        }
+        CommandGroup(replacing: .help) {
+            Button(UXText.text("menu.help")) {
+                ApplicationWindows.help()
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            .keyboardShortcut("?", modifiers: .command)
+            .disabled(speakerDialog)
+        }
         CommandGroup(replacing: .newItem) {
             Button(UXText.text("import.action")) { LegacyOpening.chooseDocuments() }.keyboardShortcut("o", modifiers: .command).disabled(speakerDialog)
             Button(RecordingOverview.recordCommandTitle) {
