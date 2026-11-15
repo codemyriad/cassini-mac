@@ -20,7 +20,7 @@ def stamp(value):
 
 def summarize(runs, jobs):
     actual = [j for j in jobs if j.get('runner_name') and j.get('conclusion') != 'skipped']
-    mac = [j for j in actual if any('macos' in label.lower() for label in j.get('labels', []))]
+    mac = [j for j in actual if any('macos' in label.lower() or label.lower().startswith('cm-mac-') for label in j.get('labels', []))]
     duration = lambda j: max(0,(stamp(j['completed_at'])-stamp(j['started_at'])).total_seconds())
     finished = [j for j in mac if j.get('started_at') and j.get('completed_at')]
     queues = [max(0,(stamp(j['started_at'])-stamp(j['created_at'])).total_seconds()) for j in mac if j.get('started_at') and j.get('created_at')]
@@ -33,7 +33,7 @@ def summarize(runs, jobs):
                 macos_execution_minutes=round(sum(duration(j) for j in finished)/60,2),
                 median_macos_queue_seconds=round(statistics.median(queues),1) if queues else None,
                 wall_minutes=round((end-start).total_seconds()/60,2),
-                note='Estimated billed macOS minutes round each executed job up to a minute; excludes storage, rates, credits and billing adjustments. Cancelled jobs count only if assigned to a runner. Wall time ends at last run update.')
+                note='Estimated macOS minutes include self-hosted execution and round each executed job up to a minute; excludes storage, rates, credits and billing adjustments. Cancelled jobs count only if assigned to a runner. Wall time ends at last run update.')
 
 
 def main():

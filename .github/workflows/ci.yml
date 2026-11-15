@@ -9,7 +9,6 @@ name: CI
   push:
     branches:
     - main
-    - ux/1a-library-model
   schedule:
   - cron: 43 2 * * *
   workflow_dispatch: null
@@ -26,6 +25,7 @@ jobs:
   changes:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'labeled' || contains(fromJSON('["ui-shots","full-ci"]'), github.event.label.name) }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       shot: ${{ steps.paths.outputs.shot }}
       boards: ${{ steps.paths.outputs.boards }}
@@ -65,6 +65,7 @@ jobs:
         python3 scripts/test-render-local-ux.py
         python3 scripts/test-export-ux-boards.py
         python3 scripts/ci-test-xcode.py
+        python3 scripts/test-ci-heavy.py
         python3 scripts/verify-model-vendor.py
         python3 scripts/ci-changes.py
   build:
@@ -85,7 +86,10 @@ jobs:
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_MAC_RUNNER || 'macos-15' }}
     # About 2.5x its historical p95 (9.2 min); a
     # hang can't hold a shared macOS slot for 6 hours (D66 mac-P0-5, #130 review).
-    timeout-minutes: 30
+    timeout-minutes: 41
+    defaults:
+      run:
+        shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" /bin/bash --noprofile --norc -eo pipefail {0}
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
@@ -104,10 +108,11 @@ jobs:
       run: |
         python3 scripts/test-swift-test-runner.py
         # Keep transfer and supersession-lock deadlines independent of native writer/decoder load.
-        # The model, remaining and hosted bookmark partitions retain every test.
+        # Model, remaining, UTC Library/Search, asset-backed placement and hosted bookmark
+        # partitions retain every test once. Library and placement used to run twice.
         # Security-scoped bookmark creation requires the login session in native_sink.
         python3 scripts/run-swift-tests.py --output build/unit-tests/models -- swift test --skip-build --filter 'ModelDownloaderTests|ModelSupersessionTests'
-        python3 scripts/run-swift-tests.py --output build/unit-tests/remaining -- swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests|recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication'
+        python3 scripts/run-swift-tests.py --output build/unit-tests/remaining -- swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests|recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication|Library|SearchTests|SharedPlacementTests'
     - uses: actions/upload-artifact@v5
       continue-on-error: true
       if: always()
@@ -171,12 +176,14 @@ jobs:
         npm ci --prefix BrowserExtension/tests
         BrowserExtension/tests/node_modules/.bin/playwright install chromium
     - name: Extension native-messaging diagnostics survive their worker (D66 mac-P0-1)
-      timeout-minutes: 3
+      # Includes ten minutes for the host lock and one minute for cancellation.
+      timeout-minutes: 14
       run: |
         node --test scripts/test-native-log-events.mjs
         node scripts/test-extension-native-log.mjs
     - name: Browser capture scenarios
-      timeout-minutes: 8
+      # Includes ten minutes for the host lock and one minute for cancellation.
+      timeout-minutes: 19
       run: |
         set -o pipefail
         mkdir -p BrowserExtension/tests/artifacts
@@ -202,11 +209,14 @@ jobs:
         grep -q " 0 fail" metadata.txt
     # Library and Search remain part of the complete headless suite.
     - name: Golden vectors and read-only Library tests (UTC, C locale)
-      timeout-minutes: 5
+      # Includes ten minutes for the host lock and one minute for cancellation.
+      timeout-minutes: 16
       env:
         TZ: UTC
         LANG: C
         CASSINI_LIBRARY_RESULTS: ux-library-vector-results
+        CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus
+        CASSINI_EXPORT_REPORT_DIR: ${{ github.workspace }}/build/export-cases
       run: |
         set -o pipefail
         swift test --skip-build --filter 'Library|SearchTests' --skip recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication 2>&1 | tee ux-library-tests.log
@@ -234,7 +244,7 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        shell: arch -arm64 /bin/bash --noprofile --norc -eo pipefail {0}
+        shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" arch -arm64 /bin/bash --noprofile --norc -eo pipefail {0}
     env:
       CASSINI_CI_ARCH: arm64
       BOARDS: ${{ needs.changes.outputs.boards != 'false' }}
@@ -652,10 +662,10 @@ jobs:
     # Rosetta 2; fork pull requests and an unset CM_MAC_RUNNER keep the hosted Intel runner,
     # where `arch -x86_64` changes nothing.
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_MAC_RUNNER || 'macos-15-intel' }}
-    timeout-minutes: 25
+    timeout-minutes: 36
     defaults:
       run:
-        shell: arch -x86_64 /bin/bash --noprofile --norc -eo pipefail {0}
+        shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" arch -x86_64 /bin/bash --noprofile --norc -eo pipefail {0}
     env:
       CASSINI_CI_ARCH: x86_64
       EXPORTS: ${{ needs.changes.outputs.exports != 'false' }}
@@ -671,7 +681,8 @@ jobs:
     # interpreter made the suite take 15x longer).
     - name: Model downloader, local HTTP fault fixtures only
       if: env.MODEL_DOWNLOAD == 'true'
-      timeout-minutes: 8
+      # Includes ten minutes for the host lock and one minute for cancellation.
+      timeout-minutes: 19
       env:
         CASSINI_FIXTURE_DIAGNOSTICS: ${{ github.workspace }}/build/model-bootstrap
         # Bound cold interpreter startup only; ready servers/tests remain concurrent.
@@ -697,7 +708,8 @@ jobs:
     - name: Portable exports, golden text, policy, packet preservation, safe save and audio round trips
       id: exports
       if: ${{ !cancelled() && steps.products.outcome == 'success' && env.EXPORTS == 'true' }}
-      timeout-minutes: 12
+      # Includes ten minutes for the host lock and one minute for cancellation.
+      timeout-minutes: 23
       env:
         CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus
         CASSINI_EXPORT_REPORT_DIR: ${{ github.workspace }}/build/export-cases

@@ -20,6 +20,8 @@ name: UX Library boards
         - boards
         - spectrogram
         description: Slice to execute
+permissions:
+  contents: read
 jobs:
   build:
     if: ${{ !inputs.products_ready }}
@@ -292,7 +294,10 @@ jobs:
     needs: [build, release]
     if: ${{ always() && !cancelled() && (inputs.mode == '' || inputs.mode == 'all' || inputs.mode == 'spectrogram') && (inputs.products_ready || needs.build.result == 'success' && needs.release.result == 'success') }}
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_MAC_GUI_RUNNER || 'macos-15' }}
-    timeout-minutes: 15
+    timeout-minutes: 26
+    defaults:
+      run:
+        shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" /bin/bash --noprofile --norc -eo pipefail {0}
     steps:
     - uses: actions/checkout@v5
     # D66: the cold-host diagnostic42584372604 records mds_stores at182% CPU
@@ -321,7 +326,8 @@ jobs:
         swiftc Spikes/Spectrogram/Budget.swift Spikes/Spectrogram/CheckBudget.swift -o "$RUNNER_TEMP/spectrogram-budget"
         "$RUNNER_TEMP/spectrogram-budget"
     - name: Production spectrogram A–E budgets and native views without devices
-      timeout-minutes: 12
+      # Includes ten minutes for the host lock and one minute for cancellation.
+      timeout-minutes: 23
       run: |
         python3 scripts/test-spectrogram-harness.py
         swiftc Spikes/Spectrogram/Host.swift Spikes/Spectrogram/CheckHost.swift -o build/check-spectrogram-host

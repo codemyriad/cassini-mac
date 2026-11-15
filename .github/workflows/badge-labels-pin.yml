@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
     paths: [Components/BadgeLabels/**, scripts/check-badge-labels-pin.py, scripts/test-badge-labels-pin.py, .github/workflows/badge-labels-pin.yml]
+concurrency:
+  group: badge-labels-pin-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:

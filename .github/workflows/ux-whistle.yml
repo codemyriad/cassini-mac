@@ -31,7 +31,7 @@ jobs:
     # on a machine of that architecture `arch` changes nothing.
     defaults:
       run:
-        shell: arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}
+        shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
@@ -84,8 +84,8 @@ jobs:
       run: |
         python3 - <<'PY'
         from pathlib import Path
-        import shutil, time
-        time.sleep(2)
+        import shutil
+        # Best-effort diagnostics: never delay a failed job for crash reporting.
         output = Path('build/whistle-crashes'); output.mkdir(parents=True,exist_ok=True)
         for report in (Path.home()/'Library/Logs/DiagnosticReports').glob('cassini-whistle-worker*'):
             if report.is_file(): shutil.copy2(report,output/report.name)

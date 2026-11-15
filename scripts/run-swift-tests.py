@@ -33,10 +33,16 @@ def stacks(pid, folder):
 
 def run(command, folder, idle_seconds=120, diagnose=stacks, forward=True,
         *, clock=time.monotonic, wait_for_output=None):
-    folder.mkdir(parents=True,exist_ok=True)
-    process = subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT,start_new_session=True)
+    def interrupted(signum, _frame):
+        raise SystemExit(128 + signum)
+
+    previous = {sig: signal.signal(sig, interrupted)
+                for sig in (signal.SIGINT, signal.SIGTERM)}
+    process = None
     try:
+        folder.mkdir(parents=True,exist_ok=True)
+        process = subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT,start_new_session=True)
         last = clock()
         with selectors.DefaultSelector() as events, (folder/'tests.log').open('wb') as log:
             events.register(process.stdout,selectors.EVENT_READ)
@@ -54,11 +60,17 @@ def run(command, folder, idle_seconds=120, diagnose=stacks, forward=True,
                 last = clock();log.write(chunk);log.flush()
                 if forward: sys.stdout.buffer.write(chunk);sys.stdout.buffer.flush()
     finally:
+        # Do not let repeated cancellation interrupt owned-child cleanup.
+        for sig in previous: signal.signal(sig, signal.SIG_IGN)
         # Only the process group created here, including stuck fixture children.
-        if process.returncode is None:
-            try: os.killpg(process.pid,signal.SIGKILL)
-            except ProcessLookupError: pass
-        process.wait(timeout=10);process.stdout.close()
+        try:
+            if process is not None:
+                if process.returncode is None:
+                    try: os.killpg(process.pid,signal.SIGKILL)
+                    except ProcessLookupError: pass
+                process.wait(timeout=10);process.stdout.close()
+        finally:
+            for sig, handler in previous.items(): signal.signal(sig, handler)
 
 
 if __name__ == '__main__':

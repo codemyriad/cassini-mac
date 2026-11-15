@@ -82,6 +82,46 @@ class Selection(unittest.TestCase):
             self.assertTrue(all(changes.select('pull_request', 'base', PATHS, [name]).values()))
 
 
+class RunnerHygiene(unittest.TestCase):
+    def test_workflows_limit_default_token_and_bound_executable_jobs(self):
+        for workflow in (ROOT/'.github/workflows').glob('*.yml'):
+            body = workflow.read_text()
+            self.assertIn('\npermissions:\n  contents: read\n', body, workflow.name)
+            for job in re.findall(r'^  [\w-]+:\n.*?(?=^  [\w-]+:|^\S|\Z)', body.split('\njobs:\n')[1], re.M|re.S):
+                if '    runs-on:' in job:
+                    self.assertRegex(job, r'(?m)^    timeout-minutes: \d+$', workflow.name)
+
+    def test_locked_short_steps_allow_queue_and_cleanup_budgets(self):
+        # Original command budgets plus 600s acquisition and 60s cleanup.
+        for name, job_name, budgets in [
+            ('ci.yml', 'kit', [14, 19, 16]),
+            ('ci.yml', 'package_tests', [19, 23]),
+            ('ci-build-release.yml', 'release', [14]),
+            ('ux-boards.yml', 'spectrogram', [23]),
+        ]:
+            body = (ROOT/'.github/workflows'/name).read_text()
+            jobs = dict(re.findall(r'^  ([\w-]+):\n(.*?)(?=^  [\w-]+:|^\S|\Z)', body, re.M|re.S))
+            job = jobs[job_name]
+            step_limits = [int(n) for n in re.findall(r'^\s{6,8}timeout-minutes: (\d+)$', job, re.M)]
+            self.assertEqual(step_limits, budgets, name)
+            job_limit = int(re.search(r'^    timeout-minutes: (\d+)$', job, re.M)[1])
+            self.assertGreater(job_limit, max(budgets), name)
+
+    def test_self_hosted_jobs_and_product_restore_share_the_ios_lock(self):
+        for workflow in (ROOT/'.github/workflows').glob('*.yml'):
+            for job in re.findall(r'^  [\w-]+:\n.*?(?=^  [\w-]+:|^\S|\Z)', workflow.read_text(), re.M|re.S):
+                if 'vars.CM_MAC' in job:
+                    with self.subTest(workflow=workflow.name):
+                        self.assertIn('shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" ', job)
+                        self.assertRegex(job, r'(?m)^    timeout-minutes: \d+$')
+        action = (ROOT/'.github/actions/ci-products/action.yml').read_text()
+        self.assertIn('uses: ./.github/actions/ci-workspace', action)
+        self.assertNotIn('shell: bash', action)
+        build = (ROOT/'.github/workflows/ci-build.yml').read_text()
+        self.assertLess(build.index('uses: ./.github/actions/ci-workspace'), build.index('uses: actions/cache'))
+        self.assertIn('timeout-minutes: 10', ci_job('changes'))
+
+
 class NativeSpectrogramScheduling(unittest.TestCase):
     """Boards and native measurements need independent, bounded jobs."""
     def test_native_measurements_have_their_own_bounded_gui_job(self):
@@ -100,7 +140,7 @@ class NativeSpectrogramScheduling(unittest.TestCase):
         for requirement in ['vars.CM_MAC_GUI_RUNNER',"|| 'macos-15' }}",'needs: [build, release]',
                             'inputs.products_ready','!cancelled()',
                             "release: 'true'",'github-hosted',
-                            'hosted-display.py','timeout-minutes: 15','timeout-minutes: 12',
+                            'hosted-display.py','timeout-minutes: 26','timeout-minutes: 23',
                             'if: always()','name: ux-spectrogram']:
             self.assertIn(requirement,native)
         self.assertNotIn("debug: 'true'",native)
@@ -295,12 +335,12 @@ class FoldedJobs(unittest.TestCase):
             step, re.M)
         self.assertEqual(commands, [
             ('build/unit-tests/models', "swift test --skip-build --filter 'ModelDownloaderTests|ModelSupersessionTests'"),
-            ('build/unit-tests/remaining', "swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests|recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication'"),
+            ('build/unit-tests/remaining', "swift test --skip-build --skip 'ModelDownloaderTests|ModelSupersessionTests|recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication|Library|SearchTests|SharedPlacementTests'"),
         ])
         model_filter = 'ModelDownloaderTests|ModelSupersessionTests'
         self.assertEqual(kit.count("--filter '" + model_filter + "'"), 1)
         bookmark = 'recordingAccessFollowsRenamedBookmarkAndFailsDuringMovePublication'
-        native_skip = model_filter + '|' + bookmark
+        native_skip = model_filter + '|' + bookmark + '|Library|SearchTests|SharedPlacementTests'
         self.assertEqual(kit.count("--skip '" + native_skip + "'"), 1)
         sink, smoke = ci_job('native_sink'), ci_job('ux_app')
         for job_body in [sink, smoke]:
@@ -312,15 +352,21 @@ class FoldedJobs(unittest.TestCase):
         self.assertIn("needs.changes.outputs.full_ci != 'true'", smoke)
         self.assertEqual(self.CI.count('--filter ' + bookmark + '\n'), 2)
         self.assertIn("--filter 'Library|SearchTests' --skip " + bookmark, kit)
+        library_step = kit[kit.index("    - name: Golden vectors and read-only Library tests"): ]
+        self.assertIn("CASSINI_OPUS_ASSETS: ${{ github.workspace }}/build/Opus", library_step)
+        self.assertIn("CASSINI_EXPORT_REPORT_DIR: ${{ github.workspace }}/build/export-cases", library_step)
         for suite in ['ModelDownloaderTests', 'ModelSupersessionTests', bookmark,
-                      'ModelManifestTests', 'D52WorstCaseRecordTests']:
+                      'ModelManifestTests', 'D52WorstCaseRecordTests', 'CassiniLibraryTests.GoldenTests',
+                      'CassiniSearchTests.SearchTests', 'SharedPlacementTests.testCleanFolders']:
             # Exactly one full-suite partition admits each example, including the real OS test.
             admitted = [bool(re.search(model_filter, suite)), not bool(re.search(native_skip, suite)),
-                        suite == bookmark]
+                        suite == bookmark, bool(re.search('Library|SearchTests', suite)) and suite != bookmark,
+                        'SharedPlacementTests' in suite]
             self.assertEqual(sum(admitted), 1, suite)
         for suite in ['ModelDownloaderTests', 'ModelSupersessionTests']:
             self.assertRegex(suite, model_filter)
-        for suite in ['ModelManifestTests', 'D52WorstCaseRecordTests']:
+        for suite in ['ModelManifestTests', 'D52WorstCaseRecordTests', 'CassiniLibraryTests.GoldenTests',
+                      'CassiniSearchTests.SearchTests', 'SharedPlacementTests.testCleanFolders']:
             self.assertNotRegex(suite, model_filter)
         # Separate logs/stacks stay inside the single recursively uploaded artifact.
         self.assertIn('path: build/unit-tests\n', kit)
@@ -416,12 +462,12 @@ class RentedRunnerRouting(unittest.TestCase):
         # Every routed consumer of x86_64 products runs each of its own steps as x86_64.
         package=ci_job('package_tests')
         self.assertIn('      CASSINI_CI_ARCH: x86_64\n',package)
-        self.assertIn('    defaults:\n      run:\n        shell: arch -x86_64 /bin/bash --noprofile --norc -eo pipefail {0}\n',package)
+        self.assertIn('    defaults:\n      run:\n        shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" arch -x86_64 /bin/bash --noprofile --norc -eo pipefail {0}\n',package)
         worker=self.worker()
         self.assertIn('      CASSINI_CI_ARCH: ${{ matrix.arch }}\n',worker)
-        self.assertIn('    defaults:\n      run:\n        shell: arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}\n',worker)
+        self.assertIn('    defaults:\n      run:\n        shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}\n',worker)
         for job in [package,worker]:
-            self.assertNotRegex(job,r'(?m)^\s+shell: (?!arch -)','no step may leave the product architecture')
+            self.assertNotRegex(job,r'(?m)^\s+shell: (?!python3 "\$\{\{ github\.workspace \}\}/scripts/ci-heavy\.py" arch -)','no step may leave the product architecture')
             self.assertNotIn('swift build',job)
         # Hosted runners install Python 3.12. A rented Mac cannot (the installer needs /Users/runner):
         # its Intel Whistle row uses the selected Xcode's universal Python, and the worker job checks
@@ -515,7 +561,7 @@ class RentedRunnerRouting(unittest.TestCase):
         self.assertEqual("runner.environment == 'github-hosted'",step_condition(kit,'- uses: actions/setup-python'))
         for job in [runtime,control]:
             self.assertIn('CASSINI_CI_ARCH: ${{ matrix.arch }}',job)
-            self.assertIn('shell: arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}',job)
+            self.assertIn('shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" arch -${{ matrix.arch }} /bin/bash --noprofile --norc -eo pipefail {0}',job)
             self.assertEqual(re.findall(r'- runner: (\S+)\n\s+arch: (\S+)',job),
                              [('macos-15','arm64'),('macos-15-intel','x86_64')])
 
@@ -1105,6 +1151,13 @@ class Measurements(unittest.TestCase):
         self.assertEqual(report['median_macos_queue_seconds'],60)
         self.assertEqual(report['wall_minutes'],3)
 
+    def test_requested_self_hosted_mac_labels_count_as_mac_execution(self):
+        run = dict(id=1, status='completed', conclusion='success', created_at='2026-01-01T00:00:00Z', updated_at='2026-01-01T00:01:00Z')
+        jobs = [dict(runner_name=label, labels=[label], conclusion='success', created_at=run['created_at'], started_at=run['created_at'], completed_at=run['updated_at']) for label in ['cm-mac-m4', 'cm-mac-gui']]
+        report = metrics.summarize([run], jobs)
+        self.assertEqual(report['executed_macos_jobs'], 2)
+        self.assertEqual(report['macos_execution_minutes'], 2)
+
 
 class PullRequestFourJobBudget(unittest.TestCase):
     """Retrospective 2026-11-11 §1: normal PR pushes execute <= 4 macOS jobs (3 M4-first + 1
@@ -1494,7 +1547,7 @@ class PullRequestFourJobBudget(unittest.TestCase):
         self.assertIn('vars.CM_MAC_RUNNER', workers)
         self.assertIn("|| 'macos-15' }}", workers)
         self.assertIn('CASSINI_CI_ARCH: arm64', workers)
-        self.assertIn('shell: arch -arm64 /bin/bash --noprofile --norc -eo pipefail {0}', workers)
+        self.assertIn('shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" arch -arm64 /bin/bash --noprofile --norc -eo pipefail {0}', workers)
         for marker in [
             'scripts/check-ux-copy.py',
             'Spikes/Spectrogram/CheckBudget.swift',

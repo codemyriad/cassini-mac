@@ -7,6 +7,8 @@ name: UX window screenshots
         default: false
         description: Caller already produced same-run build artifacts
   workflow_dispatch: null
+permissions:
+  contents: read
 jobs:
   build:
     if: ${{ !inputs.products_ready }}
@@ -19,10 +21,14 @@ jobs:
   screenshots:
     runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_MAC_GUI_RUNNER || 'macos-15' }}
     timeout-minutes: 25
+    defaults:
+      run:
+        shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" /bin/bash --noprofile --norc -eo pipefail {0}
     steps:
     # This runner-temp subdirectory belongs only to the screenshot job. A stable
     # name also lets startup remove leftovers from an interrupted prior job.
     - name: Clean interrupted screenshot DerivedData
+      shell: bash
       run: rm -rf -- "$RUNNER_TEMP/cassini-window-screenshots-derived-data"
     - uses: actions/checkout@v5
     - id: products

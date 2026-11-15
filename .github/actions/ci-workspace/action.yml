@@ -1,0 +1,7 @@
+name: Clean self-hosted CI workspace after cache saves
+description: Register cleanup before caches so products are removed after their post-job saves.
+runs:
+  using: node24
+  main: register.cjs
+  post: cleanup.cjs
+  post-if: always()
