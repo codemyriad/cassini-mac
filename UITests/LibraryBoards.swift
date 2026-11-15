@@ -195,6 +195,9 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:10),app.debugDescription)
         XCTAssertFalse(window.sheets.firstMatch.exists,"No confirmation")
         capture(window,name:"trash-after")
+        app.typeKey("z", modifierFlags: .command)
+        XCTAssertTrue(window.buttons["meeting-play"].waitForExistence(timeout: 10), app.debugDescription)
+        capture(window, name: "qa-trash-undo")
     }
     /// D52.3a: Recording details opens from the meeting's More menu and closes again.
     @MainActor func testRecordingDetailsFromTheMoreMenu() throws {
@@ -1137,6 +1140,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(sheet.radioButtons["Plain text"].exists)
         XCTAssertTrue(sheet.buttons["export-more-formats"].waitForExistence(timeout: 5), app.debugDescription)
         sheet.buttons["export-more-formats"].click()
+        capture(window, name: "qa-export-more-formats")
         for label in ["Plain text", "Subtitles (SRT)", "Subtitles (WebVTT)"] {
             XCTAssertTrue(sheet.radioButtons[label].waitForExistence(timeout: 5), app.debugDescription)
             sheet.radioButtons[label].click()
@@ -1616,6 +1620,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(waitForPresent(retry,timeout: 20), app.debugDescription)
         XCTAssertTrue(text("Could not write this meeting down. The audio is fine.", in: window))
         XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
+        capture(window, name: "qa-transcription-retry")
         retry.click()
         // Completion must publish real transcript rows and clear the running/error state.
         let transcribing = window.descendants(matching: .any)["meeting-transcribing"]
@@ -1627,6 +1632,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(me.waitForExistence(timeout:10),app.debugDescription)
         XCTAssertTrue(me.label.hasPrefix("Me,"),me.label)
         XCTAssertFalse(window.buttons["meeting-write-down"].exists)
+        capture(window, name: "qa-transcription-ready")
     }
     @MainActor func testQuitPausesWritingDownAndResumesOnRelaunch() throws {
         let base = ["--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString, "-CassiniTranscriptionFixture", "YES"]
@@ -1642,6 +1648,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:speech,object:nil)],timeout:10),.completed)
         window.buttons["recording-stop"].click()
         XCTAssertTrue(waitForPresent(window.descendants(matching:.any)["Transcribing…"],timeout:10),app.debugDescription)
+        capture(window, name: "qa-transcription-running")
         app.typeKey("q",modifierFlags:.command)
         let exited = NSPredicate { _,_ in app.state == .notRunning }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:exited,object:nil)],timeout:5),.completed)
