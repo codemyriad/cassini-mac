@@ -101,7 +101,9 @@ jobs:
       # Run43623183819 passed the Starred search regression at9 min, then
       # the guard killed the next progressing test. Leave headroom for the
       # full dark subset and result-bundle finalization on hosted runners.
-      timeout-minutes: 12
+      # D-1055 adds consecutive recordings, five native imports plus a mixed
+      # batch, and Settings navigation in dark appearance as well.
+      timeout-minutes: 16
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
         TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'
@@ -111,6 +113,9 @@ jobs:
         dark_start=$SECONDS
         xcodebuild test-without-building -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" \
           -destination 'platform=macOS' -parallel-testing-enabled NO \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testQAConsecutiveRecordingsRetireLiveRows \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testQAImportFormatsThroughOpenPanel \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testQASettingsPagesAndSavedVoicesMenu \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testFrenchLibraryAndFirstRunFitAtBoardSize \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testMoveToTrashMenusAndFirstRun \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testRecordingDetailsFromTheMoreMenu \
@@ -182,6 +187,17 @@ jobs:
           python3 scripts/export-ux-boards.py build/ux-attachments build/ux-boards
           exit 1
         fi
+    # QA captures cover intermediate states beyond the fixed reference-board
+    # names exported above. Preserve their manifests and original window PNGs
+    # on successful runs too, so a walkthrough can inspect rendered pixels.
+    - uses: actions/upload-artifact@v5
+      if: always()
+      with:
+        retention-days: 14
+        name: ux-walkthrough-attachments
+        path: |
+          build/ux-attachments
+          build/ux-attachments-dark
     - name: Real app search without playback
       if: always()
       run: python3 scripts/test-search-app.py build/Build/Products/Debug/Cassini.app --output build/ux-boards/search-app.json
