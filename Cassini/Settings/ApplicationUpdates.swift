@@ -41,10 +41,14 @@ import Sparkle
         controller?.checkForUpdates(nil)
     }
 
-    func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) { isUpToDate = true }
+    func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) {
+        let error = error as NSError
+        isUpToDate = error.domain == SUSparkleErrorDomain &&
+            (error.userInfo[SPUNoUpdateFoundReasonKey] as? NSNumber)?.intValue == Int(SPUNoUpdateFoundReason.onLatestVersion.rawValue)
+    }
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) { isUpToDate = false }
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
-        if (error as NSError).code != SUError.noUpdateError.rawValue { isUpToDate = false }
+        if (error as NSError).code != Int(SUError.noUpdateError.rawValue) { isUpToDate = false }
     }
 
     private func refreshPreferences() {

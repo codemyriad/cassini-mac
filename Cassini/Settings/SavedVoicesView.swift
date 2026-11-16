@@ -162,10 +162,14 @@ struct SavedVoiceModelRow: View {
                     Text(UXText.text("models.statusWithSize",["status":UXText.text("models.status.on"),"size":LibraryFormat.size(bytes:voices.installedBytes)])).foregroundStyle(CassiniTheme.ink2)
                     Button(UXText.text("models.remove")) { voices.removeModel() }.disabled(voices.busy)
                 } else {
-                    Text(UXText.text("format.size.download",["size":LibraryFormat.size(bytes:voices.downloadBytes)])).foregroundStyle(CassiniTheme.ink2)
+                    if voices.downloadBytes > 0 { Text(UXText.text("format.size.download",["size":LibraryFormat.size(bytes:voices.downloadBytes)])).foregroundStyle(CassiniTheme.ink2) }
                     Button(UXText.text("models.download")) { voices.download() }.disabled(voices.busy)
                 }
             }
-        }.task { await voices.refresh() }
+            if let message = voices.message {
+                Text(message).font(.caption).foregroundStyle(CassiniTheme.warnInk)
+                    .accessibilityIdentifier("settings-voice-model-message")
+            }
+        }
     }
 }

@@ -11,7 +11,7 @@ import CassiniBrowserControl
     static func run() async {
         guard ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1" || ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" else { exit(78) }
         do {
-            let test = TestRecordingController()
+            let test = TestRecordingController.shared
             test.playAutomatically = false
             let mic = TestInput(id:"microphone",kind:"microphone")
             let system = TestInput(id:"output",kind:"system")

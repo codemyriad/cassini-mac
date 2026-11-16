@@ -16,7 +16,7 @@ import uuid
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('app',type=Path)
-parser.add_argument('board',choices=['first-run','meeting','recording','received','export','search','settings-recording','settings-transcription','settings-voices','settings-library','settings-browser','settings-updates'])
+parser.add_argument('board',choices=['first-run','meeting','recording','received','export','search','settings-recording','settings-transcription','settings-voices','settings-library','settings-browser','settings-updates','about','record-first'])
 parser.add_argument('--output',type=Path,required=True)
 parser.add_argument('--listening',choices=['playing','finished'])
 parser.add_argument('--speaker')
@@ -32,7 +32,7 @@ assert not args.speaker_editor or args.board == 'meeting', 'Speaker editor requi
 assert not args.transcribing or args.board == 'meeting', 'Transcribing preview requires the meeting fixture'
 assert os.environ.get('CASSINI_LOCAL_WORKFLOW_TESTS') == '1', 'Explicit local workflow opt-in required'
 app = args.app.resolve()
-fixture = app/'Contents/Resources/Fixtures/Library'/('received-only' if args.board == 'received' else 'empty' if args.board == 'first-run' else 'main')
+fixture = app/'Contents/Resources/Fixtures/Library'/('received-only' if args.board == 'received' else 'empty' if args.board in ('first-run','record-first') else 'main')
 assert fixture.is_dir(),fixture
 with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
     output,stderr = Path(temporary)/'stdout.json',Path(temporary)/'stderr.txt'
@@ -69,6 +69,8 @@ with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
         assert png[:8] == b'\x89PNG\r\n\x1a\n'
         if args.board.startswith('settings-'):
             assert int.from_bytes(png[16:20],'big') == 700 and 400 <= int.from_bytes(png[20:24],'big') <= 1050
+        elif args.board == 'about':
+            assert int.from_bytes(png[16:20],'big') == 300
         else: assert png[16:24] == bytes.fromhex('00000460000002d0')
         args.output.parent.mkdir(parents=True,exist_ok=True); args.output.write_bytes(png)
         print(args.board,int.from_bytes(png[16:20],'big'),int.from_bytes(png[20:24],'big'),'own-view render')

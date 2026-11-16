@@ -2,6 +2,13 @@
 #if DEBUG
 import Foundation
 import AppKit
+import Observation
+
+@MainActor @Observable final class SettingsRenderReadiness {
+    static let shared = SettingsRenderReadiness()
+    var transcription = false
+    var libraryRevision: Int?
+}
 
 enum SettingsFixture {
     static var id: UUID? {
@@ -15,16 +22,24 @@ enum SettingsFixture {
     }
     @MainActor private static var prepared = Set<ObjectIdentifier>()
     @MainActor static func prepare(_ window: NSWindow) {
-        guard let name = LibraryLaunchContext.argument("-CassiniScreenshot"), name.hasPrefix("settings-"),
+        guard let name = LibraryLaunchContext.argument("-CassiniScreenshot"), (name.hasPrefix("settings-") || name == "about"),
               ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               prepared.insert(ObjectIdentifier(window)).inserted else { return }
         window.appearance = NSAppearance(named:LibraryLaunchContext.screenshotDark ? .darkAqua : .aqua)
-        window.setContentSize(NSSize(width:700,height:560)); window.center(); window.makeKeyAndOrderFront(nil)
+        window.setContentSize(name == "about" ? NSSize(width:300,height:330) : NSSize(width:700,height:560)); window.center(); window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps:true)
         guard ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1" else { return }
         Task { @MainActor in
-            await SpeechModelController.shared.refresh()
-            await SavedVoicesController.shared.refresh()
+            @MainActor func ready() -> Bool {
+                if name == "settings-transcription" { return SettingsRenderReadiness.shared.transcription }
+                if name == "settings-library" { return LibraryStore.shared.loaded && SettingsRenderReadiness.shared.libraryRevision == LibraryStore.shared.revision }
+                return true
+            }
+            while !ready() {
+                let (events, signal) = AsyncStream<Void>.makeStream()
+                withObservationTracking { _ = ready() } onChange: { signal.yield(); signal.finish() }
+                var iterator = events.makeAsyncIterator(); _ = await iterator.next()
+            }
             // Render after the queued SwiftUI layout transaction, never a time delay.
             await withCheckedContinuation { continuation in
                 DispatchQueue.main.async { continuation.resume() }

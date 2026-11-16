@@ -3,6 +3,23 @@ import AppKit
 import XCTest
 
 final class LibraryBoards: XCTestCase {
+    @MainActor func testPhase2AboutAndLocalLicences() throws {
+        let app = try launch("about",fixture:"empty",extra:["-CassiniSettingsID",UUID().uuidString])
+        defer { app.terminate() }
+        let about = app.windows["cassini-about-window"]
+        XCTAssertTrue(about.waitForExistence(timeout:20),app.debugDescription)
+        let licences = about.buttons["about-licences"]
+        XCTAssertTrue(licences.waitForExistence(timeout:5),about.debugDescription)
+        XCTAssertTrue(about.descendants(matching:.any)["about-help"].exists)
+        XCTAssertTrue(about.descendants(matching:.any)["about-privacy"].exists)
+        capture(about,name:"about")
+        licences.click()
+        XCTAssertTrue(about.sheets.firstMatch.waitForExistence(timeout:5),about.debugDescription)
+        XCTAssertTrue(about.sheets.firstMatch.buttons["Close"].waitForExistence(timeout:5),about.debugDescription)
+        about.sheets.firstMatch.buttons["Close"].click()
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:about.sheets.firstMatch)],timeout:5),.completed)
+    }
+
     @MainActor func testStarsPersistAndSearchCarriesLibraryChoiceThenResetsOtherFilters() throws {
         let defaultsID = UUID().uuidString
         let app = try launch("library",fixture:"main",extra:["-CassiniDefaultsID",defaultsID])
@@ -987,8 +1004,11 @@ final class LibraryBoards: XCTestCase {
         let updatesToggle = window.descendants(matching:.any).matching(identifier:"settings-automatic-updates").firstMatch
         XCTAssertTrue(updatesToggle.waitForExistence(timeout:5),window.debugDescription)
         XCTAssertTrue(window.buttons["settings-check-updates"].exists,window.debugDescription)
+        capture(window,name:"settings-updates")
         window.toolbars.buttons["Library"].click()
         XCTAssertTrue(window.buttons["settings-move-library"].waitForExistence(timeout:5))
+        XCTAssertTrue(window.descendants(matching:.any)["settings-library-stats"].waitForExistence(timeout:10))
+        capture(window,name:"settings-library")
         window.buttons["settings-move-library"].click()
         let chooser = app.windows["open-panel"]
         XCTAssertTrue(chooser.waitForExistence(timeout:5),app.debugDescription)

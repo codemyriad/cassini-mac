@@ -201,6 +201,11 @@ import Sparkle
             let updates = ApplicationUpdates.fixture(updaterController)
             try check(updates.activity.contains(.recording) && updates.activity.contains(.transcription),"Real capture and queue activity protect updates")
             try await UpdateDeferralSelfTest.run()
+            try check(!updates.isUpToDate,"No unverified latest-version claim")
+            updates.updaterDidNotFindUpdate(updaterController.updater,error:NSError(domain:SUSparkleErrorDomain,code:Int(SUError.noUpdateError.rawValue),userInfo:[SPUNoUpdateFoundReasonKey:NSNumber(value:SPUNoUpdateFoundReason.onLatestVersion.rawValue)]))
+            try check(updates.isUpToDate,"Sparkle confirmed the latest version")
+            updates.updaterDidNotFindUpdate(updaterController.updater,error:NSError(domain:SUSparkleErrorDomain,code:Int(SUError.noUpdateError.rawValue),userInfo:[SPUNoUpdateFoundReasonKey:NSNumber(value:SPUNoUpdateFoundReason.systemIsTooOld.rawValue)]))
+            try check(!updates.isUpToDate,"An incompatible newer release is not up-to-date")
             let previousAutomaticChecks = updaterController.updater.automaticallyChecksForUpdates
             defer { updaterController.updater.automaticallyChecksForUpdates = previousAutomaticChecks }
             try check(updates.available && !updates.canCheckForUpdates,"Update settings bind without starting an update check")

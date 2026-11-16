@@ -15,6 +15,9 @@ import AppKit
         panel.isReleasedWhenClosed = false
         self.panel = panel
         panel.center(); panel.makeKeyAndOrderFront(nil)
+        #if DEBUG
+        SettingsFixture.prepare(panel)
+        #endif
     }
 }
 struct AboutView: View {
@@ -26,11 +29,11 @@ struct AboutView: View {
             Text(UXText.text("about.version",["version":AboutPanel.version])).font(.caption).foregroundStyle(CassiniTheme.ink2)
             Text(UXText.text("about.tagline.mac")).multilineTextAlignment(.center).fixedSize(horizontal:false,vertical:true)
             HStack(spacing:7) {
-                Link(UXText.text("about.help"),destination:URL(string:"https://cassini.talk/help")!)
+                Link(UXText.text("about.help"),destination:URL(string:"https://cassini.talk/help")!).accessibilityIdentifier("about-help")
                 Text("·").accessibilityHidden(true)
-                Link(UXText.text("about.privacy"),destination:URL(string:"https://cassini.talk/privacy")!)
+                Link(UXText.text("about.privacy"),destination:URL(string:"https://cassini.talk/privacy")!).accessibilityIdentifier("about-privacy")
                 Text("·").accessibilityHidden(true)
-                Button(UXText.text("about.licences")) { licences = true }.buttonStyle(.link)
+                Button(UXText.text("about.licences")) { licences = true }.buttonStyle(.link).accessibilityIdentifier("about-licences")
                 Text("·").accessibilityHidden(true)
                 Link(UXText.text("about.sourceCode"),destination:URL(string:"https://github.com/codemyriad/cassini-mac")!)
             }.font(.system(size:11.5))

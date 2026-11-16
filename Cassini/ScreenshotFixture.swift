@@ -36,7 +36,7 @@ enum ScreenshotFixture {
         let scheme = value("-CassiniScreenshotScheme", in: arguments) ?? "light"
         guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               let name = value("-CassiniScreenshot", in: arguments),
-              ["window", "sheet", "library", "first-run", "meeting", "record-first", "recording", "received", "export", "search", "settings-recording", "settings-transcription", "settings-voices", "settings-library", "settings-browser", "settings-updates"].contains(name),
+              ["window", "sheet", "library", "first-run", "meeting", "record-first", "recording", "received", "export", "search", "settings-recording", "settings-transcription", "settings-voices", "settings-library", "settings-browser", "settings-updates", "about"].contains(name),
               ["light", "dark"].contains(scheme),
               let directory = value("-CassiniFixture", in: arguments),
               let clock = value("-CassiniNow", in: arguments),
@@ -61,6 +61,7 @@ enum ScreenshotFixture {
             }
         }
 
+        if name == "about" { Task { @MainActor in AboutPanel.show() } }
         if name.hasPrefix("settings-") {
             Task { @MainActor in
                 SettingsNavigation.shared.tab = SettingsTab(rawValue:String(name.dropFirst("settings-".count))) ?? .recording
@@ -93,10 +94,10 @@ enum ScreenshotFixture {
     /// automation. Renders only this app's fixture view, never the desktop.
     private static func localBoardRender(_ window: NSWindow) {
         guard ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1",
-              let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["first-run","meeting","recording","received","export","search"].contains(name),
+              let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["first-run","record-first","meeting","recording","received","export","search"].contains(name),
               !RecordingFixture.enabled else { return }
         Task { @MainActor in
-            func ready() -> Bool {
+            @MainActor func ready() -> Bool {
                 switch name {
                 case "first-run": return LibraryStore.shared.loaded
                 case "meeting": return MeetingNavigation.shared.detail != nil

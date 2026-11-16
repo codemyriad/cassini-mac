@@ -655,7 +655,7 @@ struct LibraryView: View {
                             .font(.system(size:11.5))
                         HStack(alignment:.top,spacing:8) {
                             Image(systemName:"lock").accessibilityHidden(true)
-                            Text(UXText.text("privacy.onDevice.computer") + " " + UXText.text("firstRun.libraryLocation",["folder":LibraryLocationModel.shared.displayPath]))
+                            Text(UXText.text("privacy.onDevice.computer") + " " + UXText.text("firstRun.libraryLocation",["folder":LibraryLocationModel.shared.displayPath.replacingOccurrences(of:" › ",with:"/")]))
                         }.font(.system(size:11.5)).fixedSize(horizontal:false,vertical:true)
                     }.foregroundStyle(CassiniTheme.ink2)
                 }.padding(.horizontal,FirstRunHeroMetrics.horizontalPadding)

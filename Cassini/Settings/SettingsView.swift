@@ -148,7 +148,11 @@ private struct SettingsLibraryView: View {
                         Task {
                             do {
                                 try await Task.detached(priority:.utility) {
-                                    try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
+                                    if root == LibraryLocation.standardRoot {
+                                        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
+                                    } else {
+                                        guard try root.resourceValues(forKeys:[.isDirectoryKey]).isDirectory == true else { throw POSIXError(.ENOENT) }
+                                    }
                                 }.value
                                 NSWorkspace.shared.activateFileViewerSelecting([root])
                             } catch { NSApp.presentError(error) }
@@ -183,23 +187,28 @@ private struct SettingsLibraryView: View {
             SettingsGroup("settings.library.group.deleted") {
                 SettingsDescription("settings.library.deleted.title", "settings.library.deleted.body")
             }
-        }.task(id: LibraryStore.shared.meetings.map(\.folder)) {
+        }.task(id: LibraryStore.shared.revision) {
+            let revision = LibraryStore.shared.revision
             let folders = LibraryStore.shared.meetings.map(\.folder)
-            let bytes = await Task.detached(priority:.utility) {
+            let worker = Task.detached(priority:.utility) { () -> Int64? in
                 var total: Int64 = 0
                 for folder in folders {
-                    guard let files = FileManager.default.enumerator(at:folder,includingPropertiesForKeys:[.isRegularFileKey,.fileSizeKey,.isSymbolicLinkKey]) else { continue }
+                    guard let files = FileManager.default.enumerator(at:folder,includingPropertiesForKeys:[.isRegularFileKey,.fileSizeKey,.isSymbolicLinkKey]) else { return nil }
                     for case let file as URL in files {
-                        guard !Task.isCancelled else { return total }
+                        guard !Task.isCancelled else { return nil }
                         if let values = try? file.resourceValues(forKeys:[.isRegularFileKey,.fileSizeKey,.isSymbolicLinkKey]), values.isRegularFile == true, values.isSymbolicLink != true {
                             total += Int64(values.fileSize ?? 0)
                         }
                     }
                 }
                 return total
-            }.value
+            }
+            let bytes = await withTaskCancellationHandler(operation:{ await worker.value },onCancel:{ worker.cancel() })
             guard !Task.isCancelled else { return }
-            stats = UXText.text("settings.library.stats",["meetings":UXText.text("library.meetingCount",["n":String(folders.count)]),"size":LibraryFormat.size(bytes:bytes)])
+            stats = bytes.map { UXText.text("settings.library.stats",["meetings":UXText.text("library.meetingCount",["n":String(folders.count)]),"size":LibraryFormat.size(bytes:$0)]) }
+            #if DEBUG
+            SettingsRenderReadiness.shared.libraryRevision = revision
+            #endif
         }
     }
 }
@@ -209,13 +218,9 @@ private struct SettingsBrowserView: View {
             VStack(alignment:.leading,spacing:16) {
                 Text(UXText.text("companion.title")).font(.headline)
                 Text(UXText.text("companion.bodyShort")).foregroundStyle(CassiniTheme.ink2).lineSpacing(4)
-                BrowserConnectionStateView(identifier:"settings-browser-status")
+                BrowserConnectionStateView(identifier:"settings-browser-status",phase2:true)
                 Text(UXText.text("companion.worksWith")).foregroundStyle(CassiniTheme.ink2)
-                if CompanionSetup.storeListingPublic || CaptureCollection.shared.connected {
-                    Button(UXText.text("companion.addTo",["browser":CompanionSetup.shared.selectedBrowserName])) { CompanionSetup.shared.showLocalGuide(from:.settings) }
-                        .buttonStyle(.link).disabled(!CompanionSetup.shared.canAdd)
-                        .accessibilityIdentifier("settings-add-local-companion")
-                }
+
             }.padding(18).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
             SettingsGroup("companion.without.heading") {
                 Text(UXText.text("companion.without.body")).foregroundStyle(CassiniTheme.ink2)
@@ -310,6 +315,10 @@ private struct SettingsTranscriptionView: View {
             if let bytes { weightSize = LibraryFormat.size(bytes:Int64(bytes)) }
             downloadBytes = await Task.detached(priority:.utility) { SpeechModelController.downloadBytes }.value
             await models.refresh()
+            await SavedVoicesController.shared.refresh()
+            #if DEBUG
+            SettingsRenderReadiness.shared.transcription = true
+            #endif
         }
     }
 }
