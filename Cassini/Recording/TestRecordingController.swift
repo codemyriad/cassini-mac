@@ -81,7 +81,7 @@ import CassiniBrowserControl
                 sampleLevels(); meter?.invalidate(); meter = nil
                 phase = .finishing
                 try await input.stop()
-                try await Task.detached(priority:.utility) { try owner.finish() }.value
+                try await owner.finish()
                 guard generation == attempt else { return }
                 let snapshot = await Task.detached(priority:.utility) { owner.snapshot }.value
                 let tracks = snapshot.manifest.tracks.map {
@@ -104,7 +104,9 @@ import CassiniBrowserControl
                 guard generation == attempt else { return }
                 problem = error.localizedDescription
                 let pending = cancel(close:false)
+                let cancelled = generation
                 await pending.value
+                guard generation == cancelled else { return }
                 phase = .result; changed?()
             }
         }
@@ -144,7 +146,7 @@ import CassiniBrowserControl
     }
     private static func remove(_ owner: OwnedBrowserCapture) async {
         await Task.detached(priority:.utility) {
-            try? owner.finish()
+            try? await owner.finish()
             try? FileManager.default.removeItem(at:owner.snapshot.directory)
         }.value
     }

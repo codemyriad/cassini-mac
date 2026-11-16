@@ -4,10 +4,11 @@ import AppKit
 
 @MainActor enum AboutPanel {
     static var version: String { Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "" }
+    static var copyrightYear: String { String((Bundle.main.object(forInfoDictionaryKey:"NSHumanReadableCopyright") as? String ?? "").filter(\.isNumber).prefix(4)) }
     private static var panel: NSPanel?
     static func show() {
         if let panel { panel.makeKeyAndOrderFront(nil); return }
-        let panel = NSPanel(contentRect:NSRect(x:0,y:0,width:320,height:330),styleMask:[.titled,.closable],backing:.buffered,defer:false)
+        let panel = NSPanel(contentRect:NSRect(x:0,y:0,width:300,height:330),styleMask:[.titled,.closable],backing:.buffered,defer:false)
         panel.title = UXText.text("app.name")
         panel.setAccessibilityIdentifier("cassini-about-window")
         panel.contentView = NSHostingView(rootView:AboutView())
@@ -33,9 +34,9 @@ struct AboutView: View {
                 Text("·").accessibilityHidden(true)
                 Link(UXText.text("about.sourceCode"),destination:URL(string:"https://github.com/codemyriad/cassini-mac")!)
             }.font(.system(size:11.5))
-            Text(UXText.text("about.licenceLine.mac")).font(.system(size:10)).foregroundStyle(CassiniTheme.ink2)
+            Text(UXText.text("about.licenceLine.mac",["year":AboutPanel.copyrightYear])).font(.system(size:10)).foregroundStyle(CassiniTheme.ink2)
                 .multilineTextAlignment(.center).fixedSize(horizontal:false,vertical:true)
-        }.padding(22).frame(width:320).background(CassiniTheme.windowGround)
+        }.padding(22).frame(width:300).background(CassiniTheme.windowGround)
             .sheet(isPresented:$licences) { LicencesView() }
     }
 }

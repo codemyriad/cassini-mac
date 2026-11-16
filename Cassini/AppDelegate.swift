@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var confirmingQuit = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        _ = TestRecordingController.shared // Sweep abandoned D60 test audio before admitting another test.
         ModelNotices.configureMenu()
         menuTrackingObservers = [NSMenu.didBeginTrackingNotification, NSMenu.didEndTrackingNotification].map { name in
             NotificationCenter.default.addObserver(forName:name,object:nil,queue:.main) { notification in
