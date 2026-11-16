@@ -103,6 +103,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--voices-self-test") {
             Task { await SavedVoicesSelfTest.run() }; return
         }
+        if CommandLine.arguments.contains("--test-recording-self-test") {
+            Task { await TestRecordingSelfTest.run() }; return
+        }
         if CommandLine.arguments.contains("--settings-self-test") {
             Task { @MainActor in await SettingsSelfTest.run() }; return
         }
@@ -162,6 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !confirmingQuit else { return .terminateLater }
+        TestRecordingController.shared.cancel()
         ApplicationUpdates.shared.beginTermination()
         if !RecordingConfirmation.active {
             let queue = TranscriptionQueue.shared

@@ -23,6 +23,13 @@ report=json.loads(r.stdout)
 for name in ['updateDefersRecordingSavingScanningTranscription','updateDismissesInstallUIAndShowsFooter','updateContinuationRunsOnce','quitNeverRelaunchesPendingUpdate','conditionalDownloadedNotices','aboutNoticesReachable','firstCaptureCreatesLibrary','settingsPreferences','realShortcutReplacement','shortcutConflictRetainsOld','closedMeetingMovedAtomically',
              'partialFailureRetainsOriginal','liveFolderDeferred','pendingMovesPersisted','activeInferencePathPreserved','queuedMetadataMovedAfterPreparation','importIntentResumesAfterMove','retainedSelectionUsesFolder','searchReindexed','hostReadsLocation','producerBytesPreserved']:
     assert report[name] is True,(name,report)
+test_capture = [x for x in command]
+test_capture[test_capture.index('--settings-self-test')] = '--test-recording-self-test'
+capture = subprocess.run(test_capture,env=dict(os.environ,CASSINI_HOSTED_SCREENSHOTS='1'),capture_output=True,text=True,timeout=60)
+assert capture.returncode == 0,(capture.returncode,capture.stdout,capture.stderr)
+capture_report = json.loads(capture.stdout)
+assert all(capture_report.get(key) is True for key in ('nativeTestStreams','temporaryCleanup','latePermissionCancelled','updatesLast')),capture_report
+args.output.with_name('test-recording.json').write_text(json.dumps(capture_report,indent=2)+'\n')
 resume=[x for x in command]
 resume[resume.index('--settings-self-test')]='--settings-resume-moves-self-test'
 resume[resume.index('-CassiniTranscriptionFixture')+1]='NO'

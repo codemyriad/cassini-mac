@@ -58,6 +58,7 @@ import Observation
 
     func start(parent: URL) async {
         guard canStart else { return }
+        await TestRecordingController.shared.cancel().value
         #if DEBUG
         guard !LibraryLaunchContext.current.screenshot || RecordingFixture.enabled else { return }
         #endif

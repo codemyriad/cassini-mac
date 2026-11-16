@@ -16,7 +16,7 @@ import uuid
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('app',type=Path)
-parser.add_argument('board',choices=['first-run','meeting','recording','received','export','search','settings-recording','settings-transcription','settings-voices','settings-library','settings-browser'])
+parser.add_argument('board',choices=['first-run','meeting','recording','received','export','search','settings-recording','settings-transcription','settings-voices','settings-library','settings-browser','settings-updates'])
 parser.add_argument('--output',type=Path,required=True)
 parser.add_argument('--listening',choices=['playing','finished'])
 parser.add_argument('--speaker')
@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
     output,stderr = Path(temporary)/'stdout.json',Path(temporary)/'stderr.txt'
     render_id = str(uuid.uuid4())
     command = ['open','-W','-n','-a',str(app),'--stdout',str(output),'--stderr',str(stderr),
-               '--env','CASSINI_LOCAL_WORKFLOW_TESTS=1','--env','CASSINI_HOSTED_SCREENSHOTS=1','--args',
+               '--env','TMPDIR='+os.environ['TMPDIR'],'--env','CASSINI_LOCAL_WORKFLOW_TESTS=1','--env','CASSINI_HOSTED_SCREENSHOTS=1','--args',
                '-CassiniScreenshot',args.board,'-CassiniRenderID',render_id,'-CassiniFixture',str(fixture),'-CassiniNow','2026-10-27T13:18:00Z',
                '-ApplePersistenceIgnoreState','YES','-AppleLanguages',f'({args.language})','-AppleLocale',
                {'en-GB':'en_GB','it':'it_IT','fr':'fr_FR','es':'es_ES','pt-BR':'pt_BR','pt-PT':'pt_PT'}[args.language],

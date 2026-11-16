@@ -317,6 +317,7 @@ private final class CaptureFiles: @unchecked Sendable {
         timer = Timer.scheduledTimer(withTimeInterval:0.25,repeats:true) { [weak self] _ in MainActor.assumeIsolated { self?.poll() } }
     }
     func record() async throws {
+        await TestRecordingController.shared.cancel().value
         guard !shuttingDown, !starting else { return }
         LibraryLocationModel.shared.reload()
         guard LibraryLocationModel.shared.available,!LibraryMoveCoordinator.shared.busy else {
@@ -469,6 +470,7 @@ private final class CaptureFiles: @unchecked Sendable {
         if !([context.root] + context.previousRoots).contains(where:{ $0.standardizedFileURL.path == parent }) { LibraryStore.shared.reloadLocation() }
         startPolling()
         let origin = max(0,min(now,now - max(0,(Date().timeIntervalSince1970*1000 - Double(info.timelineOriginMs))/1000)))
+        await TestRecordingController.shared.cancel().value
         let input = CaptureInputLifecycle(capture:owner,originHostTime:AVAudioTime.hostTime(forSeconds:origin),microphone:{ Self.nativeInput(.me) },system:{ Self.nativeInput(.others) },failure:{ [weak self] _ in
             Task { @MainActor in
                 guard let self, let value = self.captures[id] else { return }

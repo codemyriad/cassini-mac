@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0130CE412CCA54B2C1BDFBEC /* TestRecordingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C59CB62176BA2240C76DA86 /* TestRecordingController.swift */; };
 		060EE4E0CC7BDF71BE60AC1D /* RecordingOverview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3603D8B702C22E7035B613CC /* RecordingOverview.swift */; };
 		0801D63D65B8CEF6600A877F /* LibrarySearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D7D2C9AE0C0C1CC85D270BB /* LibrarySearchView.swift */; };
 		0993FA2973125708E6E9727E /* WhatIsRecordedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493B60B096D031A55BC54864 /* WhatIsRecordedView.swift */; };
@@ -88,6 +89,7 @@
 		7415B9957147C67914ABA6A7 /* RecordingStatusMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2479FBA25ED20072E91C08C /* RecordingStatusMenu.swift */; };
 		74C7999B367996ACD0709B8B /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A2CF8935408378DD526CC43 /* main.swift */; };
 		75CD3E441B477E26E2D33504 /* SummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40168E838DC5368995A71BB6 /* SummaryView.swift */; };
+		765878BA50ACA89ED97BE186 /* AboutPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8919B62DBA0DF2F26658E4 /* AboutPanel.swift */; };
 		77079A7BA6973B190C204924 /* CaptureNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62D3BE66F2D4FC1D27B39700 /* CaptureNotifications.swift */; };
 		774E8A72ECF24F17C054463D /* RecordingConfirmation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85AB63CED296253A35A37DFE /* RecordingConfirmation.swift */; };
 		78623145E9B8575B41095038 /* LibrarySearchModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8A6F2297FE37D3DA4DEC5C7 /* LibrarySearchModel.swift */; };
@@ -159,6 +161,7 @@
 		E99BF457F63EA5D99EC25ACC /* CaptureSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 502CF30C95EA3E2D8D9C4281 /* CaptureSelfTest.swift */; };
 		E9BFA89A95D97AC2F6E86F90 /* CompanionSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B05A2E901F296D79F6E22F /* CompanionSetupView.swift */; };
 		EB7AA8FB9930082B004FA579 /* UXText.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C12D84FB78BFC6CC8C985F /* UXText.swift */; };
+		EC00299C56C824D5C5965CD3 /* TestRecordingSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B5159D754BE1761575F1A63 /* TestRecordingSelfTest.swift */; };
 		ECF1884477A253784A867E2C /* MeetingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F5113D3C4C431936150BE52 /* MeetingView.swift */; };
 		ED4C813AEF17E27AD01C0D57 /* Service.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1306467A5EEEC9D698F5B4E9 /* Service.swift */; };
 		ED5162CC4576829212ED5CDA /* LiveFolderSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 398B916BA60017DC5A45A118 /* LiveFolderSelfTest.swift */; };
@@ -267,7 +270,6 @@
 		0CFDFBED5CFF6924BDF895A8 /* ExportSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportSelfTest.swift; sourceTree = "<group>"; };
 		0D7A75EA903A55281DA87E2F /* LibraryKeyboardMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryKeyboardMenu.swift; sourceTree = "<group>"; };
 		0E31D8C73A37ABF71375ADEB /* SettingsSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSelfTest.swift; sourceTree = "<group>"; };
-		11EEDDB56BC0B743595091C9 /* cassini-mac-d-1028 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac-d-1028"; path = .; sourceTree = SOURCE_ROOT; };
 		127092BBB0CAF57C83F84D65 /* CaptureDiskWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureDiskWatch.swift; sourceTree = "<group>"; };
 		12F78C037DFC84998CC4C0EA /* CassiniWindowScreenshots.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CassiniWindowScreenshots.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1306467A5EEEC9D698F5B4E9 /* Service.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Service.swift; sourceTree = "<group>"; };
@@ -283,6 +285,7 @@
 		24D2DFA78E17F21F6A7785E1 /* RecordingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingController.swift; sourceTree = "<group>"; };
 		250F63FE808D64851D185A62 /* MeetingPositionSlider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingPositionSlider.swift; sourceTree = "<group>"; };
 		26BC2FFC5C2A6E0C555FEBC1 /* MeetingPreparationSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingPreparationSelfTest.swift; sourceTree = "<group>"; };
+		2B5159D754BE1761575F1A63 /* TestRecordingSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestRecordingSelfTest.swift; sourceTree = "<group>"; };
 		2EAC82AC94B942EF58DB6679 /* Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Commands.swift; sourceTree = "<group>"; };
 		33FBCB636E5DA2360918642A /* MeetingTitleAlignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingTitleAlignment.swift; sourceTree = "<group>"; };
 		344454A519DCFA4640F4369E /* Brand */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Brand; path = Cassini/Resources/Brand; sourceTree = SOURCE_ROOT; };
@@ -293,10 +296,12 @@
 		3603D8B702C22E7035B613CC /* RecordingOverview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingOverview.swift; sourceTree = "<group>"; };
 		394709470D1488C8C15792DC /* CassiniParakeetWorker */ = {isa = PBXFileReference; includeInIndex = 0; path = CassiniParakeetWorker; sourceTree = BUILT_PRODUCTS_DIR; };
 		398B916BA60017DC5A45A118 /* LiveFolderSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveFolderSelfTest.swift; sourceTree = "<group>"; };
+		3F8919B62DBA0DF2F26658E4 /* AboutPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutPanel.swift; sourceTree = "<group>"; };
 		40168E838DC5368995A71BB6 /* SummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryView.swift; sourceTree = "<group>"; };
 		41EF55724D148FFB94A0BE77 /* UpdateDeferralSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateDeferralSelfTest.swift; sourceTree = "<group>"; };
 		493B60B096D031A55BC54864 /* WhatIsRecordedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatIsRecordedView.swift; sourceTree = "<group>"; };
 		4A2328A25C9E4B5E0E8EDF6B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		4C59CB62176BA2240C76DA86 /* TestRecordingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestRecordingController.swift; sourceTree = "<group>"; };
 		4CD8CFA53B579FA8BAEF8DC9 /* CaptureActivityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureActivityStore.swift; sourceTree = "<group>"; };
 		4D7D2C9AE0C0C1CC85D270BB /* LibrarySearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySearchView.swift; sourceTree = "<group>"; };
 		502CF30C95EA3E2D8D9C4281 /* CaptureSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSelfTest.swift; sourceTree = "<group>"; };
@@ -314,6 +319,7 @@
 		6363021D88C03DAD2BB0F6AE /* CaptureFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureFixture.swift; sourceTree = "<group>"; };
 		63E9253548AF3DCF4EB9FCF2 /* RecordingInputs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingInputs.swift; sourceTree = "<group>"; };
 		642BF5E60FF9A1A28395F1C6 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		64CF6AC7D7B91DDFBFD931B6 /* cassini-mac-d-1079 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac-d-1079"; path = .; sourceTree = SOURCE_ROOT; };
 		65BF49C592097C68C439F4F6 /* MeetingTrashCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingTrashCoordinator.swift; sourceTree = "<group>"; };
 		69E1FB2AB082E4582CBD8EB9 /* SearchSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchSelfTest.swift; sourceTree = "<group>"; };
 		6DDE6CF7B745BF0D21C9075B /* RecordingDetailsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingDetailsSheet.swift; sourceTree = "<group>"; };
@@ -350,7 +356,6 @@
 		A2BD17D5179958CB9DAD7A4C /* LibraryDropZone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDropZone.swift; sourceTree = "<group>"; };
 		A6C12D84FB78BFC6CC8C985F /* UXText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UXText.swift; sourceTree = "<group>"; };
 		A8D7D17B00184F229FCCC30B /* SavedVoicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedVoicesView.swift; sourceTree = "<group>"; };
-		A45990EC4525753CFF61D0D6 /* cassini-mac-d-1011 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac-d-1011"; path = .; sourceTree = SOURCE_ROOT; };
 		AE1EF30C6B5383E3FF70F120 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		AE3EF9C87501A9AA7ECF2828 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		AE55575B68548E992AE03E83 /* CassiniBrowserHost */ = {isa = PBXFileReference; includeInIndex = 0; path = CassiniBrowserHost; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -686,6 +691,8 @@
 				858A17B830285C2819946691 /* RecordingSelfTest.swift */,
 				878FF5450C13E86819770336 /* RecordingSpectrogram.swift */,
 				D2479FBA25ED20072E91C08C /* RecordingStatusMenu.swift */,
+				4C59CB62176BA2240C76DA86 /* TestRecordingController.swift */,
+				2B5159D754BE1761575F1A63 /* TestRecordingSelfTest.swift */,
 			);
 			path = Recording;
 			sourceTree = "<group>";
@@ -757,6 +764,7 @@
 		90F1B4677963923A7D5A066E /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				3F8919B62DBA0DF2F26658E4 /* AboutPanel.swift */,
 				010BCF4BD08EDB89185F0894 /* ApplicationUpdates.swift */,
 				34535028E93902028522FD50 /* LibraryLocationModel.swift */,
 				F1EC26D268607793ED6FB7DD /* LibraryMoveCoordinator.swift */,
@@ -890,7 +898,7 @@
 		F04E817D85F11D039AFB3A19 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				11EEDDB56BC0B743595091C9 /* cassini-mac-d-1028 */,
+				64CF6AC7D7B91DDFBFD931B6 /* cassini-mac-d-1079 */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -1397,6 +1405,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				765878BA50ACA89ED97BE186 /* AboutPanel.swift in Sources */,
 				184B39919EE900669A4FD01E /* AppDelegate.swift in Sources */,
 				AC44705EDD769A45EF41F310 /* ApplicationUpdates.swift in Sources */,
 				5F28E1C9F291EA53E2515B24 /* ApplicationWindows.swift in Sources */,
@@ -1498,6 +1507,8 @@
 				3404B180174C1199AE014DAA /* SpeakerEditorView.swift in Sources */,
 				2021B3CC935BCBD8E60B1F06 /* SpeechModelController.swift in Sources */,
 				75CD3E441B477E26E2D33504 /* SummaryView.swift in Sources */,
+				0130CE412CCA54B2C1BDFBEC /* TestRecordingController.swift in Sources */,
+				EC00299C56C824D5C5965CD3 /* TestRecordingSelfTest.swift in Sources */,
 				5E86EA8ECF79614FC2CE15EB /* TranscribingStatusView.swift in Sources */,
 				CDBCA4DEC8524A0332D55FE1 /* TranscriptBuilder.swift in Sources */,
 				137937AE2E3240A6B5CB141C /* TranscriptTextView.swift in Sources */,

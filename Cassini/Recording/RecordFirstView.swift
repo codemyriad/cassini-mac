@@ -90,6 +90,7 @@ import CassiniRecording
 
 struct RecordFirstView: View {
     @AppStorage("CassiniSkipRecordFirst",store:RecordingPreferences.defaults) private var skip = false
+    @State private var test = TestRecordingController.shared
     @State private var microphoneAllowed = false
     @State private var systemPreviouslyCaptured = false
     var body: some View {
@@ -97,20 +98,21 @@ struct RecordFirstView: View {
             Text(UXText.text("recordFirst.title")).font(.system(size: 20, weight: .bold)).accessibilityAddTraits(.isHeader)
             if let line = RecordingController.shared.diskLine { Text(line).foregroundStyle(CassiniTheme.warningNotice) }
             VStack(alignment: .leading, spacing: 10) {
-                Text(UXText.text("recordFirst.responsibility")).lineSpacing(5)
+                Text(UXText.text("recordFirst.lawPlain")).lineSpacing(5)
                 Toggle(UXText.text("recordFirst.dontShowAgain"), isOn: $skip).toggleStyle(.checkbox).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.secondaryInk)
             }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(CassiniTheme.subtleWash, in: RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 16) {
                 Text(UXText.text("recordFirst.willRecord")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.secondaryInk)
-                source(icon: "mic.fill", title: "common.yourMicrophone", description: "recordFirst.mic.description", caption: microphoneAllowed ? "recordFirst.allowed" : "recordFirst.mic.caption")
+                source(icon: "mic.fill", title: "common.yourMicrophone", description: "recordFirst.mic.plain", caption: microphoneAllowed ? "recordFirst.allowed" : "recordFirst.mic.caption.plain")
                 Divider()
                 if CaptureCollection.shared.hasCalls {
                     source(icon:"macwindow",title:"common.theOthers",description:"whatIsRecorded.othersHeard.browserMixed.description",caption:nil)
                 } else {
-                    source(icon:"display",title:"recordFirst.sound.title",description:"recordFirst.sound.description",caption:systemPreviouslyCaptured ? "recordFirst.allowed" : "recordFirst.sound.caption")
+                    source(icon:"display",title:"recordFirst.sound.title",description:"recordFirst.sound.plain",caption:systemPreviouslyCaptured ? "recordFirst.allowed" : "recordFirst.sound.caption.plain")
                 }
             }
             HStack(spacing: 10) {
+                Button(UXText.text("recordFirst.test")) { test.presented = true }.disabled(!test.canStart).accessibilityIdentifier("record-first-test")
                 Spacer()
                 Button(UXText.text("common.notNow")) { RecordCoordinator.shared.showingFirst = false }
                     .buttonStyle(.plain).padding(.horizontal, 18).frame(height: 36).background(CassiniTheme.chipFill, in: RoundedRectangle(cornerRadius: 6))
@@ -122,6 +124,7 @@ struct RecordFirstView: View {
             }.padding(.top, 8)
         }.font(.system(size: 13)).padding(28).frame(width: 520)
             .accessibilityElement(children: .contain).accessibilityLabel(UXText.text("recordFirst.title"))
+            .sheet(isPresented:$test.presented) { TestRecordingView() }
             .onAppear(perform:refreshPermission)
             .onReceive(NotificationCenter.default.publisher(for:NSApplication.didBecomeActiveNotification)) { _ in refreshPermission() }
     }

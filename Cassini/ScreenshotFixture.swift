@@ -35,7 +35,7 @@ enum ScreenshotFixture {
         let scheme = value("-CassiniScreenshotScheme", in: arguments) ?? "light"
         guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               let name = value("-CassiniScreenshot", in: arguments),
-              ["window", "sheet", "library", "first-run", "meeting", "record-first", "recording", "received", "export", "search", "settings-recording", "settings-transcription", "settings-voices", "settings-library", "settings-browser"].contains(name),
+              ["window", "sheet", "library", "first-run", "meeting", "record-first", "recording", "received", "export", "search", "settings-recording", "settings-transcription", "settings-voices", "settings-library", "settings-browser", "settings-updates"].contains(name),
               ["light", "dark"].contains(scheme),
               let directory = value("-CassiniFixture", in: arguments),
               let clock = value("-CassiniNow", in: arguments),

@@ -19,11 +19,18 @@ enum SettingsFixture {
               ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               prepared.insert(ObjectIdentifier(window)).inserted else { return }
         window.appearance = NSAppearance(named:LibraryLaunchContext.screenshotDark ? .darkAqua : .aqua)
-        window.setContentSize(NSSize(width:700,height:500)); window.center(); window.makeKeyAndOrderFront(nil)
+        window.setContentSize(NSSize(width:700,height:560)); window.center(); window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps:true)
         guard ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1" else { return }
         Task { @MainActor in
-            try? await Task.sleep(for:.seconds(1))
+            await SpeechModelController.shared.refresh()
+            await SavedVoicesController.shared.refresh()
+            // Render after the queued SwiftUI layout transaction, never a time delay.
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
+            window.contentView?.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
             guard let frame = window.contentView?.superview else { exit(1) }
             let width = Int(frame.bounds.width.rounded()), height = Int(frame.bounds.height.rounded())
             guard let image = NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:width,pixelsHigh:height,bitsPerSample:8,

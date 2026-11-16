@@ -19,7 +19,7 @@ import CassiniModels
 
     }
     static var credits: NSAttributedString { credits(appData:SpeechModelController.appData) }
-    static func credits(appData: URL) -> NSAttributedString {
+    nonisolated static func credits(appData: URL) -> NSAttributedString {
         let text = NSMutableAttributedString()
         // Project and licence names are proper names. Never expose packaging
         // paths as credits in the standard About panel.
@@ -52,12 +52,7 @@ import CassiniModels
     @MainActor private final class Action: NSObject {
         static let shared = Action()
         @objc func show(_ sender: Any?) {
-            var options: [NSApplication.AboutPanelOptionKey:Any] = [.credits:ModelNotices.credits]
-            if let mark = CassiniBrandMark.image(forHeight:64)?.copy() as? NSImage {
-                mark.size = NSSize(width:98,height:64)
-                options[.applicationIcon] = mark
-            }
-            NSApp.orderFrontStandardAboutPanel(options:options)
+            AboutPanel.show()
         }
     }
     #if DEBUG

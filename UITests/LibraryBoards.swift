@@ -979,11 +979,11 @@ final class LibraryBoards: XCTestCase {
         let shortcutClosed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:window.sheets.firstMatch)
         XCTAssertEqual(XCTWaiter.wait(for:[shortcutClosed],timeout:5),.completed,app.debugDescription)
         XCTAssertFalse(window.sheets.firstMatch.exists)
-        XCTAssertFalse(window.toolbars.buttons["Updates"].exists,"Updates belongs to Recording; Settings keeps the four shared tabs")
-        for title in ["Recording", "Transcription", "Library", "Browser companion"] {
+        XCTAssertTrue(window.toolbars.buttons["Updates"].exists,"D103 puts Updates in the last tab")
+        for title in ["Recording", "Transcription", "Library", "Browser companion", "Updates"] {
             XCTAssertTrue(window.toolbars.buttons[title].exists,window.debugDescription)
         }
-        window.scrollViews.firstMatch.scroll(byDeltaX:0,deltaY:-500)
+        window.toolbars.buttons["Updates"].click()
         let updatesToggle = window.descendants(matching:.any).matching(identifier:"settings-automatic-updates").firstMatch
         XCTAssertTrue(updatesToggle.waitForExistence(timeout:5),window.debugDescription)
         XCTAssertTrue(window.buttons["settings-check-updates"].exists,window.debugDescription)
@@ -1432,7 +1432,7 @@ final class LibraryBoards: XCTestCase {
         defer { app.terminate() }
         let window = app.windows["cassini-settings-window"]
         XCTAssertTrue(window.buttons["settings-change-shortcut"].waitForExistence(timeout: 20), app.debugDescription)
-        for title in ["Recording", "Transcription", "Library", "Browser companion"] {
+        for title in ["Recording", "Transcription", "Library", "Browser companion", "Updates"] {
             window.toolbars.buttons[title].click()
             capture(window, name: "qa-settings-" + title)
         }
