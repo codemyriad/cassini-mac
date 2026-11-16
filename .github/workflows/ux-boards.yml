@@ -51,7 +51,9 @@ jobs:
       run: |
         python3 scripts/hosted-display.py
     - name: QA user workflows in light and dark
-      timeout-minutes: 8
+      # The two sequential appearance runs took 7m50s on green main and
+      # exceeded eight minutes on release validation; allow hosted-runner variance.
+      timeout-minutes: 12
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
         TEST_RUNNER_CASSINI_LIBRARY_BOARDS: '1'
