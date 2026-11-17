@@ -34,7 +34,7 @@ struct LibraryLaunchContext {
             context.scansLibrary = false
         }
         if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
-           let name = argument("-CassiniScreenshot"), ["library", "first-run", "meeting", "voices-question", "record-first", "recording", "received", "export", "search", "settings-recording", "settings-transcription", "settings-library", "settings-browser", "settings-updates", "settings-voices", "about"].contains(name),
+           let name = argument("-CassiniScreenshot"), ["library", "first-run", "meeting", "voices-question", "record-first", "test-recording-testing", "test-recording-result", "recording", "received", "export", "search", "settings-recording", "settings-transcription", "settings-library", "settings-browser", "settings-updates", "settings-voices", "about"].contains(name),
            let path = argument("-CassiniFixture"), let clock = argument("-CassiniNow"),
            let date = ISO8601DateFormatter().date(from: clock) {
             let directory = ScreenshotFixture.longMeetingDirectory ?? URL(fileURLWithPath: path)

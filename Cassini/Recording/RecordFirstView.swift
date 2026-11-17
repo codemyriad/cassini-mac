@@ -97,10 +97,7 @@ struct RecordFirstView: View {
         VStack(alignment: .leading, spacing: 22) {
             Text(UXText.text("recordFirst.title")).font(.system(size: 20, weight: .bold)).accessibilityAddTraits(.isHeader)
             if let line = RecordingController.shared.diskLine { Text(line).foregroundStyle(CassiniTheme.warningNotice) }
-            VStack(alignment: .leading, spacing: 10) {
-                Text(UXText.text("recordFirst.lawPlain")).lineSpacing(5)
-                Toggle(UXText.text("recordFirst.dontShowAgain"), isOn: $skip).toggleStyle(.checkbox).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.secondaryInk)
-            }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(CassiniTheme.subtleWash, in: RoundedRectangle(cornerRadius: 8))
+            Text(UXText.text("recordFirst.lawPlain")).lineSpacing(5).fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 16) {
                 Text(UXText.text("recordFirst.willRecord")).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.secondaryInk)
                 source(icon: "mic.fill", title: "common.yourMicrophone", description: "recordFirst.mic.plain", caption: microphoneAllowed ? "recordFirst.allowed" : "recordFirst.mic.caption.plain")
@@ -110,16 +107,21 @@ struct RecordFirstView: View {
                 } else {
                     source(icon:"display",title:"recordFirst.sound.title",description:"recordFirst.sound.plain",caption:systemPreviouslyCaptured ? "recordFirst.allowed" : "recordFirst.sound.caption.plain")
                 }
+                Divider()
+                HStack(alignment: .center, spacing: 12) {
+                    source(icon: "waveform", title: "recordFirst.testRow.title", description: "recordFirst.testRow.body", caption: nil)
+                    testButton
+                }
             }
             ViewThatFits(in:.horizontal) {
                 HStack(spacing:10) {
-                    testButton
+                    dontShowAgainToggle
                     Spacer(minLength:0)
                     notNowButton
                     startButton
                 }
                 VStack(alignment:.leading,spacing:12) {
-                    testButton
+                    dontShowAgainToggle
                     HStack(spacing:10) { Spacer(minLength:0); notNowButton; startButton }
                 }
             }.padding(.top,8)
@@ -129,8 +131,15 @@ struct RecordFirstView: View {
             .onAppear(perform:refreshPermission)
             .onReceive(NotificationCenter.default.publisher(for:NSApplication.didBecomeActiveNotification)) { _ in refreshPermission() }
     }
+    private var dontShowAgainToggle: some View {
+        Toggle(UXText.text("recordFirst.dontShowAgain"), isOn: $skip)
+            .toggleStyle(.checkbox)
+            .font(.system(size: 11.5))
+            .foregroundStyle(CassiniTheme.secondaryInk)
+            .fixedSize()
+    }
     private var testButton: some View {
-        Button(UXText.text("recordFirst.test")) { test.presented = true }
+        Button(UXText.text("settings.recording.test.button")) { test.presented = true }
             .disabled(!test.canStart).fixedSize().accessibilityIdentifier("record-first-test")
     }
     private var notNowButton: some View {
