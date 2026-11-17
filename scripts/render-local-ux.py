@@ -18,6 +18,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('app',type=Path)
 parser.add_argument('board',choices=['first-run','meeting','recording','received','export','search','settings-recording','settings-transcription','settings-voices','settings-library','settings-browser','settings-updates','about','record-first'])
 parser.add_argument('--output',type=Path,required=True)
+parser.add_argument('--direct',action='store_true',help='Run the opted-in fixture executable directly when LaunchServices is unavailable')
 parser.add_argument('--listening',choices=['playing','finished'])
 parser.add_argument('--speaker')
 parser.add_argument('--speaker-editor',action='store_true',help='Render the read-only Name a speaker fixture')
@@ -55,7 +56,13 @@ with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
         # including a new instance (-n), before reading the final output once.
         # Keep the previous combined launch/report budget only as a hang guard.
         try:
-            subprocess.run(command,check=True,capture_output=True,timeout=35)
+            if args.direct:
+                result = subprocess.run([str(app/'Contents/MacOS/Cassini'), *command[command.index('--args')+1:]],
+                                        env=dict(os.environ,CASSINI_LOCAL_WORKFLOW_TESTS='1',CASSINI_HOSTED_SCREENSHOTS='1'),
+                                        check=True,capture_output=True,timeout=35)
+                output.write_bytes(result.stdout); stderr.write_bytes(result.stderr)
+            else:
+                subprocess.run(command,check=True,capture_output=True,timeout=35)
         except (subprocess.TimeoutExpired,subprocess.CalledProcessError) as error:
             # TimeoutExpired retains bytes even when text mode is requested.
             launcher = (error.stderr or b'').decode('utf-8',errors='replace')

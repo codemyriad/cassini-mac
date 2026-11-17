@@ -166,7 +166,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !confirmingQuit else { return .terminateLater }
-        TestRecordingController.shared.cancel()
+        let testHadWork = TestRecordingController.shared.hasPendingWork
+        let testCleanup = TestRecordingController.shared.cancel()
         ApplicationUpdates.shared.beginTermination()
         if !RecordingConfirmation.active {
             let queue = TranscriptionQueue.shared
@@ -174,7 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let exports = MeetingExportCoordinator.shared
             let bulkExports = BulkZipExportCoordinator.shared
             let moves = LibraryMoveCoordinator.shared
-            let wait = MeetingRenameCoordinator.shared.working || RecordingOverview.saving || queue.isBusy || imports.isBusy || exports.isBusy || bulkExports.isBusy || moves.busy || MeetingTrashCoordinator.shared.busy || RecordingPageModel.hasPendingEdits
+            let wait = testHadWork || MeetingRenameCoordinator.shared.working || RecordingOverview.saving || queue.isBusy || imports.isBusy || exports.isBusy || bulkExports.isBusy || moves.busy || MeetingTrashCoordinator.shared.busy || RecordingPageModel.hasPendingEdits
             CaptureCollection.shared.beginShutdown()
             imports.beginShutdown()
             MeetingRenameCoordinator.shared.beginShutdown()
@@ -187,6 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             confirmingQuit = true
             DispatchQueue.main.async { [weak self] in
                 Task { @MainActor in
+                    await testCleanup.value
                     await RecordingPageModel.flushAll()
                     await RecordingController.shared.finishTask?.value
                     await CaptureCollection.shared.shutdown()
@@ -219,6 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in
                     let stop = choice == .stop
                     if stop {
+                        await testCleanup.value
                         CaptureCollection.shared.beginShutdown()
                         LibraryMoveCoordinator.shared.beginShutdown()
                         MeetingTrashCoordinator.shared.beginShutdown()

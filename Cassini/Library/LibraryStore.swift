@@ -29,12 +29,12 @@ struct LibraryLaunchContext {
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("--browser-capture-self-test") { context.scansLibrary = CaptureFixture.enabled }
         if arguments.contains("--import-lifecycle-self-test") { context.automaticallyConsidersTranscriptions = false }
-        if arguments.contains(where: { ["--recording-saving-self-test", "--parakeet-self-test", "--models-network-self-test", "--whistle-self-test", "--recording-self-test", "--recording-sink-self-test", "--export-self-test"].contains($0) }) ||
+        if arguments.contains(where: { ["--test-recording-self-test", "--recording-saving-self-test", "--parakeet-self-test", "--models-network-self-test", "--whistle-self-test", "--recording-self-test", "--recording-sink-self-test", "--export-self-test"].contains($0) }) ||
             ["window", "sheet"].contains(argument("-CassiniScreenshot") ?? "") {
             context.scansLibrary = false
         }
         if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
-           let name = argument("-CassiniScreenshot"), ["library", "first-run", "meeting", "record-first", "recording", "received", "export", "search", "settings-recording", "settings-transcription"].contains(name),
+           let name = argument("-CassiniScreenshot"), ["library", "first-run", "meeting", "record-first", "recording", "received", "export", "search", "settings-recording", "settings-transcription", "settings-library", "settings-browser", "settings-updates", "settings-voices", "about"].contains(name),
            let path = argument("-CassiniFixture"), let clock = argument("-CassiniNow"),
            let date = ISO8601DateFormatter().date(from: clock) {
             let directory = ScreenshotFixture.longMeetingDirectory ?? URL(fileURLWithPath: path)
@@ -65,7 +65,7 @@ struct LibraryLaunchContext {
         #if DEBUG
         if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" {
             let id = MeetingRenameFixture.id?.uuidString ?? SettingsFixture.id?.uuidString ?? argument("-CassiniCaptureID").flatMap { UUID(uuidString:$0)?.uuidString } ?? String(ProcessInfo.processInfo.processIdentifier)
-            return FileManager.default.temporaryDirectory.appendingPathComponent("CassiniSettingsFixture-" + id + "/library-location.json")
+            return SettingsFixture.temporaryDirectory.appendingPathComponent("CassiniSettingsFixture-" + id + "/library-location.json")
         }
         #endif
         return LibraryLocation.standardFile

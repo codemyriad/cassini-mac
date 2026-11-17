@@ -239,7 +239,7 @@ enum RecordingFixture {
     static var root: URL? {
         #if DEBUG
         guard enabled, let key = LibraryLaunchContext.argument("-CassiniCaptureID"), UUID(uuidString: key) != nil else { return nil }
-        let parent = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniLibrary-" + key)
+        let parent = SettingsFixture.temporaryDirectory.appendingPathComponent("CassiniLibrary-" + key)
         try? FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         return parent.appendingPathComponent("root")
         #else

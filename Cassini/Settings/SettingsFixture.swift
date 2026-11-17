@@ -11,6 +11,15 @@ import Observation
 }
 
 enum SettingsFixture {
+    static var temporaryDirectory: URL {
+        // Cocoa can override TMPDIR even in a local test process. The explicitly
+        // opted-in fixture executable uses the caller's external scratch root.
+        if ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1",
+           let path = ProcessInfo.processInfo.environment["TMPDIR"], path.hasPrefix("/") {
+            return URL(fileURLWithPath:path,isDirectory:true)
+        }
+        return FileManager.default.temporaryDirectory
+    }
     static var id: UUID? {
         guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               let id = LibraryLaunchContext.argument("-CassiniSettingsID") else { return nil }
@@ -26,7 +35,7 @@ enum SettingsFixture {
               ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               prepared.insert(ObjectIdentifier(window)).inserted else { return }
         window.appearance = NSAppearance(named:LibraryLaunchContext.screenshotDark ? .darkAqua : .aqua)
-        window.setContentSize(name == "about" ? NSSize(width:300,height:330) : NSSize(width:700,height:560)); window.center(); window.makeKeyAndOrderFront(nil)
+        window.setContentSize(name == "about" ? NSSize(width:300,height:330) : NSSize(width:700,height:480)); window.center(); window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps:true)
         guard ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1" else { return }
         Task { @MainActor in

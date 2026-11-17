@@ -18,7 +18,10 @@ import CassiniBrowserControl
     private(set) var heard: Set<CaptureSide> = []
     private(set) var refused: [CaptureSide:String] = [:]
     private(set) var playing = false
+    private var cleaning = 0
+    var hasPendingWork: Bool { phase != .idle || cleaning > 0 || task != nil }
     var canStart: Bool { !RecordingOverview.active && !RecordingOverview.starting && !RecordingOverview.saving && phase == .idle }
+    @ObservationIgnored private var nativeDrivers: [TestRecordingInput] = []
     @ObservationIgnored private var owner: OwnedBrowserCapture?
     @ObservationIgnored private var input: CaptureInputLifecycle?
     @ObservationIgnored private var task: Task<Void,Never>?
@@ -29,11 +32,18 @@ import CassiniBrowserControl
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var cleanup: Task<Void,Never>?
     @ObservationIgnored var duration: @Sendable () async throws -> Void = { try await Task.sleep(for:.seconds(8)) }
-    @ObservationIgnored var makeMicrophone: @MainActor () -> any CaptureInput = { MeetingMicrophoneInput() }
-    @ObservationIgnored var makeSystem: @MainActor () -> any CaptureInput = { MeetingSystemInput() }
+    @ObservationIgnored var makeMicrophone: @MainActor () -> any CaptureInput = { TestRecordingInput(.me) }
+    @ObservationIgnored var makeSystem: @MainActor () -> any CaptureInput = { TestRecordingInput(.others) }
     @ObservationIgnored var changed: (() -> Void)?
-    init() { cleanup = Task { await Self.sweep() } }
-    static var root: URL { FileManager.default.temporaryDirectory.appendingPathComponent("Cassini-TestRecording",isDirectory:true) }
+    init() { cleaning = 1; cleanup = Task { await Self.sweep(); cleaning -= 1 } }
+    static var root: URL {
+        #if DEBUG
+        let temporary = SettingsFixture.temporaryDirectory
+        #else
+        let temporary = FileManager.default.temporaryDirectory
+        #endif
+        return temporary.appendingPathComponent("Cassini-TestRecording",isDirectory:true)
+    }
 
     #if DEBUG
     var fixtureDirectory: URL? { owner?.snapshot.directory }
@@ -60,7 +70,15 @@ import CassiniBrowserControl
                 }
                 self.owner = owner
                 let input = CaptureInputLifecycle(capture:owner,originHostTime:mach_absolute_time(),
-                    microphone:makeMicrophone,system:makeSystem,failure:{ [weak self] message in
+                    microphone:{ [self] in
+                        let driver = makeMicrophone()
+                        if let native = driver as? TestRecordingInput { nativeDrivers.append(native) }
+                        return driver
+                    },system:{ [self] in
+                        let driver = makeSystem()
+                        if let native = driver as? TestRecordingInput { nativeDrivers.append(native) }
+                        return driver
+                    },failure:{ [weak self] message in
                         Task { @MainActor in
                             guard let self, self.generation == attempt else { return }
                             self.problem = message
@@ -81,6 +99,7 @@ import CassiniBrowserControl
                 sampleLevels(); meter?.invalidate(); meter = nil
                 phase = .finishing
                 try await input.stop()
+                for driver in nativeDrivers { await driver.drain() }
                 try await owner.finish()
                 guard generation == attempt else { return }
                 let snapshot = await Task.detached(priority:.utility) { owner.snapshot }.value
@@ -103,7 +122,7 @@ import CassiniBrowserControl
             } catch {
                 guard generation == attempt else { return }
                 problem = error.localizedDescription
-                let pending = cancel(close:false)
+                let pending = cancel(close:false,waitForRun:false)
                 let cancelled = generation
                 await pending.value
                 guard generation == cancelled else { return }
@@ -131,16 +150,22 @@ import CassiniBrowserControl
         player?.pause(); player?.replaceCurrentItem(with:nil); player = nil; playing = false
         if let endObserver { NotificationCenter.default.removeObserver(endObserver); self.endObserver = nil }
     }
-    @discardableResult func cancel(close: Bool = true) -> Task<Void,Never> {
+    @discardableResult func cancel(close: Bool = true, waitForRun: Bool = true) -> Task<Void,Never> {
+        let running = task
         generation = UUID(); task?.cancel(); task = nil
         meter?.invalidate(); meter = nil; stopPlayer(); timeline = nil
-        let input = self.input, owner = self.owner, previous = cleanup
+        let input = self.input, owner = self.owner, previous = cleanup, drivers = nativeDrivers
+        nativeDrivers = []
         self.input = nil; self.owner = nil; phase = .idle
         if close { presented = false }
+        cleaning += 1
         let next = Task {
             await previous?.value
             try? await input?.stop()
+            for driver in drivers { await driver.drain() }
+            if waitForRun { await running?.value }
             if let owner { await Self.remove(owner) }
+            cleaning -= 1
         }
         cleanup = next; changed?(); return next
     }

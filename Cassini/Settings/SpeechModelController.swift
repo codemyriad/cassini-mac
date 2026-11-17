@@ -130,7 +130,7 @@ import CassiniTranscription
     static var appData: URL {
         #if DEBUG
         if let id = SettingsFixture.id {
-            return FileManager.default.temporaryDirectory.appendingPathComponent("CassiniSpeechModels-" + id.uuidString)
+            return SettingsFixture.temporaryDirectory.appendingPathComponent("CassiniSpeechModels-" + id.uuidString)
         }
         #endif
         return ModelStorage.appData

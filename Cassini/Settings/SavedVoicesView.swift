@@ -18,8 +18,7 @@ struct SavedVoicesSettingsRow: View {
                     Image(systemName:"chevron.right").accessibilityHidden(true)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("settings-saved-voices")
-        }.padding(18).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
-            .task { await voices.refresh() }
+        }
     }
 }
 struct SavedVoicesView: View {
