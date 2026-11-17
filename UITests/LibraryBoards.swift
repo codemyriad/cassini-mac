@@ -20,12 +20,25 @@ final class LibraryBoards: XCTestCase {
             answer.click()
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:answer)],timeout:10),.completed)
             app.terminate()
+            // Reopen an eligible meeting, not Settings: false and unanswered
+            // render the same Settings switch but only unanswered asks again.
+            let meetingAgain = try launch("voices-question",fixture:"main",extra:args); defer { meetingAgain.terminate() }
+            let meetingWindow = meetingAgain.windows["cassini-library-window"]
+            let readable = NSPredicate { _,_ in
+                meetingWindow.staticTexts["meeting-title"].exists &&
+                meetingWindow.textFields["meeting-find"].exists &&
+                meetingWindow.textFields["meeting-find"].isEnabled &&
+                meetingWindow.textFields["meeting-find"].isHittable
+            }
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:readable,object:nil)],timeout:20),.completed,meetingAgain.debugDescription)
+            XCTAssertFalse(meetingAgain.buttons["voices-question-enable"].exists,"Either answer survives reopening an eligible meeting")
+            XCTAssertFalse(meetingAgain.buttons["voices-question-not-now"].exists)
+            meetingAgain.terminate()
             let reopened = try launch("settings-transcription",fixture:"main",extra:args); defer { reopened.terminate() }
             let settings = reopened.windows["cassini-settings-window"]
             let toggle = settings.descendants(matching:.any).matching(identifier:"settings-remember-voices").matching(NSPredicate(format:"value != nil")).firstMatch
             XCTAssertTrue(toggle.waitForExistence(timeout:20),reopened.debugDescription)
             XCTAssertEqual(String(describing:try XCTUnwrap(toggle.value)),enabled ? "1":"0")
-            XCTAssertFalse(reopened.buttons["voices-question-enable"].exists,"Either answer survives relaunch")
             if !toggle.isHittable { settings.scrollViews.firstMatch.scroll(byDeltaX:0,deltaY:-400) }
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"hittable == true"),object:toggle)],timeout:5),.completed)
             if enabled { capture(settings,name:"qa-remember-voices") }

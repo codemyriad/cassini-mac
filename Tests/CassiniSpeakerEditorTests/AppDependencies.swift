@@ -53,14 +53,16 @@ import CassiniLibrary
     var store=SavedVoicesStore(directory:FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
     var snapshot:SavedVoicesSnapshot?
     var readOnly=false
-    var voices:[SavedVoice] {[]}
+    var voices:[SavedVoice] {snapshot?.voices ?? []}
     struct TranscriptEnrollment:Sendable { let embedding:[Float] }
-    func refresh() async {}
-    func prepare(_ meeting:LibraryMeeting,speaker:String) async throws -> TranscriptEnrollment? {nil}
+    var refreshAction: (@MainActor () async -> Void)?
+    var prepared: TranscriptEnrollment?
+    func refresh() async { await refreshAction?() }
+    func prepare(_ meeting:LibraryMeeting,speaker:String) async throws -> TranscriptEnrollment? {prepared}
     func enroll(_ prepared:TranscriptEnrollment,name:String,into id:String?) async throws {throw SavedVoicesError.unsafeStorage}
 }
 
 // The production preference policy uses an isolated defaults suite in this harness.
 extension VoicePreferences {
-    static let shared=VoicePreferences(defaults:UserDefaults(suiteName:"io.codemyriad.cassini.speaker-tests." + UUID().uuidString)!)
+    static var shared=VoicePreferences(defaults:UserDefaults(suiteName:"io.codemyriad.cassini.speaker-tests." + UUID().uuidString)!)
 }
