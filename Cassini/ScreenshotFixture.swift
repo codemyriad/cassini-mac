@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #if DEBUG
 import AppKit
+import Observation
 
 /// Fixture-only entry point. Never starts capture or playback. Enabled solely by the
 /// hosted screenshot test's launch environment, and absent from release builds.
@@ -35,7 +36,7 @@ enum ScreenshotFixture {
         let scheme = value("-CassiniScreenshotScheme", in: arguments) ?? "light"
         guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               let name = value("-CassiniScreenshot", in: arguments),
-              ["window", "sheet", "library", "first-run", "meeting", "record-first", "recording", "received", "export", "search", "settings-recording", "settings-transcription", "settings-voices", "settings-library", "settings-browser"].contains(name),
+              ["window", "sheet", "library", "first-run", "meeting", "record-first", "recording", "received", "export", "search", "settings-recording", "settings-transcription", "settings-voices", "settings-library", "settings-browser", "settings-updates", "about"].contains(name),
               ["light", "dark"].contains(scheme),
               let directory = value("-CassiniFixture", in: arguments),
               let clock = value("-CassiniNow", in: arguments),
@@ -60,6 +61,7 @@ enum ScreenshotFixture {
             }
         }
 
+        if name == "about" { Task { @MainActor in AboutPanel.show() } }
         if name.hasPrefix("settings-") {
             Task { @MainActor in
                 SettingsNavigation.shared.tab = SettingsTab(rawValue:String(name.dropFirst("settings-".count))) ?? .recording
@@ -92,23 +94,31 @@ enum ScreenshotFixture {
     /// automation. Renders only this app's fixture view, never the desktop.
     private static func localBoardRender(_ window: NSWindow) {
         guard ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1",
-              let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["first-run","meeting","recording","received","export","search"].contains(name),
+              let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["first-run","record-first","meeting","recording","received","export","search"].contains(name),
               !RecordingFixture.enabled else { return }
         Task { @MainActor in
-            for _ in 0..<60 {
-                if name == "first-run" && LibraryStore.shared.loaded { break }
-                if name == "meeting" && MeetingNavigation.shared.detail != nil { break }
-                if name == "recording" && MeetingNavigation.shared.detail?.meeting.state.lifecycle == .recording { break }
-                if name == "received" && LibraryStore.shared.selected?.state.origin == .received { break }
-                if name == "export" && window.attachedSheet != nil { break }
-                if name == "search" && LibrarySearchModel.shared.hits.count == 4 { break }
-                try? await Task.sleep(for:.milliseconds(100))
+            @MainActor func ready() -> Bool {
+                switch name {
+                case "first-run": return LibraryStore.shared.loaded
+                case "meeting": return MeetingNavigation.shared.detail != nil
+                case "recording": return MeetingNavigation.shared.detail?.meeting.state.lifecycle == .recording
+                case "received": return LibraryStore.shared.selected?.state.origin == .received
+                case "search": return LibrarySearchModel.shared.hits.count == 4
+                default: return window.attachedSheet != nil
+                }
+            }
+            while !ready() {
+                let (events, signal) = AsyncStream<Void>.makeStream()
+                withObservationTracking { _ = ready() } onChange: { signal.yield(); signal.finish() }
+                let observer = NotificationCenter.default.addObserver(forName:NSWindow.willBeginSheetNotification,object:window,queue:.main) { _ in signal.yield(); signal.finish() }
+                var iterator = events.makeAsyncIterator(); _ = await iterator.next()
+                NotificationCenter.default.removeObserver(observer)
             }
             if name == "meeting", CommandLine.arguments.contains("--speaker-editor-preview"),
                let meeting=MeetingNavigation.shared.detail?.meeting {
                 await MeetingRenameCoordinator.shared.previewSpeaker(meeting)
             }
-            try? await Task.sleep(for:.seconds(1))
+            await withCheckedContinuation { continuation in DispatchQueue.main.async { continuation.resume() } }
             guard (name != "first-run" || LibraryStore.shared.loaded && LibraryStore.shared.meetings.isEmpty),
                   (name != "recording" || MeetingNavigation.shared.detail?.meeting.state.lifecycle == .recording),
                   (name != "meeting" || MeetingNavigation.shared.detail != nil),

@@ -130,14 +130,14 @@ import CassiniTranscription
     static var appData: URL {
         #if DEBUG
         if let id = SettingsFixture.id {
-            return FileManager.default.temporaryDirectory.appendingPathComponent("CassiniSpeechModels-" + id.uuidString)
+            return SettingsFixture.temporaryDirectory.appendingPathComponent("CassiniSpeechModels-" + id.uuidString)
         }
         #endif
         return ModelStorage.appData
     }
     static var modelDirectory: URL { appData.appendingPathComponent("models/" + ParakeetPin.id + "/" + ParakeetPin.sourceSHA256) }
     static var jobsDirectory: URL { appData.appendingPathComponent("speech-jobs") }
-    static var downloadBytes: Int64 {
+    nonisolated static var downloadBytes: Int64 {
         // Pinned dist manifest snapshot, included at build time. Opening Settings
         // never fetches metadata or a model.
         let url = Bundle.main.url(forResource:"model-manifest",withExtension:"json",subdirectory:"Parakeet")!

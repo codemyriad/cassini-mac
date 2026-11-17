@@ -58,6 +58,7 @@ import Observation
 
     func start(parent: URL) async {
         guard canStart else { return }
+        await TestRecordingController.shared.cancel().value
         #if DEBUG
         guard !LibraryLaunchContext.current.screenshot || RecordingFixture.enabled else { return }
         #endif
@@ -92,20 +93,13 @@ import Observation
             }
             try MeetingMetadataWriter(directory: session.directory, id: session.manifest.id).createIfNeeded()
             directory = session.directory; startedAt = session.manifest.createdAt
-            let writer: any RecordingSinkWriter
-            #if DEBUG
-            // The manual probe observes Saving before yielding; it needs no artificial stall.
-            writer = RecordingFixture.enabled && fixtureUptime == nil ? HostedFinalizationWriter(session) : session
-            #else
-            writer = session
-            #endif
             let origin = uptime
             #if DEBUG
             if fixtureUptime != nil { (inputs as? HostedRecordingInputs)?.useFixtureClock(origin:origin) }
             #endif
             spectrogram = RecordingSpectrogram.enabled ? RecordingSpectrogram(originUptime:origin,observers:session.pcmObservers) : nil
             timelineStart = origin; lastMicSound = origin; completedElapsedMs = 0; microphoneSilent = false
-            let sink = RecordingSink(session: writer, originHostTime: AVAudioTime.hostTime(forSeconds: origin)) { [weak self] message in
+            let sink = RecordingSink(session: session, originHostTime: AVAudioTime.hostTime(forSeconds: origin)) { [weak self] message in
                 Task { @MainActor in
                     guard let self, self.generation == attempt, self.phase != .saving else { return }
                     self.stop(problem: message)
@@ -203,6 +197,9 @@ import Observation
         }
         phase = .saving
         finishTask = Task { [weak self] in
+            #if DEBUG
+            await RecordingFinalizationFixture.shared.waitIfNeeded()
+            #endif
             var failure: String?
             do { try await Task.detached(priority: .userInitiated) { try sink.finish(problem: problem) }.value }
             catch { failure = error.localizedDescription }
@@ -238,7 +235,7 @@ enum RecordingFixture {
     static var root: URL? {
         #if DEBUG
         guard enabled, let key = LibraryLaunchContext.argument("-CassiniCaptureID"), UUID(uuidString: key) != nil else { return nil }
-        let parent = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniLibrary-" + key)
+        let parent = SettingsFixture.temporaryDirectory.appendingPathComponent("CassiniLibrary-" + key)
         try? FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         return parent.appendingPathComponent("root")
         #else

@@ -317,6 +317,7 @@ private final class CaptureFiles: @unchecked Sendable {
         timer = Timer.scheduledTimer(withTimeInterval:0.25,repeats:true) { [weak self] _ in MainActor.assumeIsolated { self?.poll() } }
     }
     func record() async throws {
+        await TestRecordingController.shared.cancel().value
         guard !shuttingDown, !starting else { return }
         LibraryLocationModel.shared.reload()
         guard LibraryLocationModel.shared.available,!LibraryMoveCoordinator.shared.busy else {
@@ -455,6 +456,10 @@ private final class CaptureFiles: @unchecked Sendable {
         if !blocked, started { service.setAutoRecord(autoRecord,microphone:true) }
     }
     private func created(_ owner: OwnedBrowserCapture, info: BrowserAudioStart, signal: UUID? = nil) async {
+        // Cleanup may suspend while this call ends or shutdown closes admission.
+        // Take the snapshot and validate admission only after that suspension.
+        let test = TestRecordingController.shared
+        if test.hasPendingWork || test.presented { await test.cancel().value }
         let snapshot = owner.snapshot, id = snapshot.manifest.id
         #if DEBUG
         defer { if CaptureFixture.enabled { CaptureFixture.createdFinished?(id,captures[id]?.sourceProblem ?? false,captures[id]?.inputsAdmitted ?? false) } }
@@ -943,6 +948,12 @@ private final class CaptureFiles: @unchecked Sendable {
         RecordingDiskWatch.updateWarning(line)
     }
     #if DEBUG
+    func admitAfterTestCleanupForTesting(_ owner: OwnedBrowserCapture) async {
+        guard CommandLine.arguments.contains("--test-recording-self-test") else { return }
+        await created(owner,info:.init(captureID:"test-cleanup-" + owner.snapshot.manifest.id.uuidString,
+                                      timelineOriginMs:Int(Date().timeIntervalSince1970*1000),microphone:false))
+        for task in Array(settling.values) { await task.value }
+    }
     func setMicrophoneUptimeForTesting(_ ids: [UUID], at time: TimeInterval?) {
         guard CaptureFixture.enabled else { return }
         for id in ids {

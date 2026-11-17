@@ -14,6 +14,7 @@ CORE_ORDER = {n: i for i, n in enumerate(('library', 'recording', 'meeting', 'se
 EXPECTED_BOARDS = frozenset((
     'library', 'library-fr', 'first-run', 'first-run-fr', 'record-first', 'record-first-fr',
     'transcribing', 'transcribing-details', 'meeting', 'meeting-open', 'meeting-find', 'meeting-scrolled', 'meeting-summary', 'recording', 'received', 'received-first', 'export', 'export-success', 'search',
+    'about', 'settings-library', 'settings-browser', 'settings-updates',
     'settings-recording', 'settings-transcription', 'settings-parakeet-recommendation-en-GB',
     'settings-parakeet-recommendation-fr-FR', 'settings-parakeet-recommendation-pt-PT',
     'companion-setup', 'what-is-recorded', 'trash', 'trash-meeting', 'trash-after', 'rename',
@@ -119,7 +120,9 @@ def export_scheme(src: Path, target: Path, scheme: str) -> tuple[dict[str, bytes
             data = path.read_bytes()
             assert data[:8] == PNG_SIG and data[12:16] == b'IHDR', name
             width, height = struct.unpack('>II', data[16:24])
-            if name.startswith('settings-'):
+            if name == 'about':
+                assert width == 300 and 250 <= height <= 500, (name, width, height)
+            elif name.startswith('settings-'):
                 assert width == 700 and 500 <= height <= 700, (name, width, height)
             else:
                 assert (width, height) == (1120, 720), (name, width, height)

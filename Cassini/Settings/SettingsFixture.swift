@@ -2,8 +2,24 @@
 #if DEBUG
 import Foundation
 import AppKit
+import Observation
+
+@MainActor @Observable final class SettingsRenderReadiness {
+    static let shared = SettingsRenderReadiness()
+    var transcription = false
+    var libraryRevision: Int?
+}
 
 enum SettingsFixture {
+    static var temporaryDirectory: URL {
+        // Cocoa can override TMPDIR even in a local test process. The explicitly
+        // opted-in fixture executable uses the caller's external scratch root.
+        if ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1",
+           let path = ProcessInfo.processInfo.environment["TMPDIR"], path.hasPrefix("/") {
+            return URL(fileURLWithPath:path,isDirectory:true)
+        }
+        return FileManager.default.temporaryDirectory
+    }
     static var id: UUID? {
         guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               let id = LibraryLaunchContext.argument("-CassiniSettingsID") else { return nil }
@@ -15,15 +31,31 @@ enum SettingsFixture {
     }
     @MainActor private static var prepared = Set<ObjectIdentifier>()
     @MainActor static func prepare(_ window: NSWindow) {
-        guard let name = LibraryLaunchContext.argument("-CassiniScreenshot"), name.hasPrefix("settings-"),
+        guard let name = LibraryLaunchContext.argument("-CassiniScreenshot"), (name.hasPrefix("settings-") || name == "about"),
               ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               prepared.insert(ObjectIdentifier(window)).inserted else { return }
         window.appearance = NSAppearance(named:LibraryLaunchContext.screenshotDark ? .darkAqua : .aqua)
-        window.setContentSize(NSSize(width:700,height:500)); window.center(); window.makeKeyAndOrderFront(nil)
+        window.setContentSize(name == "about" ? NSSize(width:300,height:330) : NSSize(width:700,height:480)); window.center(); window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps:true)
         guard ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1" else { return }
         Task { @MainActor in
-            try? await Task.sleep(for:.seconds(1))
+            @MainActor func ready() -> Bool {
+                if name == "settings-browser" { return !CompanionSetup.shared.working }
+                if name == "settings-transcription" { return SettingsRenderReadiness.shared.transcription }
+                if name == "settings-library" { return LibraryStore.shared.loaded && SettingsRenderReadiness.shared.libraryRevision == LibraryStore.shared.revision }
+                return true
+            }
+            while !ready() {
+                let (events, signal) = AsyncStream<Void>.makeStream()
+                withObservationTracking { _ = ready() } onChange: { signal.yield(); signal.finish() }
+                var iterator = events.makeAsyncIterator(); _ = await iterator.next()
+            }
+            // Render after the queued SwiftUI layout transaction, never a time delay.
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
+            window.contentView?.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
             guard let frame = window.contentView?.superview else { exit(1) }
             let width = Int(frame.bounds.width.rounded()), height = Int(frame.bounds.height.rounded())
             guard let image = NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:width,pixelsHigh:height,bitsPerSample:8,

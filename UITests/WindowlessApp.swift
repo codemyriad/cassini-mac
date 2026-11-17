@@ -73,7 +73,12 @@ extension LibraryBoards {
         app.typeKey(",",modifierFlags:.command)
         let settings = app.windows["cassini-settings-window"]
         let show = settings.descendants(matching:.any).matching(identifier:"settings-show-menu-bar").matching(NSPredicate(format:"value != nil")).firstMatch
-        XCTAssertTrue(waitForPresent(show,timeout:10)); show.click()
+        XCTAssertTrue(waitForPresent(show,timeout:10))
+        let auto = settings.descendants(matching:.any).matching(identifier:"settings-auto-record").matching(NSPredicate(format:"value != nil")).firstMatch
+        XCTAssertFalse(show.isEnabled)
+        auto.click()
+        waitForWindowless { show.isEnabled }
+        show.click()
         settings.buttons["_XCUI:CloseWindow"].click()
         library.buttons["first-run-record"].click()
         XCTAssertTrue(waitForPresent(app.buttons["record-first-start"],timeout:10)); app.buttons["record-first-start"].click()

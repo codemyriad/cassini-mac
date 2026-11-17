@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
 import CassiniLibrary
+import CassiniModels
 
 struct SavedVoicesSettingsRow: View {
     @State private var voices=SavedVoicesController.shared
@@ -17,8 +18,7 @@ struct SavedVoicesSettingsRow: View {
                     Image(systemName:"chevron.right").accessibilityHidden(true)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("settings-saved-voices")
-        }.padding(18).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
-            .task { await voices.refresh() }
+        }
     }
 }
 struct SavedVoicesView: View {
@@ -36,7 +36,6 @@ struct SavedVoicesView: View {
                     .accessibilityIdentifier("saved-voices-back")
                 Text(UXText.text("savedVoices.privacy.mac")).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
                 if voices.readOnly { Text(UXText.text("savedVoices.newerVersion")).foregroundStyle(CassiniTheme.warnInk) }
-                voiceModel
                 if voices.voices.isEmpty {
                     Text(UXText.text("savedVoices.empty")).foregroundStyle(CassiniTheme.ink2).padding(.vertical,16)
                         .accessibilityIdentifier("saved-voices-empty")
@@ -85,23 +84,6 @@ struct SavedVoicesView: View {
                 Button(UXText.text("confirm.forgetEveryone.primary"),role:.destructive) { voices.forgetEveryone() }
                 Button(UXText.text("common.cancel"),role:.cancel) {}
             } message: { Text(UXText.text("confirm.forgetEveryone.body")) }
-    }
-    private var voiceModel: some View {
-        VStack(alignment:.leading,spacing:12) {
-            HStack {
-                Text(UXText.text("models.recogniseVoices.name")).fontWeight(.semibold)
-                Spacer()
-                if voices.downloading {
-                    ProgressView(value:voices.progress).frame(width:100)
-                    Button(UXText.text("common.cancel")) { voices.cancelDownload() }
-                } else if voices.modelReady {
-                    Button(UXText.text("models.remove")) { voices.removeModel() }.disabled(voices.busy)
-                } else {
-                    Text(UXText.text("format.size.download",["size":LibraryFormat.size(bytes:27_138_478)])).foregroundStyle(CassiniTheme.ink2)
-                    Button(UXText.text("models.download")) { voices.download() }.disabled(voices.busy)
-                }
-            }
-        }.padding(16).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
     }
     private func voiceRow(_ voice: SavedVoice) -> some View {
         HStack(alignment:.top,spacing:12) {
@@ -162,5 +144,31 @@ struct VoiceEnrollmentView: View {
             }
         }.padding(24).frame(width:490).fixedSize(horizontal:false,vertical:true)
             .interactiveDismissDisabled(voices.busy)
+    }
+}
+
+struct SavedVoiceModelRow: View {
+    @State private var voices = SavedVoicesController.shared
+    var body: some View {
+        VStack(alignment:.leading,spacing:12) {
+            HStack {
+                SettingsDescription("models.recogniseVoices.name", "models.recogniseVoices.description.short")
+                Spacer()
+                if voices.downloading {
+                    ProgressView(value:voices.progress).frame(width:100)
+                    Button(UXText.text("common.cancel")) { voices.cancelDownload() }
+                } else if voices.modelReady {
+                    Text(UXText.text("models.statusWithSize",["status":UXText.text("models.status.on"),"size":LibraryFormat.size(bytes:voices.installedBytes)])).foregroundStyle(CassiniTheme.ink2)
+                    Button(UXText.text("models.remove")) { voices.removeModel() }.disabled(voices.busy)
+                } else {
+                    if voices.downloadBytes > 0 { Text(UXText.text("format.size.download",["size":LibraryFormat.size(bytes:voices.downloadBytes)])).foregroundStyle(CassiniTheme.ink2) }
+                    Button(UXText.text("models.download")) { voices.download() }.disabled(voices.busy)
+                }
+            }
+            if let message = voices.message {
+                Text(message).font(.caption).foregroundStyle(CassiniTheme.warnInk)
+                    .accessibilityIdentifier("settings-voice-model-message")
+            }
+        }
     }
 }

@@ -21,6 +21,7 @@ import Sparkle
     var fixtureWaitingTask: Task<Void,Never>? { waiting }
     #endif
     private(set) var available = false
+    private(set) var isUpToDate = false
     private var updaterCanCheck = false
     var canCheckForUpdates: Bool { updaterCanCheck && !readyWhenIdle && !terminating }
     private(set) var readyWhenIdle = false
@@ -36,7 +37,18 @@ import Sparkle
 
     func checkForUpdates() {
         guard canCheckForUpdates else { return }
+        isUpToDate = false
         controller?.checkForUpdates(nil)
+    }
+
+    func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) {
+        let error = error as NSError
+        isUpToDate = error.domain == SUSparkleErrorDomain &&
+            (error.userInfo[SPUNoUpdateFoundReasonKey] as? NSNumber)?.intValue == Int(SPUNoUpdateFoundReason.onLatestVersion.rawValue)
+    }
+    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) { isUpToDate = false }
+    func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        if (error as NSError).code != Int(SUError.noUpdateError.rawValue) { isUpToDate = false }
     }
 
     private func refreshPreferences() {

@@ -186,6 +186,12 @@ struct LibraryView: View {
         .overlay(alignment:.bottom) { MeetingExportNotice() }
         .overlay(alignment:.bottom) { SpeakerEditFailureNotice() }
         #if DEBUG
+        .overlay(alignment:.bottomTrailing) {
+            if RecordingFinalizationFixture.shared.waiting {
+                Button("Finish fixture recording") { RecordingFinalizationFixture.shared.release() }
+                    .accessibilityIdentifier("recording-fixture-finish")
+            }
+        }
         .overlay(alignment:.topLeading) {
             if RecordingFixture.enabled {
                 Text(CaptureNotifications.savedFixtureTitles.joined(separator:"\n")).font(.system(size:1))
@@ -649,17 +655,13 @@ struct LibraryView: View {
                         FirstRunWave().frame(height:compact ? FirstRunHeroMetrics.compactMark : FirstRunHeroMetrics.mark)
                     }
                     VStack(alignment:.leading,spacing:10) {
-                        Text(UXText.text("firstRun.body")).font(.system(size:13)).lineSpacing(4)
+                        Text(UXText.text("firstRun.howTo")).font(.system(size:13)).lineSpacing(4)
                             .fixedSize(horizontal:false,vertical:true)
-                        Text(UXText.text("firstRun.shortcutHint",["shortcut":UXText.text("common.shortcut.record")]))
+                        Text(UXText.text("firstRun.shortcutLine",["shortcut":UXText.text("common.shortcut.record")]))
                             .font(.system(size:11.5))
                         HStack(alignment:.top,spacing:8) {
                             Image(systemName:"lock").accessibilityHidden(true)
-                            if LibraryLocationModel.shared.location.primaryPath == LibraryLocation.standardRoot.path || store.context.screenshot {
-                                Text(UXText.text("firstRun.footer"))
-                            } else {
-                                Text(UXText.text("settings.library.folder.title") + ": " + LibraryLocationModel.shared.displayPath)
-                            }
+                            Text(UXText.text("privacy.onDevice.computer") + " " + UXText.text("firstRun.libraryLocation",["folder":(store.context.screenshot ? LibraryLocationModel.display(LibraryLocation.standardRoot) : LibraryLocationModel.shared.displayPath).replacingOccurrences(of:" › ",with:"/")]))
                         }.font(.system(size:11.5)).fixedSize(horizontal:false,vertical:true)
                     }.foregroundStyle(CassiniTheme.ink2)
                 }.padding(.horizontal,FirstRunHeroMetrics.horizontalPadding)

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AVFoundation
 import CassiniRecording
+import Observation
 
 @MainActor protocol RecordingInputs: AnyObject {
     func authorize() async throws
@@ -112,17 +113,24 @@ import CassiniRecording
     }
     func stop() { timer?.invalidate(); timer = nil }
 }
-/// A deterministic disk-finalization stall makes the production Saving state
-/// observable to hosted UI tests. All file writes still use RecordingSession.
-final class HostedFinalizationWriter: RecordingSinkWriter {
-    var recordedPCM: RecordedPCMPolicy? { session.recordedPCM }
-    private let session: RecordingSession
-    init(_ session: RecordingSession) { self.session = session }
-    var recordingProblem: String? { session.recordingProblem }
-    func addTrack(id: String, label: String, kind: String, sampleRate: Int, channels: Int) throws {
-        try session.addTrack(id: id, label: label, kind: kind, sampleRate: sampleRate, channels: channels)
+/// Explicitly opted-in UI tests release finalization after inspecting Saving.
+/// Suspending the task holds no thread and all writes use RecordingSession.
+@MainActor @Observable final class RecordingFinalizationFixture {
+    static let shared = RecordingFinalizationFixture()
+    private(set) var waiting = false
+    @ObservationIgnored private var continuation: CheckedContinuation<Void,Never>?
+    func waitIfNeeded() async {
+        guard RecordingFixture.enabled,
+              LibraryLaunchContext.argument("-CassiniHoldFinalization") == "YES" else { return }
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            waiting = true
+        }
     }
-    func appendNative(id: String, pcm: Data, offsetMs: Double) throws { try session.appendNative(id: id, pcm: pcm, offsetMs: offsetMs) }
-    func finish(problem: String?) throws { Thread.sleep(forTimeInterval: 1.25); try session.finish(problem: problem) }
+    func release() {
+        let pending = continuation
+        continuation = nil; waiting = false
+        pending?.resume()
+    }
 }
 #endif

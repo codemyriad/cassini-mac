@@ -28,6 +28,8 @@ class ExportUXBoardsTests(unittest.TestCase):
         self.light, self.dark, self.out = self.root / 'light', self.root / 'dark', self.root / 'ux-boards'
         self.light.mkdir(); self.dark.mkdir()
         self._light_png, self._light_settings = make_png(1120, 720, (242, 241, 246, 255)), make_png(700, 520, (242, 241, 246, 255))
+        self._light_about = make_png(300, 330, (242, 241, 246, 255))
+        self._dark_about = make_png(300, 330, (28, 30, 36, 255), filt=4)
         self._dark_png, self._dark_settings = make_png(1120, 720, (28, 30, 36, 255), filt=4), make_png(700, 520, (28, 30, 36, 255), filt=4)
 
     def populate(self, extra_light=(), omit_light=(), extra_dark=(), omit_dark=(), light_rgba=None, dark_rgba=None) -> None:
@@ -35,7 +37,8 @@ class ExportUXBoardsTests(unittest.TestCase):
         light_entries = []
         for idx, name in enumerate(sorted(exporter.EXPECTED_BOARDS - set(omit_light)) + list(extra_light)):
             fn = f'{name}_0_00000000-0000-4000-8000-{idx:012d}.png'
-            size_png = make_png(700 if name.startswith('settings-') else 1120, 520 if name.startswith('settings-') else 720, light_rgba) if light_rgba else (self._light_settings if name.startswith('settings-') else self._light_png)
+            size = (300, 330) if name == 'about' else (700, 520) if name.startswith('settings-') else (1120, 720)
+            size_png = make_png(*size, light_rgba) if light_rgba else (self._light_about if name == 'about' else self._light_settings if name.startswith('settings-') else self._light_png)
             (self.light / fn).write_bytes(size_png)
             light_entries.append({'testIdentifier': f'LibraryBoards/test_{idx}()', 'attachments': [att(fn)]})
         (self.light / 'tree.txt').write_text('ax tree')
@@ -49,18 +52,19 @@ class ExportUXBoardsTests(unittest.TestCase):
         dark_entries = []
         for idx, name in enumerate(sorted(exporter.EXPECTED_BOARDS - set(omit_dark)) + list(extra_dark)):
             fn = f'{name}_0_10000000-0000-4000-8000-{idx:012d}.png'
-            size_png = make_png(700 if name.startswith('settings-') else 1120, 520 if name.startswith('settings-') else 720, dark_rgba) if dark_rgba else (self._dark_settings if name.startswith('settings-') else self._dark_png)
+            size = (300, 330) if name == 'about' else (700, 520) if name.startswith('settings-') else (1120, 720)
+            size_png = make_png(*size, dark_rgba) if dark_rgba else (self._dark_about if name == 'about' else self._dark_settings if name.startswith('settings-') else self._dark_png)
             (self.dark / fn).write_bytes(size_png)
             dark_entries.append({'testIdentifier': f'LibraryBoards/testDark_{idx}()', 'attachments': [att(fn)]})
         (self.dark / 'manifest.json').write_text(json.dumps(dark_entries))
 
-    def test_exports_all_34_light_and_34_dark_pairs_and_writes_pr_shots_manifest(self) -> None:
+    def test_exports_all_38_light_and_38_dark_pairs_and_writes_pr_shots_manifest(self) -> None:
         self.populate()
         with patch.dict(os.environ, {'ImageOS': 'macos15', 'ImageVersion': '20261110.1'}), patch('builtins.print'):
             doc = exporter.export_boards(self.light, self.out, self.dark)
         self.assertEqual((doc['app'], doc['runner']['image_os'], doc['runner']['image_version']), ('mac', 'macos15', '20261110.1'))
         shots = doc['shots']
-        self.assertEqual(len(shots), 68)
+        self.assertEqual(len(shots), 76)
         self.assertEqual({s['path'] for s in shots if s['scheme'] == 'light'}, {f'{n}.png' for n in exporter.EXPECTED_BOARDS})
         self.assertEqual({s['path'] for s in shots if s['scheme'] == 'dark'}, {f'dark/{n}.png' for n in exporter.EXPECTED_BOARDS})
         by_screen: dict[tuple[str, str, str], set[str]] = {}
@@ -70,6 +74,7 @@ class ExportUXBoardsTests(unittest.TestCase):
             by_screen.setdefault((s['screen'], s['lang'], s['device']), set()).add(s['scheme'])
         self.assertTrue(all(v == {'light', 'dark'} for v in by_screen.values()))
         by_path = {s['path']: s for s in shots}
+        self.assertEqual((by_path['about.png']['width'], by_path['about.png']['height']), (300, 330))
         self.assertEqual((by_path['settings-parakeet-recommendation-pt-PT.png']['screen'], by_path['settings-parakeet-recommendation-pt-PT.png']['lang']),
                          ('settings-parakeet-recommendation', 'pt-pt'))
         self.assertEqual((by_path['dark/library-fr.png']['screen'], by_path['dark/library-fr.png']['lang']), ('library', 'fr'))
@@ -81,7 +86,7 @@ class ExportUXBoardsTests(unittest.TestCase):
         originals = {path: path.read_bytes() for source in (self.light, self.dark) for path in source.iterdir()}
         with patch('builtins.print'):
             doc = exporter.export_boards(self.light, self.out, self.dark)
-        self.assertEqual(len(doc['shots']), 68)
+        self.assertEqual(len(doc['shots']), 76)
         self.assertFalse(any(row['screen'].startswith('qa-') for row in doc['shots']))
         self.assertFalse(any(path.name.startswith('qa-') for path in self.out.rglob('*.png')))
         for path, data in originals.items():

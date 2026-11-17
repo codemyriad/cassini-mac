@@ -3,6 +3,34 @@ import AppKit
 import XCTest
 
 final class LibraryBoards: XCTestCase {
+    @MainActor func testPhase2BrowserReadyState() throws {
+        let app = try launch("settings-browser",fixture:"empty",extra:["-CassiniSettingsID",UUID().uuidString])
+        defer { app.terminate() }
+        let window = app.windows["cassini-settings-window"]
+        let add = window.buttons["browser-add"]
+        XCTAssertTrue(add.waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertTrue(add.isEnabled)
+        XCTAssertEqual(add.label,"Add to Chrome")
+        XCTAssertTrue(text("Not set up",in:window))
+        capture(window,name:"settings-browser")
+    }
+    @MainActor func testPhase2AboutAndLocalLicences() throws {
+        let app = try launch("about",fixture:"empty",extra:["-CassiniSettingsID",UUID().uuidString])
+        defer { app.terminate() }
+        let about = app.descendants(matching:.any).matching(identifier:"cassini-about-window").firstMatch
+        XCTAssertTrue(about.waitForExistence(timeout:20),app.debugDescription)
+        let licences = about.descendants(matching:.any).matching(identifier:"about-licences").firstMatch
+        XCTAssertTrue(licences.waitForExistence(timeout:5),about.debugDescription)
+        XCTAssertTrue(about.descendants(matching:.any)["about-help"].exists)
+        XCTAssertTrue(about.descendants(matching:.any)["about-privacy"].exists)
+        capture(about,name:"about")
+        licences.click()
+        XCTAssertTrue(about.sheets.firstMatch.waitForExistence(timeout:5),about.debugDescription)
+        XCTAssertTrue(about.sheets.firstMatch.buttons["Close"].waitForExistence(timeout:5),about.debugDescription)
+        about.sheets.firstMatch.buttons["Close"].click()
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:about.sheets.firstMatch)],timeout:5),.completed)
+    }
+
     @MainActor func testStarsPersistAndSearchCarriesLibraryChoiceThenResetsOtherFilters() throws {
         let defaultsID = UUID().uuidString
         let app = try launch("library",fixture:"main",extra:["-CassiniDefaultsID",defaultsID])
@@ -481,12 +509,12 @@ final class LibraryBoards: XCTestCase {
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:20))
-        XCTAssertTrue(text("⌘R records from anywhere in Cassini",in:window))
-        XCTAssertFalse(text("⌥⌘R records from anywhere in Cassini",in:window))
+        XCTAssertTrue(text("⌘R records from anywhere in Cassini.",in:window))
+        XCTAssertFalse(text("⌥⌘R records from anywhere in Cassini.",in:window))
         window.buttons["first-run-record"].click()
         XCTAssertTrue(window.sheets.staticTexts["Before you record"].waitForExistence(timeout:10))
         XCTAssertTrue(text("Allowed",in:window.sheets.firstMatch))
-        XCTAssertTrue(text("macOS asks you to allow this.",in:window.sheets.firstMatch))
+        XCTAssertTrue(text("macOS asks once more, for Screen & System Audio Recording.",in:window.sheets.firstMatch))
         XCTAssertFalse(text("macOS asks you to allow this next.",in:window.sheets.firstMatch))
         app.typeKey(.escape,modifierFlags:[])
         XCTAssertTrue(window.buttons["first-run-record"].exists)
@@ -908,8 +936,9 @@ final class LibraryBoards: XCTestCase {
         let app = try launch("settings-transcription",fixture:"main",extra:["-CassiniSettingsID",UUID().uuidString]); defer { app.terminate() }
         let window = app.windows["cassini-settings-window"]
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"settings-whistle-row").firstMatch.waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"settings-speech-models-ready").firstMatch.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(text("Writing down what was said",in:window))
-        XCTAssertTrue(text("When Cassini uses the network",in:window))
+        XCTAssertTrue(text("Written down on this computer. Cassini goes online only to download a model you ask for, and each file is checked first.",in:window))
         XCTAssertTrue(window.buttons["settings-download-parakeet"].waitForExistence(timeout:5))
         XCTAssertTrue(text("Parakeet Ultra",in:window)); XCTAssertFalse(text("Tell speakers apart",in:window))
         let parakeet = window.radioButtons["settings-parakeet-radio"]
@@ -979,16 +1008,19 @@ final class LibraryBoards: XCTestCase {
         let shortcutClosed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:window.sheets.firstMatch)
         XCTAssertEqual(XCTWaiter.wait(for:[shortcutClosed],timeout:5),.completed,app.debugDescription)
         XCTAssertFalse(window.sheets.firstMatch.exists)
-        XCTAssertFalse(window.toolbars.buttons["Updates"].exists,"Updates belongs to Recording; Settings keeps the four shared tabs")
-        for title in ["Recording", "Transcription", "Library", "Browser companion"] {
+        XCTAssertTrue(window.toolbars.buttons["Updates"].exists,"D103 puts Updates in the last tab")
+        for title in ["Recording", "Transcription", "Library", "Browser companion", "Updates"] {
             XCTAssertTrue(window.toolbars.buttons[title].exists,window.debugDescription)
         }
-        window.scrollViews.firstMatch.scroll(byDeltaX:0,deltaY:-500)
+        window.toolbars.buttons["Updates"].click()
         let updatesToggle = window.descendants(matching:.any).matching(identifier:"settings-automatic-updates").firstMatch
         XCTAssertTrue(updatesToggle.waitForExistence(timeout:5),window.debugDescription)
         XCTAssertTrue(window.buttons["settings-check-updates"].exists,window.debugDescription)
+        capture(window,name:"settings-updates")
         window.toolbars.buttons["Library"].click()
         XCTAssertTrue(window.buttons["settings-move-library"].waitForExistence(timeout:5))
+        XCTAssertTrue(window.descendants(matching:.any)["settings-library-stats"].waitForExistence(timeout:10))
+        capture(window,name:"settings-library")
         window.buttons["settings-move-library"].click()
         let chooser = app.windows["open-panel"]
         XCTAssertTrue(chooser.waitForExistence(timeout:5),app.debugDescription)
@@ -1290,7 +1322,7 @@ final class LibraryBoards: XCTestCase {
         capture(window,name:"recording-non-silent")
     }
     @MainActor func testRecordingEditedTitleSurvivesSavedSelection() throws {
-        let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
+        let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString,"-CassiniHoldFinalization","YES"])
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:20))
@@ -1302,6 +1334,8 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(title.waitForExistence(timeout:10))
         title.click(); app.typeKey("a",modifierFlags:.command); title.typeText("Saved meeting for switch")
         window.buttons["recording-page-stop"].click()
+        XCTAssertTrue(window.buttons["recording-fixture-finish"].waitForExistence(timeout:5))
+        window.buttons["recording-fixture-finish"].click()
         let saved = NSPredicate { _,_ in window.buttons["meeting-play"].exists && window.buttons["meeting-play"].isEnabled }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:saved,object:nil)],timeout:10),.completed)
         app.typeKey("r",modifierFlags:.command)
@@ -1320,6 +1354,7 @@ final class LibraryBoards: XCTestCase {
         // Re-select while the producer is flushing; completion must stay in split.
         window.outlines.staticTexts["Saved meeting for switch"].click()
         liveRow.click()
+        window.buttons["recording-fixture-finish"].click()
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:saved,object:nil)],timeout:10),.completed)
         XCTAssertFalse(window.buttons["meeting-back"].exists)
     }
@@ -1415,9 +1450,10 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.sheets.buttons["record-first-start"].exists)
         XCTAssertTrue(text("macOS asks you to allow this.", in: window.sheets.firstMatch))
         XCTAssertFalse(text("macOS asks you to allow this next.",in:window.sheets.firstMatch))
-        let explanation = window.sheets.staticTexts["Cassini also records the sound of your meeting apps so the other participants are on the recording."]
+        let explanation = window.sheets.staticTexts["The others in your meeting app, so they are on the recording too."]
         XCTAssertTrue(explanation.exists)
-        XCTAssertGreaterThan(explanation.frame.height, 28, "The complete explanation must wrap, rather than truncate")
+        XCTAssertTrue(window.sheets.firstMatch.frame.contains(explanation.frame), "The plain explanation fits inside the sheet")
+        XCTAssertTrue(window.sheets.buttons["record-first-test"].isHittable)
         XCTAssertEqual(window.toolbars.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", "Library", "Library")).count,0)
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"first-run-library").firstMatch.exists,
                       "First-run consent keeps Library as an accessibility heading")
@@ -1432,7 +1468,7 @@ final class LibraryBoards: XCTestCase {
         defer { app.terminate() }
         let window = app.windows["cassini-settings-window"]
         XCTAssertTrue(window.buttons["settings-change-shortcut"].waitForExistence(timeout: 20), app.debugDescription)
-        for title in ["Recording", "Transcription", "Library", "Browser companion"] {
+        for title in ["Recording", "Transcription", "Library", "Browser companion", "Updates"] {
             window.toolbars.buttons[title].click()
             capture(window, name: "qa-settings-" + title)
         }
@@ -1641,7 +1677,7 @@ final class LibraryBoards: XCTestCase {
 
     @MainActor func testCaptureWritesIntoLibraryAndSaves() throws {
         let id = UUID().uuidString
-        let app = try launch("first-run", fixture: "empty", extra: ["--fixture-library-recording", "-CassiniCaptureID", id])
+        let app = try launch("first-run", fixture: "empty", extra: ["--fixture-library-recording", "-CassiniCaptureID", id,"-CassiniHoldFinalization","YES"])
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20), app.debugDescription)
@@ -1662,6 +1698,8 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.textFields["recording-title"].exists,"Keep the recording pane during tail flush")
         XCTAssertFalse(window.buttons["preview-play"].exists)
         XCTAssertTrue(window.staticTexts["Saving…"].waitForExistence(timeout: 5), window.debugDescription)
+        XCTAssertTrue(window.buttons["recording-fixture-finish"].waitForExistence(timeout:5))
+        window.buttons["recording-fixture-finish"].click()
         let saved = NSPredicate { _, _ in window.buttons["meeting-play"].exists && window.buttons["meeting-play"].isEnabled && !window.staticTexts["Saving…"].exists }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: saved, object: nil)], timeout: 10), .completed, window.debugDescription)
         XCTAssertFalse(window.buttons["recording-stop"].exists)
@@ -2092,7 +2130,7 @@ final class LibraryBoards: XCTestCase {
                 XCTAssertTrue(window.frame.contains(line.frame),window.debugDescription)
                 XCTAssertLessThan(line.frame.height,100,"Each headline stays on one line")
             }
-            XCTAssertTrue(text("Recordings and transcripts stay on this computer, in Music/Cassini.", in: window))
+            XCTAssertTrue(text("Written down on this computer. The audio never leaves it. Your Library is Music/Cassini.", in: window))
             let title = window.staticTexts["library-toolbar-title"]
             XCTAssertFalse(title.exists,"Library is an accessible heading, without a visible toolbar title")
             XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"first-run-library").firstMatch.exists)

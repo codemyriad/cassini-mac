@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var confirmingQuit = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        _ = TestRecordingController.shared // Sweep abandoned D60 test audio before admitting another test.
         ModelNotices.configureMenu()
         menuTrackingObservers = [NSMenu.didBeginTrackingNotification, NSMenu.didEndTrackingNotification].map { name in
             NotificationCenter.default.addObserver(forName:name,object:nil,queue:.main) { notification in
@@ -103,6 +104,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--voices-self-test") {
             Task { await SavedVoicesSelfTest.run() }; return
         }
+        if CommandLine.arguments.contains("--test-recording-self-test") {
+            Task { await TestRecordingSelfTest.run() }; return
+        }
         if CommandLine.arguments.contains("--settings-self-test") {
             Task { @MainActor in await SettingsSelfTest.run() }; return
         }
@@ -162,6 +166,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !confirmingQuit else { return .terminateLater }
+        let testHadWork = TestRecordingController.shared.hasPendingWork
+        let testCleanup = TestRecordingController.shared.cancel()
         ApplicationUpdates.shared.beginTermination()
         if !RecordingConfirmation.active {
             let queue = TranscriptionQueue.shared
@@ -169,7 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let exports = MeetingExportCoordinator.shared
             let bulkExports = BulkZipExportCoordinator.shared
             let moves = LibraryMoveCoordinator.shared
-            let wait = MeetingRenameCoordinator.shared.working || RecordingOverview.saving || queue.isBusy || imports.isBusy || exports.isBusy || bulkExports.isBusy || moves.busy || MeetingTrashCoordinator.shared.busy || RecordingPageModel.hasPendingEdits
+            let wait = testHadWork || MeetingRenameCoordinator.shared.working || RecordingOverview.saving || queue.isBusy || imports.isBusy || exports.isBusy || bulkExports.isBusy || moves.busy || MeetingTrashCoordinator.shared.busy || RecordingPageModel.hasPendingEdits
             CaptureCollection.shared.beginShutdown()
             imports.beginShutdown()
             MeetingRenameCoordinator.shared.beginShutdown()
@@ -182,6 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             confirmingQuit = true
             DispatchQueue.main.async { [weak self] in
                 Task { @MainActor in
+                    await testCleanup.value
                     await RecordingPageModel.flushAll()
                     await RecordingController.shared.finishTask?.value
                     await CaptureCollection.shared.shutdown()
@@ -214,6 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in
                     let stop = choice == .stop
                     if stop {
+                        await testCleanup.value
                         CaptureCollection.shared.beginShutdown()
                         LibraryMoveCoordinator.shared.beginShutdown()
                         MeetingTrashCoordinator.shared.beginShutdown()

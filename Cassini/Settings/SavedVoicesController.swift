@@ -15,6 +15,8 @@ import CassiniWhistle
     private(set) var snapshot: SavedVoicesSnapshot?
     private(set) var busy=false
     private(set) var modelReady=false
+    private(set) var downloadBytes: Int64 = 0
+    private(set) var installedBytes: Int64 = 0
     private(set) var downloading=false
     private(set) var progress: Double=0
     private(set) var message: String?
@@ -43,6 +45,12 @@ import CassiniWhistle
         SpeechModelController.appData.appendingPathComponent("models/" + ModelPin.savedVoices.id + "/" + ModelPin.savedVoices.sourceSHA256)
     }
     func refresh() async {
+        let manifest = Bundle.main.url(forResource:"voice-model-manifest",withExtension:"json",subdirectory:"UX")
+        if let plan = await Task.detached(priority:.utility,operation:{
+            manifest.flatMap { url in (try? Data(contentsOf:url)).flatMap { try? ModelManifest.plan($0,pin:.savedVoices) } }
+        }).value {
+            downloadBytes = Int64(plan.compressedBytes); installedBytes = Int64(plan.rawBytes)
+        }
         do { snapshot=try await store.snapshot() }
         catch { message=UXText.text("savedVoices.changeFailed") }
         let meetings=LibraryStore.shared.meetings

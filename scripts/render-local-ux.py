@@ -16,8 +16,9 @@ import uuid
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('app',type=Path)
-parser.add_argument('board',choices=['first-run','meeting','recording','received','export','search','settings-recording','settings-transcription','settings-voices','settings-library','settings-browser'])
+parser.add_argument('board',choices=['first-run','meeting','recording','received','export','search','settings-recording','settings-transcription','settings-voices','settings-library','settings-browser','settings-updates','about','record-first'])
 parser.add_argument('--output',type=Path,required=True)
+parser.add_argument('--direct',action='store_true',help='Run the opted-in fixture executable directly when LaunchServices is unavailable')
 parser.add_argument('--listening',choices=['playing','finished'])
 parser.add_argument('--speaker')
 parser.add_argument('--speaker-editor',action='store_true',help='Render the read-only Name a speaker fixture')
@@ -32,13 +33,13 @@ assert not args.speaker_editor or args.board == 'meeting', 'Speaker editor requi
 assert not args.transcribing or args.board == 'meeting', 'Transcribing preview requires the meeting fixture'
 assert os.environ.get('CASSINI_LOCAL_WORKFLOW_TESTS') == '1', 'Explicit local workflow opt-in required'
 app = args.app.resolve()
-fixture = app/'Contents/Resources/Fixtures/Library'/('received-only' if args.board == 'received' else 'empty' if args.board == 'first-run' else 'main')
+fixture = app/'Contents/Resources/Fixtures/Library'/('received-only' if args.board == 'received' else 'empty' if args.board in ('first-run','record-first') else 'main')
 assert fixture.is_dir(),fixture
 with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
     output,stderr = Path(temporary)/'stdout.json',Path(temporary)/'stderr.txt'
     render_id = str(uuid.uuid4())
     command = ['open','-W','-n','-a',str(app),'--stdout',str(output),'--stderr',str(stderr),
-               '--env','CASSINI_LOCAL_WORKFLOW_TESTS=1','--env','CASSINI_HOSTED_SCREENSHOTS=1','--args',
+               *(['--env','TMPDIR='+os.environ['TMPDIR']] if os.environ.get('TMPDIR') else []),'--env','CASSINI_LOCAL_WORKFLOW_TESTS=1','--env','CASSINI_HOSTED_SCREENSHOTS=1','--args',
                '-CassiniScreenshot',args.board,'-CassiniRenderID',render_id,'-CassiniFixture',str(fixture),'-CassiniNow','2026-10-27T13:18:00Z',
                '-ApplePersistenceIgnoreState','YES','-AppleLanguages',f'({args.language})','-AppleLocale',
                {'en-GB':'en_GB','it':'it_IT','fr':'fr_FR','es':'es_ES','pt-BR':'pt_BR','pt-PT':'pt_PT'}[args.language],
@@ -55,7 +56,13 @@ with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
         # including a new instance (-n), before reading the final output once.
         # Keep the previous combined launch/report budget only as a hang guard.
         try:
-            subprocess.run(command,check=True,capture_output=True,timeout=35)
+            if args.direct:
+                result = subprocess.run([str(app/'Contents/MacOS/Cassini'), *command[command.index('--args')+1:]],
+                                        env=dict(os.environ,CASSINI_LOCAL_WORKFLOW_TESTS='1',CASSINI_HOSTED_SCREENSHOTS='1'),
+                                        check=True,capture_output=True,timeout=35)
+                output.write_bytes(result.stdout); stderr.write_bytes(result.stderr)
+            else:
+                subprocess.run(command,check=True,capture_output=True,timeout=35)
         except (subprocess.TimeoutExpired,subprocess.CalledProcessError) as error:
             # TimeoutExpired retains bytes even when text mode is requested.
             launcher = (error.stderr or b'').decode('utf-8',errors='replace')
@@ -69,6 +76,8 @@ with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
         assert png[:8] == b'\x89PNG\r\n\x1a\n'
         if args.board.startswith('settings-'):
             assert int.from_bytes(png[16:20],'big') == 700 and 400 <= int.from_bytes(png[20:24],'big') <= 1050
+        elif args.board == 'about':
+            assert int.from_bytes(png[16:20],'big') == 300
         else: assert png[16:24] == bytes.fromhex('00000460000002d0')
         args.output.parent.mkdir(parents=True,exist_ok=True); args.output.write_bytes(png)
         print(args.board,int.from_bytes(png[16:20],'big'),int.from_bytes(png[20:24],'big'),'own-view render')

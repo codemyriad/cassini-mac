@@ -51,7 +51,7 @@ BOARDS_21 = (
     "settings-recording",
     "settings-transcription",
 )
-BOARDS_34 = BOARDS_21 + (
+BOARDS_38 = BOARDS_21 + (
     "transcribing",
     "transcribing-details",
     "received-first",
@@ -65,6 +65,10 @@ BOARDS_34 = BOARDS_21 + (
     "meeting-find",
     "meeting-scrolled",
     "meeting-summary",
+    "about",
+    "settings-library",
+    "settings-browser",
+    "settings-updates",
 )
 
 
@@ -116,6 +120,9 @@ class MacScreenshotDiffIntegration(unittest.TestCase):
         cls.light_1120 = make_png(1120, 720, (244, 243, 238, 255), "encoder-a")
         cls.light_1120_reencoded = make_png(1120, 720, (244, 243, 238, 255), "encoder-b-different-bytes")
         cls.dark_1120 = make_png(1120, 720, (24, 26, 32, 255), "encoder-a")
+        cls.light_300 = make_png(300, 330, (244, 243, 238, 255), "encoder-a")
+        cls.light_300_reencoded = make_png(300, 330, (244, 243, 238, 255), "encoder-b-different-bytes")
+        cls.dark_300 = make_png(300, 330, (24, 26, 32, 255), "encoder-a")
         cls.light_700 = make_png(700, 560, (244, 243, 238, 255), "encoder-a")
         cls.light_700_reencoded = make_png(700, 560, (244, 243, 238, 255), "encoder-b-different-bytes")
         cls.dark_700 = make_png(700, 560, (24, 26, 32, 255), "encoder-a")
@@ -126,7 +133,7 @@ class MacScreenshotDiffIntegration(unittest.TestCase):
         light_src.mkdir(parents=True)
         dark_src.mkdir(parents=True)
         manifest = []
-        for idx, board in enumerate(BOARDS_34):
+        for idx, board in enumerate(BOARDS_38):
             is_settings = board.startswith("settings-")
             l_bytes = (
                 (self.light_700_reencoded if is_settings else self.light_1120_reencoded)
@@ -134,6 +141,9 @@ class MacScreenshotDiffIntegration(unittest.TestCase):
                 else (self.light_700 if is_settings else self.light_1120)
             )
             d_bytes = self.dark_700 if is_settings else self.dark_1120
+            if board == "about":
+                l_bytes = self.light_300_reencoded if reencoded else self.light_300
+                d_bytes = self.dark_300
             l_file = f"{board}_0_{idx}.png"
             d_file = f"{board}_1_{idx}.png"
             (light_src / l_file).write_bytes(l_bytes)
@@ -196,7 +206,7 @@ class MacScreenshotDiffIntegration(unittest.TestCase):
             self.assertIn("pr-shots.py self-test passed", res.stdout)
             self.assertEqual(outer_summary.read_text(encoding="utf-8"), "# Outer job summary\n")
 
-    def test_reencoded_identical_pixels_across_68_mac_boards_report_no_visual_change(self) -> None:
+    def test_reencoded_identical_pixels_across_76_mac_boards_report_no_visual_change(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             before = self.write_exported_boards(work / "base", reencoded=False)
@@ -242,9 +252,9 @@ class MacScreenshotDiffIntegration(unittest.TestCase):
                 os.environ.pop("GITHUB_STEP_SUMMARY", None)
                 with contextlib.redirect_stdout(io.StringIO()):
                     data = self.shots.diff(args)
-            self.assertEqual(len(data["rows"]), 68)
+            self.assertEqual(len(data["rows"]), 76)
             self.assertTrue(all(r["status"] == "unchanged" for r in data["rows"]))
-            self.assertIn("No visual change in 34 screens (light and dark).", (out / "block.md").read_text())
+            self.assertIn("No visual change in 38 screens (light and dark).", (out / "block.md").read_text())
             self.assertEqual(list(out.rglob("*.png")), [])
 
     def test_single_changed_mac_board_emits_both_modes_and_downloadable_summary(self) -> None:
@@ -320,7 +330,7 @@ class MacScreenshotDiffIntegration(unittest.TestCase):
             self.assertEqual(set(validated), expected_pngs)
 
             summary_md = summary_file.read_text(encoding="utf-8")
-            self.assertIn("1 screens changed, 33 unchanged.", summary_md)
+            self.assertIn("1 screens changed, 37 unchanged.", summary_md)
             self.assertIn("Library · light", summary_md)
             self.assertIn("Library · dark", summary_md)
             self.assertIn("https://github.com/codemyriad/cassini-mac/actions/runs/43199999999#artifacts", summary_md)

@@ -35,6 +35,8 @@ import CassiniLibrary
     var selectedBrowserName: String { selectedBrowser?.name ?? suggestedBrowser ?? "" }
     private static var fixtureKind: String? {
         #if DEBUG
+        if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
+           LibraryLaunchContext.argument("-CassiniScreenshot") == "settings-browser" { return "first" }
         guard MeetingRenameFixture.enabled, let kind = LibraryLaunchContext.argument("-CassiniBrowserCase"),
               ["absent","first","lost","health-ready","health-idle","health-reload","health-files","health-outdated","health-legacy"].contains(kind) else { return nil }
         return kind
