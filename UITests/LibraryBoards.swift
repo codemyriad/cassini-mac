@@ -3,6 +3,17 @@ import AppKit
 import XCTest
 
 final class LibraryBoards: XCTestCase {
+    @MainActor func testPhase2BrowserReadyState() throws {
+        let app = try launch("settings-browser",fixture:"empty",extra:["-CassiniSettingsID",UUID().uuidString])
+        defer { app.terminate() }
+        let window = app.windows["cassini-settings-window"]
+        let add = window.buttons["browser-add"]
+        XCTAssertTrue(add.waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertTrue(add.isEnabled)
+        XCTAssertEqual(add.title,"Add to Chrome")
+        XCTAssertTrue(text("Not set up",in:window))
+        capture(window,name:"settings-browser")
+    }
     @MainActor func testPhase2AboutAndLocalLicences() throws {
         let app = try launch("about",fixture:"empty",extra:["-CassiniSettingsID",UUID().uuidString])
         defer { app.terminate() }

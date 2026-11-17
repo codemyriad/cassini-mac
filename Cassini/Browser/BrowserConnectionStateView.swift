@@ -11,7 +11,7 @@ struct BrowserConnectionStateView: View {
     var body: some View {
         VStack(alignment:.leading,spacing:10) {
             HStack(alignment:.firstTextBaseline,spacing:12) {
-                Text(setup.stateLine).fixedSize(horizontal:false,vertical:true).accessibilityIdentifier(identifier)
+                Text(phase2 && !captures.connected && !captures.needsUpdate && !setup.working && !setup.failed && !setup.noBrowser ? UXText.text("settings.browser.status.notSetUp") : setup.stateLine).fixedSize(horizontal:false,vertical:true).accessibilityIdentifier(identifier)
                 Spacer(minLength:8)
                 if !captures.connected || phase2 {
                     if setup.failed && !captures.connected {

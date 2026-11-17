@@ -40,6 +40,7 @@ enum SettingsFixture {
         guard ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1" else { return }
         Task { @MainActor in
             @MainActor func ready() -> Bool {
+                if name == "settings-browser" { return !CompanionSetup.shared.working }
                 if name == "settings-transcription" { return SettingsRenderReadiness.shared.transcription }
                 if name == "settings-library" { return LibraryStore.shared.loaded && SettingsRenderReadiness.shared.libraryRevision == LibraryStore.shared.revision }
                 return true

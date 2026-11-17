@@ -21,7 +21,7 @@ import Sparkle
         guard hosted || env["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1", let id = SettingsFixture.id,
               RecordingFixture.enabled, RecordingFixture.transcribes,
               LibraryLaunchContext.argument("-CassiniSlowTranscription") == "YES", let original = RecordingFixture.root else { exit(78) }
-        let destination = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniSettingsDestination-" + id.uuidString)
+        let destination = SettingsFixture.temporaryDirectory.appendingPathComponent("CassiniSettingsDestination-" + id.uuidString)
         let config = LibraryLaunchContext.locationFile
         let recorder = RecordingController.shared, runtime = RecordingRuntime.shared, queue = TranscriptionQueue.shared
         var output: Data?, failure: Error?
@@ -192,7 +192,7 @@ import Sparkle
             _ = try send(["type":"track","id":"remote","kind":"remote","sampleRate":48000,"channels":1])
             _ = try send(["type":"audio","id":"remote","sequence":0,"offsetMs":0,"pcm":Data([0,0,64,1]).base64EncodedString()])
             _ = try send(["type":"stop"])
-            let noticesRoot = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniSettingsNotices-" + id.uuidString)
+            let noticesRoot = SettingsFixture.temporaryDirectory.appendingPathComponent("CassiniSettingsNotices-" + id.uuidString)
             defer { try? FileManager.default.removeItem(at:noticesRoot) }
             let noticesLabel = UXText.text("about.modelNotices")
             // A genuine Sparkle preference binding, without starting its
@@ -254,7 +254,7 @@ import Sparkle
         guard SettingsFixture.id != nil, RecordingFixture.enabled, !RecordingFixture.transcribes,
               let original = RecordingFixture.root, let id = SettingsFixture.id else { exit(78) }
         let config = LibraryLaunchContext.locationFile
-        let destination = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniSettingsDestination-" + id.uuidString)
+        let destination = SettingsFixture.temporaryDirectory.appendingPathComponent("CassiniSettingsDestination-" + id.uuidString)
         do {
             let location = try LibraryLocation.read(file:config)
             let names = location.pendingMoves.map(\.folderName)
