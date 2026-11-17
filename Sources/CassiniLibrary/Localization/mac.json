@@ -52,7 +52,7 @@
           "text": "Cassini registra il tuo microfono in una traccia separata della riunione su questo computer."
         },
         "fr": {
-          "text": "Cassini enregistre votre microphone sur une piste distincte de la réunion, sur cet ordinateur."
+          "text": "Cassini enregistre votre microphone sur une piste distincte au sein de la réunion, sur cet ordinateur."
         },
         "es": {
           "text": "Cassini graba tu micrófono en una pista separada de la reunión en este equipo."
@@ -115,7 +115,7 @@
           "text": "Nessun microfono supportato disponibile. Scegli un ingresso nelle impostazioni Suono. Gli ingressi multicanale registrano i canali 1 e 2."
         },
         "fr": {
-          "text": "Aucun microphone compatible n’est disponible. Choisissez une entrée dans les réglages Son. Les entrées multicanaux enregistrent les canaux 1 et 2."
+          "text": "Aucun microphone compatible n’est disponible. Choisissez une entrée dans les réglages Son. Les entrées multicanales enregistrent les canaux 1 et 2."
         },
         "es": {
           "text": "No hay ningún micrófono compatible disponible. Elige una entrada en los ajustes de Sonido. Las entradas multicanal graban los canales 1 y 2."
@@ -181,7 +181,7 @@
           "text": "Échec de l’opération « {operation} » ({status}). Vérifiez Réglages Système → Confidentialité et sécurité → Enregistrement de l’écran et de l’audio système, puis réessayez."
         },
         "es": {
-          "text": "Falló la operación «{operation}» ({status}). Revisa Ajustes del Sistema → Privacidad y seguridad → Grabación de pantalla y del audio del sistema y vuelve a intentarlo."
+          "text": "Falló la operación “{operation}” ({status}). Revisa Ajustes del Sistema → Privacidad y seguridad → Grabación de pantalla y del audio del sistema e inténtalo de nuevo."
         },
         "pt-BR": {
           "text": "A operação “{operation}” falhou ({status}). Verifique Ajustes do Sistema → Privacidade e Segurança → Gravação de Tela e Áudio do Sistema e tente novamente."
@@ -385,19 +385,19 @@
       "en": "Cassini files, Opus, MP3, M4A, WAV, FLAC, and ZIP",
       "l10n": {
         "it": {
-          "text": "file Cassini, Opus, MP3, M4A, WAV, FLAC e ZIP"
+          "text": "File Cassini, Opus, MP3, M4A, WAV, FLAC e ZIP"
         },
         "fr": {
-          "text": "fichiers Cassini, Opus, MP3, M4A, WAV, FLAC et ZIP"
+          "text": "Fichiers Cassini, Opus, MP3, M4A, WAV, FLAC et ZIP"
         },
         "es": {
-          "text": "archivos Cassini, Opus, MP3, M4A, WAV, FLAC y ZIP"
+          "text": "Archivos Cassini, Opus, MP3, M4A, WAV, FLAC y ZIP"
         },
         "pt-BR": {
-          "text": "arquivos Cassini, Opus, MP3, M4A, WAV, FLAC e ZIP"
+          "text": "Arquivos Cassini, Opus, MP3, M4A, WAV, FLAC e ZIP"
         },
         "pt-PT": {
-          "text": "ficheiros Cassini, Opus, MP3, M4A, WAV, FLAC e ZIP"
+          "text": "Ficheiros Cassini, Opus, MP3, M4A, WAV, FLAC e ZIP"
         }
       }
     },

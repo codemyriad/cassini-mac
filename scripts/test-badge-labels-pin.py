@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Exercise pin drift rejection without network or app resources."""
 import importlib.util
+import hashlib
+import json
 from pathlib import Path
 import shutil
 import tempfile
@@ -13,6 +15,23 @@ pin=importlib.util.module_from_spec(spec);spec.loader.exec_module(pin)
 
 class BadgePinTests(unittest.TestCase):
     def test_merged_snapshot(self):pin.verify()
+
+    def test_rehashed_vectors_with_stale_copy_are_rejected(self):
+        for name,section,field in [('states-vectors.json','vectors','badge'),
+                                   ('format-vectors.json','previewSubtitle','out')]:
+            with self.subTest(file=name),tempfile.TemporaryDirectory() as directory:
+                folder=Path(directory)/'snapshot';shutil.copytree(pin.FOLDER,folder)
+                file=folder/name;document=json.loads(file.read_text())
+                vector=next(v for v in document[section] if
+                            (v.get('badge') or {}).get('kind')=='received' or v.get('received'))
+                if field=='badge':vector['badge']['text']='Received'
+                else:vector['out']=vector['out'].replace('Imported','Received')
+                file.write_text(json.dumps(document))
+                manifest=folder/'UPSTREAM.json';metadata=json.loads(manifest.read_text())
+                metadata['files'][name]['sha256']=hashlib.sha256(file.read_bytes()).hexdigest()
+                manifest.write_text(json.dumps(metadata))
+                with patch.object(pin,'FOLDER',folder):
+                    with self.assertRaises(AssertionError):pin.verify()
 
     def test_catalog_vector_and_expected_drift_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
