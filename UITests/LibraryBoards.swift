@@ -26,6 +26,9 @@ final class LibraryBoards: XCTestCase {
             XCTAssertTrue(toggle.waitForExistence(timeout:20),reopened.debugDescription)
             XCTAssertEqual(String(describing:try XCTUnwrap(toggle.value)),enabled ? "1":"0")
             XCTAssertFalse(reopened.buttons["voices-question-enable"].exists,"Either answer survives relaunch")
+            if !toggle.isHittable { settings.scrollViews.firstMatch.scroll(byDeltaX:0,deltaY:-400) }
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"hittable == true"),object:toggle)],timeout:5),.completed)
+            if enabled { capture(settings,name:"qa-remember-voices") }
             toggle.click()
             let changed = NSPredicate { _,_ in String(describing:toggle.value ?? "") == (enabled ? "0":"1") }
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:changed,object:nil)],timeout:5),.completed)
