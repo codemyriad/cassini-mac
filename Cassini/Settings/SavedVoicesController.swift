@@ -13,6 +13,7 @@ import CassiniWhistle
     static let shared=SavedVoicesController()
     let store=SavedVoicesStore(directory:SpeechModelController.appData.appendingPathComponent("voices",isDirectory:true))
     private(set) var snapshot: SavedVoicesSnapshot?
+    private(set) var loaded=false
     private(set) var busy=false
     private(set) var modelReady=false
     private(set) var downloadBytes: Int64 = 0
@@ -45,6 +46,10 @@ import CassiniWhistle
         SpeechModelController.appData.appendingPathComponent("models/" + ModelPin.savedVoices.id + "/" + ModelPin.savedVoices.sourceSHA256)
     }
     func refresh() async {
+        #if DEBUG
+        do { try await SavedVoicesFixture.prepare(store) }
+        catch { message=UXText.text("savedVoices.changeFailed") }
+        #endif
         let manifest = Bundle.main.url(forResource:"voice-model-manifest",withExtension:"json",subdirectory:"UX")
         if let plan = await Task.detached(priority:.utility,operation:{
             manifest.flatMap { url in (try? Data(contentsOf:url)).flatMap { try? ModelManifest.plan($0,pin:.savedVoices) } }
@@ -60,6 +65,7 @@ import CassiniWhistle
             Dictionary(uniqueKeysWithValues:profiles.map { ($0.id,$0.meetings.filter { keys.contains($0) }.count) })
         }.value
         let file=Self.modelDirectory.appendingPathComponent("3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx")
+        defer { loaded=true }
         modelReady=await Task.detached(priority:.utility) {
             guard let size=try? file.resourceValues(forKeys:[.fileSizeKey,.isSymbolicLinkKey]),
                   size.fileSize == 29_596_978, size.isSymbolicLink != true,

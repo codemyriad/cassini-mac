@@ -231,6 +231,7 @@ private struct SettingsBrowserView: View {
 }
 
 private struct SettingsTranscriptionView: View {
+    @State private var voicePreferences = VoicePreferences.shared
     @State private var models = SpeechModelController.shared
     @State private var weightSize = ""
     @State private var downloadBytes: Int64 = 0
@@ -304,6 +305,10 @@ private struct SettingsTranscriptionView: View {
                 .accessibilityIdentifier(models.recommendationReady ? "settings-speech-models-ready" : "settings-speech-models-loading")
             SettingsGroup("common.speakers", subtitle:"settings.transcription.speakers.description") {
                 SavedVoiceModelRow()
+                Divider()
+                Toggle(isOn:$voicePreferences.remember) {
+                    SettingsDescription("voices.rememberDefault.title", "voices.rememberDefault.subtitle")
+                }.toggleStyle(.switch).accessibilityIdentifier("settings-remember-voices")
                 Divider()
                 SavedVoicesSettingsRow()
             }

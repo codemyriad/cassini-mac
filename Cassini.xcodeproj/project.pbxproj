@@ -19,6 +19,7 @@
 		164C9949FF793B6793EF5BC9 /* CassiniQuickLook.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F4170CE135FEC55FBB8EB11C /* CassiniQuickLook.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		16E8B13A764F3F04D0F27EE1 /* CaptureDiskWatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127092BBB0CAF57C83F84D65 /* CaptureDiskWatch.swift */; };
 		184B39919EE900669A4FD01E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52CCD520AEB3FB56F74F1B43 /* AppDelegate.swift */; };
+		1C57C608B655DF2546FF4CEF /* SavedVoicesFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDD767A4EE78D305D477D1A1 /* SavedVoicesFixture.swift */; };
 		1D01F0FC29FED44F688C1508 /* CassiniWhistle in Frameworks */ = {isa = PBXBuildFile; productRef = 6DC84AF01711048FD74E3E5D /* CassiniWhistle */; };
 		1DD201913F05E4F9B99EB3FE /* SavedVoicesController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4888227EC3BD2F85C8FFEBD /* SavedVoicesController.swift */; };
 		1EEAD6E0D3422512F62D7200 /* TrashSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18471E0D1FE5E9C8D968ECB5 /* TrashSelfTest.swift */; };
@@ -134,6 +135,7 @@
 		B600CAE3C546AA4815EA7F2D /* CaptureCollection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56BFD91EE1AA0C18EDF77D85 /* CaptureCollection.swift */; };
 		B6C47B7A570CE6F8A61B56DD /* ModelNetworkSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C126544A829D6E9C14235B /* ModelNetworkSelfTest.swift */; };
 		B8E9025E2FBCA691CBF6DA86 /* LibraryBadgeCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89B82369054823AC34F0C526 /* LibraryBadgeCatalog.swift */; };
+		BB752AE2AD9A7A34BD98A1B0 /* VoicePreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BF0CD5C5A22C560720F0995 /* VoicePreferences.swift */; };
 		BBA405927990B28446051D29 /* RecordingInputs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63E9253548AF3DCF4EB9FCF2 /* RecordingInputs.swift */; };
 		BCDAA96FFAC6FE4344426B37 /* CassiniBrandMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96535153135210D2F5E1E324 /* CassiniBrandMark.swift */; };
 		C455EC9E42F5F34E0DBA1FE6 /* RecordingDiskWatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76B4EEA381ED8F730214EAE2 /* RecordingDiskWatch.swift */; };
@@ -145,6 +147,7 @@
 		CCFA0DA9889584855CF34F1A /* LibraryKeyboardMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D7A75EA903A55281DA87E2F /* LibraryKeyboardMenu.swift */; };
 		CDA370EF184F19BD536EBB3E /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FDC2D28CF9C48F3E7198A41F /* Quartz.framework */; };
 		CDBCA4DEC8524A0332D55FE1 /* TranscriptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B79AA192F091A681F72D72CE /* TranscriptBuilder.swift */; };
+		D3AFEB58E280CA3B45A66695 /* VoicesQuestionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94DD3DD2819C040061339AD5 /* VoicesQuestionView.swift */; };
 		D452A448B93E2DBB03D96E4A /* LibraryImportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95B6363B151904ED6F7CAD8B /* LibraryImportCoordinator.swift */; };
 		D49F9D953C8407319F47424E /* LegacyDocumentModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB744CF6A1F227F05C2E43D7 /* LegacyDocumentModel.swift */; };
 		D5C35F39B82EBD10D86C54C6 /* LibraryDropZone.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2BD17D5179958CB9DAD7A4C /* LibraryDropZone.swift */; };
@@ -276,6 +279,7 @@
 		1306467A5EEEC9D698F5B4E9 /* Service.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Service.swift; sourceTree = "<group>"; };
 		13D10107C4468265FDC81753 /* MeetingExportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingExportCoordinator.swift; sourceTree = "<group>"; };
 		14D797660C8DCEB7D4A23580 /* MeetingCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingCard.swift; sourceTree = "<group>"; };
+		1822B9A1C24C962556E2DD56 /* cassini-mac-d-1080 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac-d-1080"; path = .; sourceTree = SOURCE_ROOT; };
 		18471E0D1FE5E9C8D968ECB5 /* TrashSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashSelfTest.swift; sourceTree = "<group>"; };
 		19C4A85BA1F7C8A0364F585D /* RecordingPageModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPageModel.swift; sourceTree = "<group>"; };
 		1A85AD4C9B8EEFC8765DCF5B /* MeetingRenameCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRenameCoordinator.swift; sourceTree = "<group>"; };
@@ -303,6 +307,7 @@
 		41EF55724D148FFB94A0BE77 /* UpdateDeferralSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateDeferralSelfTest.swift; sourceTree = "<group>"; };
 		493B60B096D031A55BC54864 /* WhatIsRecordedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatIsRecordedView.swift; sourceTree = "<group>"; };
 		4A2328A25C9E4B5E0E8EDF6B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		4BF0CD5C5A22C560720F0995 /* VoicePreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePreferences.swift; sourceTree = "<group>"; };
 		4C59CB62176BA2240C76DA86 /* TestRecordingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestRecordingController.swift; sourceTree = "<group>"; };
 		4CD8CFA53B579FA8BAEF8DC9 /* CaptureActivityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureActivityStore.swift; sourceTree = "<group>"; };
 		4D7D2C9AE0C0C1CC85D270BB /* LibrarySearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySearchView.swift; sourceTree = "<group>"; };
@@ -321,7 +326,6 @@
 		6363021D88C03DAD2BB0F6AE /* CaptureFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureFixture.swift; sourceTree = "<group>"; };
 		63E9253548AF3DCF4EB9FCF2 /* RecordingInputs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingInputs.swift; sourceTree = "<group>"; };
 		642BF5E60FF9A1A28395F1C6 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		64CF6AC7D7B91DDFBFD931B6 /* cassini-mac-d-1079 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac-d-1079"; path = .; sourceTree = SOURCE_ROOT; };
 		65BF49C592097C68C439F4F6 /* MeetingTrashCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingTrashCoordinator.swift; sourceTree = "<group>"; };
 		69E1FB2AB082E4582CBD8EB9 /* SearchSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchSelfTest.swift; sourceTree = "<group>"; };
 		6DDE6CF7B745BF0D21C9075B /* RecordingDetailsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingDetailsSheet.swift; sourceTree = "<group>"; };
@@ -348,6 +352,7 @@
 		8DEEE9B7ECB69C54C0B2D9DB /* MeetingTranscriptText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingTranscriptText.swift; sourceTree = "<group>"; };
 		939FFE6582BA0ADDF5FEFBFE /* CassiniTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CassiniTheme.swift; sourceTree = "<group>"; };
 		94C9C1C73010D4F2A7AEF6D4 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		94DD3DD2819C040061339AD5 /* VoicesQuestionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicesQuestionView.swift; sourceTree = "<group>"; };
 		951931138AC4567A0258C588 /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = it.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		95B6363B151904ED6F7CAD8B /* LibraryImportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryImportCoordinator.swift; sourceTree = "<group>"; };
 		96535153135210D2F5E1E324 /* CassiniBrandMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CassiniBrandMark.swift; sourceTree = "<group>"; };
@@ -380,6 +385,7 @@
 		CB44372470BD97C4687A2B05 /* CassiniTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CassiniTokens.swift; sourceTree = "<group>"; };
 		CD057B32C9901BC49239FFBC /* LegacyOpening.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyOpening.swift; sourceTree = "<group>"; };
 		CD9CA177C260FB3ED32BE1F0 /* Licenses */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Licenses; path = Cassini/Resources/Licenses; sourceTree = SOURCE_ROOT; };
+		CDD767A4EE78D305D477D1A1 /* SavedVoicesFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedVoicesFixture.swift; sourceTree = "<group>"; };
 		D211868ADA557EE5CEEAD15B /* ParakeetRecommendationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParakeetRecommendationView.swift; sourceTree = "<group>"; };
 		D2479FBA25ED20072E91C08C /* RecordingStatusMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStatusMenu.swift; sourceTree = "<group>"; };
 		D295CC7B2C3B5C3830DE45C0 /* AudioProcessTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioProcessTap.swift; sourceTree = "<group>"; };
@@ -778,12 +784,15 @@
 				E3642D8E0899EF402629B208 /* ParakeetSelfTest.swift */,
 				5B20A9D6688D36A9354AA691 /* RecordingHotKey.swift */,
 				C4888227EC3BD2F85C8FFEBD /* SavedVoicesController.swift */,
+				CDD767A4EE78D305D477D1A1 /* SavedVoicesFixture.swift */,
 				A8D7D17B00184F229FCCC30B /* SavedVoicesView.swift */,
 				1D368DF652664BF931A5F050 /* SettingsFixture.swift */,
 				0E31D8C73A37ABF71375ADEB /* SettingsSelfTest.swift */,
 				642BF5E60FF9A1A28395F1C6 /* SettingsView.swift */,
 				8C306DD8AAAA314655363059 /* SpeechModelController.swift */,
 				41EF55724D148FFB94A0BE77 /* UpdateDeferralSelfTest.swift */,
+				4BF0CD5C5A22C560720F0995 /* VoicePreferences.swift */,
+				94DD3DD2819C040061339AD5 /* VoicesQuestionView.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -901,7 +910,7 @@
 		F04E817D85F11D039AFB3A19 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				64CF6AC7D7B91DDFBFD931B6 /* cassini-mac-d-1079 */,
+				1822B9A1C24C962556E2DD56 /* cassini-mac-d-1080 */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -1497,6 +1506,7 @@
 				79B4C94661D09C30ACA76087 /* RecordingSpectrogram.swift in Sources */,
 				7415B9957147C67914ABA6A7 /* RecordingStatusMenu.swift in Sources */,
 				1DD201913F05E4F9B99EB3FE /* SavedVoicesController.swift in Sources */,
+				1C57C608B655DF2546FF4CEF /* SavedVoicesFixture.swift in Sources */,
 				6C77F53004DE2C3A6595832F /* SavedVoicesView.swift in Sources */,
 				3A376D5042C616DB3FDC923F /* ScreenshotFixture.swift in Sources */,
 				3875C6AE4043440976D7EB41 /* ScrollEdgeChrome.swift in Sources */,
@@ -1521,6 +1531,8 @@
 				1EEAD6E0D3422512F62D7200 /* TrashSelfTest.swift in Sources */,
 				EB7AA8FB9930082B004FA579 /* UXText.swift in Sources */,
 				C6EAB498475456889A827C9F /* UpdateDeferralSelfTest.swift in Sources */,
+				BB752AE2AD9A7A34BD98A1B0 /* VoicePreferences.swift in Sources */,
+				D3AFEB58E280CA3B45A66695 /* VoicesQuestionView.swift in Sources */,
 				0993FA2973125708E6E9727E /* WhatIsRecordedView.swift in Sources */,
 				8D98D370E8999895D3A2F2C0 /* WhistleSelfTest.swift in Sources */,
 			);

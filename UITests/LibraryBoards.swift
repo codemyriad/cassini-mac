@@ -3,6 +3,95 @@ import AppKit
 import XCTest
 
 final class LibraryBoards: XCTestCase {
+    @MainActor func testPhase2VoicesQuestionAndRememberPreference() throws {
+        for enabled in [false,true] {
+            let identity = UUID().uuidString
+            let args = ["-CassiniSettingsID",identity,"-CassiniAskVoices","YES"]
+            let empty = try launch("first-run",fixture:"empty",extra:args); defer { empty.terminate() }
+            XCTAssertTrue(empty.windows["cassini-library-window"].buttons["first-run-record"].waitForExistence(timeout:20))
+            XCTAssertFalse(empty.buttons["voices-question-enable"].exists,"Never ask on first launch")
+            empty.terminate()
+            let app = try launch("voices-question",fixture:"main",extra:args); defer { app.terminate() }
+            let window = app.windows["cassini-library-window"]
+            let answer = window.sheets.buttons[enabled ? "voices-question-enable":"voices-question-not-now"]
+            XCTAssertTrue(answer.waitForExistence(timeout:20),app.debugDescription)
+            XCTAssertTrue(window.sheets.staticTexts["Recognise people you name?"].exists)
+            if enabled { capture(window,name:"voices-question") }
+            answer.click()
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:answer)],timeout:10),.completed)
+            app.terminate()
+            // Reopen an eligible meeting, not Settings: false and unanswered
+            // render the same Settings switch but only unanswered asks again.
+            let meetingAgain = try launch("voices-question",fixture:"main",extra:args); defer { meetingAgain.terminate() }
+            let meetingWindow = meetingAgain.windows["cassini-library-window"]
+            let readable = NSPredicate { _,_ in
+                meetingWindow.staticTexts["meeting-title"].exists &&
+                meetingWindow.textFields["meeting-find"].exists &&
+                meetingWindow.textFields["meeting-find"].isEnabled &&
+                meetingWindow.textFields["meeting-find"].isHittable
+            }
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:readable,object:nil)],timeout:20),.completed,meetingAgain.debugDescription)
+            XCTAssertFalse(meetingAgain.buttons["voices-question-enable"].exists,"Either answer survives reopening an eligible meeting")
+            XCTAssertFalse(meetingAgain.buttons["voices-question-not-now"].exists)
+            meetingAgain.terminate()
+            let reopened = try launch("settings-transcription",fixture:"main",extra:args); defer { reopened.terminate() }
+            let settings = reopened.windows["cassini-settings-window"]
+            let toggle = settings.descendants(matching:.any).matching(identifier:"settings-remember-voices").matching(NSPredicate(format:"value != nil")).firstMatch
+            XCTAssertTrue(toggle.waitForExistence(timeout:20),reopened.debugDescription)
+            XCTAssertEqual(String(describing:try XCTUnwrap(toggle.value)),enabled ? "1":"0")
+            if !toggle.isHittable { settings.scrollViews.firstMatch.scroll(byDeltaX:0,deltaY:-400) }
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"hittable == true"),object:toggle)],timeout:5),.completed)
+            if enabled { capture(settings,name:"qa-remember-voices") }
+            toggle.click()
+            let changed = NSPredicate { _,_ in String(describing:toggle.value ?? "") == (enabled ? "0":"1") }
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:changed,object:nil)],timeout:5),.completed)
+            reopened.terminate()
+            let persisted = try launch("settings-transcription",fixture:"main",extra:args); defer { persisted.terminate() }
+            let saved = persisted.windows["cassini-settings-window"].descendants(matching:.any).matching(identifier:"settings-remember-voices").matching(NSPredicate(format:"value != nil")).firstMatch
+            XCTAssertTrue(saved.waitForExistence(timeout:20),persisted.debugDescription)
+            XCTAssertEqual(String(describing:try XCTUnwrap(saved.value)),enabled ? "0":"1")
+            persisted.terminate()
+        }
+    }
+    @MainActor func testPhase2SavedVoicesRowsAndMenuActions() throws {
+        let app = try launch("settings-voices",fixture:"main",extra:["-CassiniSettingsID",UUID().uuidString,"-CassiniSavedVoicesFixture","YES"])
+        defer { app.terminate() }
+        let window = app.windows["cassini-settings-window"]
+        let options = window.descendants(matching:.any).matching(NSPredicate(format:"label == %@","Options for Marta")).firstMatch
+        XCTAssertTrue(window.descendants(matching:.any)["saved-voices-ready"].waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertTrue(options.waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertTrue(window.staticTexts["Name them again in a meeting to keep recognising them."].exists)
+        XCTAssertFalse(window.buttons["saved-voices-add"].exists)
+        capture(window,name:"settings-voices")
+        options.click()
+        XCTAssertTrue(options.menuItems["Play a sample"].waitForExistence(timeout:5),app.debugDescription)
+        XCTAssertTrue(options.menuItems["Rename…"].exists)
+        XCTAssertTrue(options.menuItems["Forget…"].exists)
+        capture(window,name:"settings-voices-menu")
+        // A native menu can extend beyond its parent window's screenshot bounds.
+        capture(options.menus.firstMatch,name:"qa-saved-voices-menu-popup")
+        XCTAssertTrue(options.menuItems["Play a sample"].isEnabled)
+        options.menuItems["Play a sample"].click()
+        let stopSample = window.buttons["Stop sample of Marta"]
+        XCTAssertTrue(stopSample.waitForExistence(timeout:5),app.debugDescription);stopSample.click()
+        options.click();options.menuItems["Rename…"].click()
+        let field = window.sheets.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout:5));field.click();field.typeKey("a",modifierFlags:.command);field.typeText("Marta renamed")
+        window.sheets.buttons["Save"].click()
+        let renamed = window.descendants(matching:.any).matching(NSPredicate(format:"label == %@","Options for Marta renamed")).firstMatch
+        XCTAssertTrue(renamed.waitForExistence(timeout:10),app.debugDescription)
+        renamed.click();renamed.menuItems["Forget…"].click()
+        let confirm = window.sheets.buttons["Delete"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout:5),app.debugDescription);confirm.click()
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:renamed)],timeout:10),.completed)
+        let everyone = window.buttons["saved-voices-forget-everyone"]
+        if !everyone.isHittable { window.scrollViews.firstMatch.scroll(byDeltaX:0,deltaY:-400) }
+        XCTAssertTrue(everyone.isHittable);everyone.click()
+        let confirmAll = window.sheets.buttons["Forget everyone"].firstMatch
+        XCTAssertTrue(confirmAll.waitForExistence(timeout:5),app.debugDescription);confirmAll.click()
+        XCTAssertTrue(window.staticTexts["saved-voices-empty"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(window.staticTexts["saved-voices-how-to-add"].exists)
+    }
     @MainActor func testPhase2BrowserReadyState() throws {
         let app = try launch("settings-browser",fixture:"empty",extra:["-CassiniSettingsID",UUID().uuidString])
         defer { app.terminate() }
@@ -543,7 +632,7 @@ final class LibraryBoards: XCTestCase {
         app.menuItems["Saved Voices…"].click()
         let settingsWindow = app.windows["cassini-settings-window"]
         XCTAssertTrue(settingsWindow.waitForExistence(timeout:10),app.debugDescription)
-        XCTAssertTrue(settingsWindow.buttons["saved-voices-add"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(settingsWindow.staticTexts["saved-voices-how-to-add"].waitForExistence(timeout:10),app.debugDescription)
         XCTAssertTrue(settingsWindow.buttons["saved-voices-back"].exists)
         settingsWindow.buttons[XCUIIdentifierCloseWindow].click()
     }
