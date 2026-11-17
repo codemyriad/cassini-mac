@@ -456,6 +456,10 @@ private final class CaptureFiles: @unchecked Sendable {
         if !blocked, started { service.setAutoRecord(autoRecord,microphone:true) }
     }
     private func created(_ owner: OwnedBrowserCapture, info: BrowserAudioStart, signal: UUID? = nil) async {
+        // Cleanup may suspend while this call ends or shutdown closes admission.
+        // Take the snapshot and validate admission only after that suspension.
+        let test = TestRecordingController.shared
+        if test.hasPendingWork || test.presented { await test.cancel().value }
         let snapshot = owner.snapshot, id = snapshot.manifest.id
         #if DEBUG
         defer { if CaptureFixture.enabled { CaptureFixture.createdFinished?(id,captures[id]?.sourceProblem ?? false,captures[id]?.inputsAdmitted ?? false) } }
@@ -470,7 +474,6 @@ private final class CaptureFiles: @unchecked Sendable {
         if !([context.root] + context.previousRoots).contains(where:{ $0.standardizedFileURL.path == parent }) { LibraryStore.shared.reloadLocation() }
         startPolling()
         let origin = max(0,min(now,now - max(0,(Date().timeIntervalSince1970*1000 - Double(info.timelineOriginMs))/1000)))
-        await TestRecordingController.shared.cancel().value
         let input = CaptureInputLifecycle(capture:owner,originHostTime:AVAudioTime.hostTime(forSeconds:origin),microphone:{ Self.nativeInput(.me) },system:{ Self.nativeInput(.others) },failure:{ [weak self] _ in
             Task { @MainActor in
                 guard let self, let value = self.captures[id] else { return }
@@ -945,6 +948,12 @@ private final class CaptureFiles: @unchecked Sendable {
         RecordingDiskWatch.updateWarning(line)
     }
     #if DEBUG
+    func admitAfterTestCleanupForTesting(_ owner: OwnedBrowserCapture) async {
+        guard CommandLine.arguments.contains("--test-recording-self-test") else { return }
+        await created(owner,info:.init(captureID:"test-cleanup-" + owner.snapshot.manifest.id.uuidString,
+                                      timelineOriginMs:Int(Date().timeIntervalSince1970*1000),microphone:false))
+        for task in Array(settling.values) { await task.value }
+    }
     func setMicrophoneUptimeForTesting(_ ids: [UUID], at time: TimeInterval?) {
         guard CaptureFixture.enabled else { return }
         for id in ids {
