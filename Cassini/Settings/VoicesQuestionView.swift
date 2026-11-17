@@ -60,7 +60,6 @@ struct VoicesQuestionView: View {
                     .accessibilityIdentifier("voices-question-enable")
             }.padding(.top,6)
         }.padding(24).frame(width:440).fixedSize(horizontal:false,vertical:true)
-            .accessibilityIdentifier("voices-question")
     }
 }
 

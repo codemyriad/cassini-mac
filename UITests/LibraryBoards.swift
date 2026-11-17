@@ -51,21 +51,21 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(window.buttons["saved-voices-add"].exists)
         capture(window,name:"settings-voices")
         options.click()
-        XCTAssertTrue(app.menuItems["Play a sample"].waitForExistence(timeout:5),app.debugDescription)
-        XCTAssertTrue(app.menuItems["Rename…"].exists)
-        XCTAssertTrue(app.menuItems["Forget…"].exists)
+        XCTAssertTrue(options.menuItems["Play a sample"].waitForExistence(timeout:5),app.debugDescription)
+        XCTAssertTrue(options.menuItems["Rename…"].exists)
+        XCTAssertTrue(options.menuItems["Forget…"].exists)
         capture(window,name:"settings-voices-menu")
-        XCTAssertTrue(app.menuItems["Play a sample"].isEnabled)
-        app.menuItems["Play a sample"].click()
+        XCTAssertTrue(options.menuItems["Play a sample"].isEnabled)
+        options.menuItems["Play a sample"].click()
         let stopSample = window.buttons["Stop sample of Marta"]
         XCTAssertTrue(stopSample.waitForExistence(timeout:5),app.debugDescription);stopSample.click()
-        options.click();app.menuItems["Rename…"].click()
+        options.click();options.menuItems["Rename…"].click()
         let field = window.sheets.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout:5));field.click();field.typeKey("a",modifierFlags:.command);field.typeText("Marta renamed")
         window.sheets.buttons["Save"].click()
         let renamed = window.descendants(matching:.any).matching(NSPredicate(format:"label == %@","Options for Marta renamed")).firstMatch
         XCTAssertTrue(renamed.waitForExistence(timeout:10),app.debugDescription)
-        renamed.click();app.menuItems["Forget…"].click()
+        renamed.click();renamed.menuItems["Forget…"].click()
         let confirm = app.buttons["Delete"].firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout:5),app.debugDescription);confirm.click()
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:renamed)],timeout:10),.completed)
