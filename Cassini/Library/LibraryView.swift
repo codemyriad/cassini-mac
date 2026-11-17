@@ -47,6 +47,7 @@ struct LibraryView: View {
                 .onAppear { toolbarWidth = geometry.size.width }
                 .onChange(of: geometry.size.width) { _, width in toolbarWidth = width }
         }
+        .modifier(VoicesQuestionPresentation())
         .font(.system(size: 13))
         .safeAreaInset(edge:.bottom,spacing:0) {
             UpdateReadyFooter(updates:updates)
@@ -243,7 +244,7 @@ struct LibraryView: View {
             if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "record-first", !recordCoordinator.showingFirst {
                 recordCoordinator.showingFirst = true
             }
-            if store.context.screenshot, ["meeting","export"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""), navigation.detail == nil,
+            if store.context.screenshot, ["meeting","export","voices-question"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""), navigation.detail == nil,
                let meeting = store.visibleMeetings.first(where: { $0.title == (LibraryLaunchContext.argument("-CassiniScreenshot") == "export" ? "Budget review" : "Client call, Rossi & Partners") }) {
                 store.selectedKey = meeting.libraryKey
                 navigation.open(meeting,frozen:true)

@@ -16,7 +16,7 @@ import uuid
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('app',type=Path)
-parser.add_argument('board',choices=['first-run','meeting','recording','received','export','search','settings-recording','settings-transcription','settings-voices','settings-library','settings-browser','settings-updates','about','record-first'])
+parser.add_argument('board',choices=['first-run','voices-question','meeting','recording','received','export','search','settings-recording','settings-transcription','settings-voices','settings-library','settings-browser','settings-updates','about','record-first'])
 parser.add_argument('--output',type=Path,required=True)
 parser.add_argument('--direct',action='store_true',help='Run the opted-in fixture executable directly when LaunchServices is unavailable')
 parser.add_argument('--listening',choices=['playing','finished'])
@@ -50,6 +50,8 @@ with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
     if args.listening: command += ['-CassiniListeningPreview',args.listening]
     if args.speaker: command += ['-CassiniListeningSpeaker',args.speaker]
     if args.transcribing: command += ['-CassiniTranscribingPreview','YES']
+    if args.board == 'voices-question': command += ['-CassiniAskVoices','YES']
+    if args.board == 'settings-voices': command += ['-CassiniSavedVoicesFixture','YES']
     if args.board.startswith('settings-'): command += ['-CassiniSettingsID',str(uuid.uuid4())]
     try:
         # The fixture writes its report and exits. -W waits for that completion,

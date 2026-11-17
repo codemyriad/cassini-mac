@@ -30,6 +30,13 @@ assert capture.returncode == 0,(capture.returncode,capture.stdout,capture.stderr
 capture_report = json.loads(capture.stdout)
 assert all(capture_report.get(key) is True for key in ('nativeTestStreams','temporaryCleanup','latePermissionCancelled','queuedInputLateOpen','queuedInputOpenRefusal','captureAdmissionAfterCleanup','updatesLast')),capture_report
 args.output.with_name('test-recording.json').write_text(json.dumps(capture_report,indent=2)+'\n')
+preferences = [x for x in command]
+preferences[preferences.index('--settings-self-test')] = '--voice-preferences-self-test'
+proof = subprocess.run(preferences,env=dict(os.environ,CASSINI_HOSTED_SCREENSHOTS='1'),capture_output=True,text=True,timeout=60)
+assert proof.returncode == 0,(proof.returncode,proof.stdout,proof.stderr)
+preference_report = json.loads(proof.stdout)
+assert all(preference_report.get(key) is True for key in ('questionOnlyForMultipleSpeakers','notNowPersists','enablePersists','settingsChoicePersists','existingVoicesPreserved','missingPreparationPreserved')),preference_report
+args.output.with_name('voice-preferences.json').write_text(json.dumps(preference_report,indent=2)+'\n')
 resume=[x for x in command]
 resume[resume.index('--settings-self-test')]='--settings-resume-moves-self-test'
 resume[resume.index('-CassiniTranscriptionFixture')+1]='NO'

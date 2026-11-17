@@ -14,6 +14,7 @@ CORE_ORDER = {n: i for i, n in enumerate(('library', 'recording', 'meeting', 'se
 EXPECTED_BOARDS = frozenset((
     'library', 'library-fr', 'first-run', 'first-run-fr', 'record-first', 'record-first-fr',
     'transcribing', 'transcribing-details', 'meeting', 'meeting-open', 'meeting-find', 'meeting-scrolled', 'meeting-summary', 'recording', 'received', 'received-first', 'export', 'export-success', 'search',
+    'voices-question', 'settings-voices', 'settings-voices-menu',
     'about', 'settings-library', 'settings-browser', 'settings-updates',
     'settings-recording', 'settings-transcription', 'settings-parakeet-recommendation-en-GB',
     'settings-parakeet-recommendation-fr-FR', 'settings-parakeet-recommendation-pt-PT',

@@ -166,6 +166,8 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSpeakerDialogActionsAtMinimumWindowHeight \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testListeningBarOffersPlayAgainAfterItsLastTurn \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testTranscriptTimePlaysAndSpeakerNameStartsListening \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testPhase2VoicesQuestionAndRememberPreference \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testPhase2SavedVoicesRowsAndMenuActions \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testPhase2BrowserReadyState \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testPhase2AboutAndLocalLicences \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSettingsTranscriptionModelChoices \

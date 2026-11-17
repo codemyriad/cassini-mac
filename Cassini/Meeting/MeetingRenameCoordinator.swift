@@ -103,7 +103,7 @@ import CassiniLibrary
         self.meeting=meeting;speakerID=speaker.id;name=speaker.name ?? ""
         if let detail=MeetingNavigation.shared.detail,detail.meeting.folder==meeting.folder {detail.namingSpeakerID=speaker.id}
         speakerChangeFailed=false;speakerRetry=nil;presentation = .speakers
-        voiceChoice=SpeakerVoiceChoice(existing:SavedVoicesController.shared.snapshot?.voiceID(meeting:meeting.folder.lastPathComponent,speaker:speaker.id) != nil);voiceChangeFailed=false;voiceEnrollment=nil;voicePreparationFailed=false;savedVoiceID=nil;voiceCandidates=[]
+        voiceChoice=VoicePreferences.shared.choice(existing:SavedVoicesController.shared.snapshot?.voiceID(meeting:meeting.folder.lastPathComponent,speaker:speaker.id) != nil);voiceChangeFailed=false;voiceEnrollment=nil;voicePreparationFailed=false;savedVoiceID=nil;voiceCandidates=[]
         stopSpeakerPreparation();speakerPreparing=true;speakerSampleRange=nil;speakerQuote=nil
         let id=speaker.id, preparationID=UUID()
         speakerPreparationID=preparationID
@@ -118,7 +118,7 @@ import CassiniLibrary
             guard !Task.isCancelled, presentation == .speakers, speakerID == id else { return }
             if !voiceChoice.userChanged {
                 let existing=SavedVoicesController.shared.snapshot?.voiceID(meeting:meeting.folder.lastPathComponent,speaker:id)
-                voiceChoice=SpeakerVoiceChoice(existing:existing != nil)
+                voiceChoice=VoicePreferences.shared.choice(existing:existing != nil)
                 savedVoiceID=existing
             }
             do {

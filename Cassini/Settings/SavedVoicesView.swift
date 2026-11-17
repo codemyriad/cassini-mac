@@ -47,22 +47,19 @@ struct SavedVoicesView: View {
                         }
                     }.background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
                 }
-                Text(UXText.text("voices.enroll.fromTranscriptHint")).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
-                HStack {
-                    Button(UXText.text("voices.enroll.addAction")) { voices.beginEnrollment() }
-                        .disabled(voices.readOnly || voices.busy).accessibilityIdentifier("saved-voices-add")
-                    Spacer()
-                    if !voices.voices.isEmpty {
-                        Button(UXText.text("savedVoices.forgetEveryone")) { forgetAll=true }
-                            .disabled(voices.readOnly || voices.busy)
-                    }
+                if !voices.voices.isEmpty {
+                    Button(UXText.text("savedVoices.forgetEveryone"),role:.destructive) { forgetAll=true }
+                        .disabled(voices.readOnly || voices.busy).accessibilityIdentifier("saved-voices-forget-everyone")
                 }
+                Text(UXText.text("savedVoices.howToAdd.short")).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
+                    .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("saved-voices-how-to-add")
                 if let message=voices.message { Text(message).foregroundStyle(CassiniTheme.warnInk).fixedSize(horizontal:false,vertical:true) }
             }.padding(24).frame(maxWidth:.infinity,alignment:.leading)
         }.background(CassiniTheme.windowGround)
             .navigationTitle(UXText.text("common.savedVoices"))
             .navigationBarBackButtonHidden(true)
-            .task { await voices.refresh() }
+            .accessibilityIdentifier(voices.loaded ? "saved-voices-ready":"saved-voices-loading")
+            .task(id:LibraryStore.shared.revision) { await voices.refresh() }
             .onDisappear { voices.stopSample() }
             .sheet(isPresented:$voices.enrollmentPresented,onDismiss:{ voices.cancelEnrollment() }) { VoiceEnrollmentView() }
             .sheet(item:$renaming) { voice in
@@ -87,24 +84,35 @@ struct SavedVoicesView: View {
     }
     private func voiceRow(_ voice: SavedVoice) -> some View {
         HStack(alignment:.top,spacing:12) {
-            Circle().fill(CassiniTheme.speakerInk(colourIndex:voice.colourSlot)).frame(width:12,height:12).padding(.top,4).accessibilityHidden(true)
+            Text(String(voice.name.prefix(1)).localizedUppercase).font(.system(size:12,weight:.semibold))
+                .foregroundStyle(CassiniTheme.savedVoiceInk(saveOrder:voice.colourSlot))
+                .frame(width:30,height:30).background(CassiniTheme.savedVoiceWash(saveOrder:voice.colourSlot),in:Circle())
+                .accessibilityHidden(true)
             VStack(alignment:.leading,spacing:5) {
                 Text(voice.name).fontWeight(.semibold)
                 Text(UXText.text("savedVoices.row.meta",[
                     "meetingCount":UXText.text("savedVoices.row.meetingCount",["n":String(voices.meetingCounts[voice.id] ?? 0)]),
                     "confirmedSpeech":LibraryFormat.confirmedSpeech(Int64(voice.seconds*1000),locale:UXText.locale,language:UXText.language)]))
                     .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
-                Text(UXText.text("savedVoices.row.sampleCount",["n":String(voice.count)])).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
-                Text(UXText.text(voice.stale ? "savedVoices.row.stale":"savedVoices.row.status.ready"))
-                    .font(.system(size:12)).foregroundStyle(voice.stale ? CassiniTheme.warnInk:CassiniTheme.ink2)
+                if voice.stale {
+                    Text(UXText.text("savedVoices.row.stale")).font(.system(size:12)).foregroundStyle(CassiniTheme.warnInk)
+                        .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("saved-voice-stale-" + voice.id)
+                }
             }
             Spacer()
             Button { voices.play(voice) } label: { Image(systemName:voices.playing == voice.id ? "stop.fill":"play.fill") }
                 .accessibilityLabel(UXText.text(voices.playing == voice.id ? "savedVoices.row.stopSample":"savedVoices.row.play",["name":voice.name]))
-                .disabled(voices.playable(voice) == nil)
-            Button(UXText.text("savedVoices.row.rename")) { name=voice.name; renaming=voice }.disabled(voices.busy || voices.readOnly)
-            Button(UXText.text("savedVoices.row.forget")) { deleting=voice }.disabled(voices.busy || voices.readOnly)
-        }.padding(16).accessibilityElement(children:.contain)
+                .disabled(voices.playable(voice) == nil).accessibilityIdentifier("saved-voice-play-" + voice.id)
+            Menu {
+                Button(UXText.text("savedVoices.row.playSampleMenu")) { voices.play(voice) }
+                    .disabled(voices.playable(voice) == nil)
+                Button(UXText.text("savedVoices.row.rename")) { name=voice.name; renaming=voice }.disabled(voices.busy || voices.readOnly)
+                Button(UXText.text("savedVoices.row.forgetEllipsis"),role:.destructive) { deleting=voice }.disabled(voices.busy || voices.readOnly)
+            } label: { Image(systemName:"ellipsis").frame(width:24,height:24) }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .accessibilityLabel(UXText.text("savedVoices.row.options.a11y",["name":voice.name]))
+                .accessibilityIdentifier("saved-voice-options-" + voice.id)
+        }.padding(.horizontal,14).padding(.vertical,10).accessibilityElement(children:.contain)
     }
 }
 struct VoiceEnrollmentView: View {
