@@ -8,7 +8,7 @@ final class LibraryBoards: XCTestCase {
         defer { app.terminate() }
         let about = app.windows["cassini-about-window"]
         XCTAssertTrue(about.waitForExistence(timeout:20),app.debugDescription)
-        let licences = about.buttons["about-licences"]
+        let licences = about.descendants(matching:.any).matching(identifier:"about-licences").firstMatch
         XCTAssertTrue(licences.waitForExistence(timeout:5),about.debugDescription)
         XCTAssertTrue(about.descendants(matching:.any)["about-help"].exists)
         XCTAssertTrue(about.descendants(matching:.any)["about-privacy"].exists)
@@ -498,12 +498,12 @@ final class LibraryBoards: XCTestCase {
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:20))
-        XCTAssertTrue(text("⌘R records from anywhere in Cassini",in:window))
-        XCTAssertFalse(text("⌥⌘R records from anywhere in Cassini",in:window))
+        XCTAssertTrue(text("⌘R records from anywhere in Cassini.",in:window))
+        XCTAssertFalse(text("⌥⌘R records from anywhere in Cassini.",in:window))
         window.buttons["first-run-record"].click()
         XCTAssertTrue(window.sheets.staticTexts["Before you record"].waitForExistence(timeout:10))
         XCTAssertTrue(text("Allowed",in:window.sheets.firstMatch))
-        XCTAssertTrue(text("macOS asks you to allow this.",in:window.sheets.firstMatch))
+        XCTAssertTrue(text("macOS asks once more, for Screen & System Audio Recording.",in:window.sheets.firstMatch))
         XCTAssertFalse(text("macOS asks you to allow this next.",in:window.sheets.firstMatch))
         app.typeKey(.escape,modifierFlags:[])
         XCTAssertTrue(window.buttons["first-run-record"].exists)
@@ -926,7 +926,7 @@ final class LibraryBoards: XCTestCase {
         let window = app.windows["cassini-settings-window"]
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"settings-whistle-row").firstMatch.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(text("Writing down what was said",in:window))
-        XCTAssertTrue(text("When Cassini uses the network",in:window))
+        XCTAssertTrue(text("Written down on this computer. Cassini goes online only to download a model you ask for, and each file is checked first.",in:window))
         XCTAssertTrue(window.buttons["settings-download-parakeet"].waitForExistence(timeout:5))
         XCTAssertTrue(text("Parakeet Ultra",in:window)); XCTAssertFalse(text("Tell speakers apart",in:window))
         let parakeet = window.radioButtons["settings-parakeet-radio"]
@@ -1435,9 +1435,10 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.sheets.buttons["record-first-start"].exists)
         XCTAssertTrue(text("macOS asks you to allow this.", in: window.sheets.firstMatch))
         XCTAssertFalse(text("macOS asks you to allow this next.",in:window.sheets.firstMatch))
-        let explanation = window.sheets.staticTexts["Cassini also records the sound of your meeting apps so the other participants are on the recording."]
+        let explanation = window.sheets.staticTexts["The others in your meeting app, so they are on the recording too."]
         XCTAssertTrue(explanation.exists)
-        XCTAssertGreaterThan(explanation.frame.height, 28, "The complete explanation must wrap, rather than truncate")
+        XCTAssertTrue(window.sheets.firstMatch.frame.contains(explanation.frame), "The plain explanation fits inside the sheet")
+        XCTAssertTrue(window.sheets.buttons["record-first-test"].isHittable)
         XCTAssertEqual(window.toolbars.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", "Library", "Library")).count,0)
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"first-run-library").firstMatch.exists,
                       "First-run consent keeps Library as an accessibility heading")
