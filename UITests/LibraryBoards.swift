@@ -1322,7 +1322,7 @@ final class LibraryBoards: XCTestCase {
         capture(window,name:"recording-non-silent")
     }
     @MainActor func testRecordingEditedTitleSurvivesSavedSelection() throws {
-        let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
+        let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString,"-CassiniHoldFinalization","YES"])
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:20))
@@ -1334,6 +1334,8 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(title.waitForExistence(timeout:10))
         title.click(); app.typeKey("a",modifierFlags:.command); title.typeText("Saved meeting for switch")
         window.buttons["recording-page-stop"].click()
+        XCTAssertTrue(window.buttons["recording-fixture-finish"].waitForExistence(timeout:5))
+        window.buttons["recording-fixture-finish"].click()
         let saved = NSPredicate { _,_ in window.buttons["meeting-play"].exists && window.buttons["meeting-play"].isEnabled }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:saved,object:nil)],timeout:10),.completed)
         app.typeKey("r",modifierFlags:.command)
@@ -1352,6 +1354,7 @@ final class LibraryBoards: XCTestCase {
         // Re-select while the producer is flushing; completion must stay in split.
         window.outlines.staticTexts["Saved meeting for switch"].click()
         liveRow.click()
+        window.buttons["recording-fixture-finish"].click()
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:saved,object:nil)],timeout:10),.completed)
         XCTAssertFalse(window.buttons["meeting-back"].exists)
     }
@@ -1674,7 +1677,7 @@ final class LibraryBoards: XCTestCase {
 
     @MainActor func testCaptureWritesIntoLibraryAndSaves() throws {
         let id = UUID().uuidString
-        let app = try launch("first-run", fixture: "empty", extra: ["--fixture-library-recording", "-CassiniCaptureID", id])
+        let app = try launch("first-run", fixture: "empty", extra: ["--fixture-library-recording", "-CassiniCaptureID", id,"-CassiniHoldFinalization","YES"])
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout: 20), app.debugDescription)
@@ -1695,6 +1698,8 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.textFields["recording-title"].exists,"Keep the recording pane during tail flush")
         XCTAssertFalse(window.buttons["preview-play"].exists)
         XCTAssertTrue(window.staticTexts["Saving…"].waitForExistence(timeout: 5), window.debugDescription)
+        XCTAssertTrue(window.buttons["recording-fixture-finish"].waitForExistence(timeout:5))
+        window.buttons["recording-fixture-finish"].click()
         let saved = NSPredicate { _, _ in window.buttons["meeting-play"].exists && window.buttons["meeting-play"].isEnabled && !window.staticTexts["Saving…"].exists }
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: saved, object: nil)], timeout: 10), .completed, window.debugDescription)
         XCTAssertFalse(window.buttons["recording-stop"].exists)

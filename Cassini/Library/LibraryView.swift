@@ -186,6 +186,12 @@ struct LibraryView: View {
         .overlay(alignment:.bottom) { MeetingExportNotice() }
         .overlay(alignment:.bottom) { SpeakerEditFailureNotice() }
         #if DEBUG
+        .overlay(alignment:.bottomTrailing) {
+            if RecordingFinalizationFixture.shared.waiting {
+                Button("Finish fixture recording") { RecordingFinalizationFixture.shared.release() }
+                    .accessibilityIdentifier("recording-fixture-finish")
+            }
+        }
         .overlay(alignment:.topLeading) {
             if RecordingFixture.enabled {
                 Text(CaptureNotifications.savedFixtureTitles.joined(separator:"\n")).font(.system(size:1))

@@ -93,20 +93,13 @@ import Observation
             }
             try MeetingMetadataWriter(directory: session.directory, id: session.manifest.id).createIfNeeded()
             directory = session.directory; startedAt = session.manifest.createdAt
-            let writer: any RecordingSinkWriter
-            #if DEBUG
-            // The manual probe observes Saving before yielding; it needs no artificial stall.
-            writer = RecordingFixture.enabled && fixtureUptime == nil ? HostedFinalizationWriter(session) : session
-            #else
-            writer = session
-            #endif
             let origin = uptime
             #if DEBUG
             if fixtureUptime != nil { (inputs as? HostedRecordingInputs)?.useFixtureClock(origin:origin) }
             #endif
             spectrogram = RecordingSpectrogram.enabled ? RecordingSpectrogram(originUptime:origin,observers:session.pcmObservers) : nil
             timelineStart = origin; lastMicSound = origin; completedElapsedMs = 0; microphoneSilent = false
-            let sink = RecordingSink(session: writer, originHostTime: AVAudioTime.hostTime(forSeconds: origin)) { [weak self] message in
+            let sink = RecordingSink(session: session, originHostTime: AVAudioTime.hostTime(forSeconds: origin)) { [weak self] message in
                 Task { @MainActor in
                     guard let self, self.generation == attempt, self.phase != .saving else { return }
                     self.stop(problem: message)
@@ -204,6 +197,9 @@ import Observation
         }
         phase = .saving
         finishTask = Task { [weak self] in
+            #if DEBUG
+            await RecordingFinalizationFixture.shared.waitIfNeeded()
+            #endif
             var failure: String?
             do { try await Task.detached(priority: .userInitiated) { try sink.finish(problem: problem) }.value }
             catch { failure = error.localizedDescription }
