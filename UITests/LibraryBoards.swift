@@ -936,6 +936,7 @@ final class LibraryBoards: XCTestCase {
         let app = try launch("settings-transcription",fixture:"main",extra:["-CassiniSettingsID",UUID().uuidString]); defer { app.terminate() }
         let window = app.windows["cassini-settings-window"]
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"settings-whistle-row").firstMatch.waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"settings-speech-models-ready").firstMatch.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(text("Writing down what was said",in:window))
         XCTAssertTrue(text("Written down on this computer. Cassini goes online only to download a model you ask for, and each file is checked first.",in:window))
         XCTAssertTrue(window.buttons["settings-download-parakeet"].waitForExistence(timeout:5))
