@@ -27,8 +27,8 @@ struct D52RecordingDetailsTests {
         let expected: [(CassiniLanguage,String)] = [
             (.en,"This call mixed all remote voices into one stream, so Cassini recorded them from the computer’s audio."),
             (.it,"Questa chiamata univa tutte le voci remote in un unico flusso, quindi Cassini le ha registrate dall’audio del computer."),
-            (.fr,"Cet appel mélangeait toutes les voix distantes en un seul flux, donc Cassini les a enregistrées depuis le son de l’ordinateur."),
-            (.es,"Esta llamada mezclaba todas las voces remotas en una sola señal, así que Cassini las grabó desde el audio del ordenador."),
+            (.fr,"Cet appel mélangeait toutes les voix distantes en un seul flux, donc Cassini les a enregistrées à partir du son de l’ordinateur."),
+            (.es,"Esta llamada mezclaba todas las voces remotas en una sola señal, así que Cassini las grabó desde el audio del equipo."),
             (.ptBR,"Esta chamada misturava todas as vozes remotas em um único fluxo, então o Cassini as gravou pelo áudio do computador."),
             (.ptPT,"Esta chamada misturava todas as vozes remotas num único fluxo, por isso o Cassini gravou-as a partir do áudio do computador.")
         ]

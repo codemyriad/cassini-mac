@@ -1,6 +1,6 @@
 # Standalone W2.2 catalog badge
 
-The contract snapshot is pinned to merged cassini-ux main: **5e0c34e0f1bb390298dabdf4eedc494e933fd329**. `Contract/UPSTREAM.json` records original source paths and SHA-256 for the whole catalog, statev3, formatv5, normative badge contract and all22 Library expectations. `scripts/check-badge-labels-pin.py` verifies all26 files; a Linux CI job also tests catalog/vector/expected-file drift rejection. Do not edit vendored bytes or pin an authoring branch.
+The contract vectors remain pinned to merged cassini-ux main: **5e0c34e0f1bb390298dabdf4eedc494e933fd329**. The reviewed catalog is pinned separately to **dd06a62dc881034fed417b000f47004e577a3fb0** for D-1075 and matches the app catalog byte for byte. `Contract/UPSTREAM.json` records original source paths and SHA-256 for the whole catalog, statev3, formatv5, normative badge contract and all22 Library expectations; the catalog's per-file commit overrides the snapshot commit. `scripts/check-badge-labels-pin.py` verifies all26 files and catalog equality; a Linux CI job also tests catalog/vector/expected-file drift rejection. Do not edit vendored bytes or pin an authoring branch.
 
 `BadgeLabelPresenter(data:language:locale:)` prepares the pinned catalog using CassiniLibrary's actual `LibraryLocalization`. It rejects missing required keys or the selected language's missing translations instead of silently using English. Prepare it once outside View bodies; the host owns resource loading. UI language and regional number/timer locale remain independent.
 

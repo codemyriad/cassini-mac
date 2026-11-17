@@ -1,11 +1,12 @@
 {
   "repository": "codemyriad/cassini-ux",
   "commit": "5e0c34e0f1bb390298dabdf4eedc494e933fd329",
-  "scope": "Phase 1 WP1: Foundations; pinned to codemyriad/cassini-ux 5e0c34e0f1bb390298dabdf4eedc494e933fd329",
+  "scope": "Phase 1 WP1: Foundations; pinned to codemyriad/cassini-ux 5e0c34e0f1bb390298dabdf4eedc494e933fd329; strings.json reviewed for D-1075 at dd06a62dc881034fed417b000f47004e577a3fb0",
   "files": {
     "strings.json": {
       "path": "strings/strings.json",
-      "sha256": "4bbe42b47bbf2e6e61ed15b1c54cabf4096e92aca63b9ed84d428070baa52acf"
+      "sha256": "37be394321da842424ad25402c864ee1221db87821972dede85eaf916b4ce260",
+      "commit": "dd06a62dc881034fed417b000f47004e577a3fb0"
     },
     "states-vectors.json": {
       "path": "vectors/states/states-vectors.json",
