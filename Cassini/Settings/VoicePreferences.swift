@@ -43,7 +43,7 @@ struct VoicesQuestionPresentation: ViewModifier {
               MeetingRenameCoordinator.shared.presentation == nil,
               !MeetingExportCoordinator.shared.showing, !RecordingDetailsCoordinator.shared.showing,
               !RecordCoordinator.shared.showingFirst, CompanionSetup.shared.presenter == nil,
-              !BulkZipExportCoordinator.shared.busy, !LibraryImportCoordinator.shared.isBusy,
+              !BulkZipExportCoordinator.shared.busy,
               !LibraryMoveCoordinator.shared.busy, !MeetingTrashCoordinator.shared.busy else { return nil }
         return detail.meeting.libraryKey
     }
@@ -65,7 +65,7 @@ struct VoicesQuestionView: View {
             Text(UXText.text("voices.setup.title")).font(.system(size:17,weight:.bold))
             Text(UXText.text("voices.setup.body.desktop")).font(.system(size:13)).foregroundStyle(CassiniTheme.ink2)
                 .fixedSize(horizontal:false,vertical:true)
-            Text(UXText.text("voices.setup.kindness") + " " + UXText.mac("voices.setup.changeLater.desktop"))
+            Text(UXText.text("voices.setup.kindness") + " " + UXText.text("voices.setup.changeLater.desktop"))
                 .font(.system(size:12)).foregroundStyle(CassiniTheme.ink3).fixedSize(horizontal:false,vertical:true)
             HStack {
                 Spacer()

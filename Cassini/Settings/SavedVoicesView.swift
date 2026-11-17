@@ -59,7 +59,7 @@ struct SavedVoicesView: View {
             .navigationTitle(UXText.text("common.savedVoices"))
             .navigationBarBackButtonHidden(true)
             .accessibilityIdentifier(voices.loaded ? "saved-voices-ready":"saved-voices-loading")
-            .task(id:LibraryStore.shared.revision) { await voices.refresh() }
+            .task { await voices.refresh() }
             .onDisappear { voices.stopSample() }
             .sheet(isPresented:$voices.enrollmentPresented,onDismiss:{ voices.cancelEnrollment() }) { VoiceEnrollmentView() }
             .sheet(item:$renaming) { voice in

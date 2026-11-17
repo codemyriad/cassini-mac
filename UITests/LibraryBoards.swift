@@ -7,11 +7,11 @@ final class LibraryBoards: XCTestCase {
         for enabled in [false,true] {
             let identity = UUID().uuidString
             let args = ["-CassiniSettingsID",identity,"-CassiniAskVoices","YES"]
-            let empty = try launch("first-run",fixture:"empty",extra:args)
+            let empty = try launch("first-run",fixture:"empty",extra:args); defer { empty.terminate() }
             XCTAssertTrue(empty.windows["cassini-library-window"].buttons["first-run-record"].waitForExistence(timeout:20))
             XCTAssertFalse(empty.buttons["voices-question-enable"].exists,"Never ask on first launch")
             empty.terminate()
-            let app = try launch("voices-question",fixture:"main",extra:args)
+            let app = try launch("voices-question",fixture:"main",extra:args); defer { app.terminate() }
             let window = app.windows["cassini-library-window"]
             let answer = window.sheets.buttons[enabled ? "voices-question-enable":"voices-question-not-now"]
             XCTAssertTrue(answer.waitForExistence(timeout:20),app.debugDescription)
@@ -20,7 +20,7 @@ final class LibraryBoards: XCTestCase {
             answer.click()
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:answer)],timeout:10),.completed)
             app.terminate()
-            let reopened = try launch("settings-transcription",fixture:"main",extra:args)
+            let reopened = try launch("settings-transcription",fixture:"main",extra:args); defer { reopened.terminate() }
             let settings = reopened.windows["cassini-settings-window"]
             let toggle = settings.descendants(matching:.any).matching(identifier:"settings-remember-voices").matching(NSPredicate(format:"value != nil")).firstMatch
             XCTAssertTrue(toggle.waitForExistence(timeout:20),reopened.debugDescription)
@@ -30,7 +30,7 @@ final class LibraryBoards: XCTestCase {
             let changed = NSPredicate { _,_ in String(describing:toggle.value ?? "") == (enabled ? "0":"1") }
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:changed,object:nil)],timeout:5),.completed)
             reopened.terminate()
-            let persisted = try launch("settings-transcription",fixture:"main",extra:args)
+            let persisted = try launch("settings-transcription",fixture:"main",extra:args); defer { persisted.terminate() }
             let saved = persisted.windows["cassini-settings-window"].descendants(matching:.any).matching(identifier:"settings-remember-voices").matching(NSPredicate(format:"value != nil")).firstMatch
             XCTAssertTrue(saved.waitForExistence(timeout:20),persisted.debugDescription)
             XCTAssertEqual(String(describing:try XCTUnwrap(saved.value)),enabled ? "0":"1")
@@ -42,6 +42,7 @@ final class LibraryBoards: XCTestCase {
         defer { app.terminate() }
         let window = app.windows["cassini-settings-window"]
         let options = window.descendants(matching:.any).matching(NSPredicate(format:"label == %@","Options for Marta")).firstMatch
+        XCTAssertTrue(window.descendants(matching:.any)["saved-voices-ready"].waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(options.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(window.staticTexts["Name them again in a meeting to keep recognising them."].exists)
         XCTAssertFalse(window.buttons["saved-voices-add"].exists)
@@ -51,7 +52,11 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(app.menuItems["Rename…"].exists)
         XCTAssertTrue(app.menuItems["Forget…"].exists)
         capture(window,name:"settings-voices-menu")
-        app.menuItems["Rename…"].click()
+        XCTAssertTrue(app.menuItems["Play a sample"].isEnabled)
+        app.menuItems["Play a sample"].click()
+        let stopSample = window.buttons["Stop sample of Marta"]
+        XCTAssertTrue(stopSample.waitForExistence(timeout:5),app.debugDescription);stopSample.click()
+        options.click();app.menuItems["Rename…"].click()
         let field = window.sheets.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout:5));field.click();field.typeKey("a",modifierFlags:.command);field.typeText("Marta renamed")
         window.sheets.buttons["Save"].click()

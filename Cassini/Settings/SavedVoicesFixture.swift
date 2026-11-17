@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #if DEBUG
 import Foundation
+import Observation
 import CassiniLibrary
 
 /// Generated profiles in the explicit Settings fixture's private store.
@@ -12,6 +13,11 @@ import CassiniLibrary
         if let preparation { try await preparation.value; return }
         let root = SpeechModelController.appData
         let task = Task {
+            while !LibraryStore.shared.loaded {
+                let (events, signal) = AsyncStream<Void>.makeStream()
+                withObservationTracking { _ = LibraryStore.shared.loaded } onChange: { signal.yield(); signal.finish() }
+                var iterator = events.makeAsyncIterator(); _ = await iterator.next()
+            }
             let marker = root.appendingPathComponent("voices-fixture-seeded")
             if await Task.detached(operation:{ FileManager.default.fileExists(atPath:marker.path) }).value { return }
             let generation = try await store.snapshot().generation
