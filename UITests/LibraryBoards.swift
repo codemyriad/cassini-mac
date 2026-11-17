@@ -55,6 +55,8 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(options.menuItems["Rename…"].exists)
         XCTAssertTrue(options.menuItems["Forget…"].exists)
         capture(window,name:"settings-voices-menu")
+        // A native menu can extend beyond its parent window's screenshot bounds.
+        capture(options.menus.firstMatch,name:"qa-saved-voices-menu-popup")
         XCTAssertTrue(options.menuItems["Play a sample"].isEnabled)
         options.menuItems["Play a sample"].click()
         let stopSample = window.buttons["Stop sample of Marta"]
@@ -66,13 +68,13 @@ final class LibraryBoards: XCTestCase {
         let renamed = window.descendants(matching:.any).matching(NSPredicate(format:"label == %@","Options for Marta renamed")).firstMatch
         XCTAssertTrue(renamed.waitForExistence(timeout:10),app.debugDescription)
         renamed.click();renamed.menuItems["Forget…"].click()
-        let confirm = app.buttons["Delete"].firstMatch
+        let confirm = window.sheets.buttons["Delete"].firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout:5),app.debugDescription);confirm.click()
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:renamed)],timeout:10),.completed)
         let everyone = window.buttons["saved-voices-forget-everyone"]
         if !everyone.isHittable { window.scrollViews.firstMatch.scroll(byDeltaX:0,deltaY:-400) }
         XCTAssertTrue(everyone.isHittable);everyone.click()
-        let confirmAll = app.buttons["Forget everyone"].firstMatch
+        let confirmAll = window.sheets.buttons["Forget everyone"].firstMatch
         XCTAssertTrue(confirmAll.waitForExistence(timeout:5),app.debugDescription);confirmAll.click()
         XCTAssertTrue(window.staticTexts["saved-voices-empty"].waitForExistence(timeout:10),app.debugDescription)
         XCTAssertTrue(window.staticTexts["saved-voices-how-to-add"].exists)
