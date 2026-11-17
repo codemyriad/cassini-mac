@@ -59,3 +59,8 @@ import CassiniLibrary
     func prepare(_ meeting:LibraryMeeting,speaker:String) async throws -> TranscriptEnrollment? {nil}
     func enroll(_ prepared:TranscriptEnrollment,name:String,into id:String?) async throws {throw SavedVoicesError.unsafeStorage}
 }
+
+// The production preference policy uses an isolated defaults suite in this harness.
+extension VoicePreferences {
+    static let shared=VoicePreferences(defaults:UserDefaults(suiteName:"io.codemyriad.cassini.speaker-tests." + UUID().uuidString)!)
+}
