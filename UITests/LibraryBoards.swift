@@ -10,14 +10,14 @@ final class LibraryBoards: XCTestCase {
         let add = window.buttons["browser-add"]
         XCTAssertTrue(add.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(add.isEnabled)
-        XCTAssertEqual(add.title,"Add to Chrome")
+        XCTAssertEqual(add.label,"Add to Chrome")
         XCTAssertTrue(text("Not set up",in:window))
         capture(window,name:"settings-browser")
     }
     @MainActor func testPhase2AboutAndLocalLicences() throws {
         let app = try launch("about",fixture:"empty",extra:["-CassiniSettingsID",UUID().uuidString])
         defer { app.terminate() }
-        let about = app.windows["cassini-about-window"]
+        let about = app.descendants(matching:.any).matching(identifier:"cassini-about-window").firstMatch
         XCTAssertTrue(about.waitForExistence(timeout:20),app.debugDescription)
         let licences = about.descendants(matching:.any).matching(identifier:"about-licences").firstMatch
         XCTAssertTrue(licences.waitForExistence(timeout:5),about.debugDescription)
@@ -2125,7 +2125,7 @@ final class LibraryBoards: XCTestCase {
                 XCTAssertTrue(window.frame.contains(line.frame),window.debugDescription)
                 XCTAssertLessThan(line.frame.height,100,"Each headline stays on one line")
             }
-            XCTAssertTrue(text("Recordings and transcripts stay on this computer, in Music/Cassini.", in: window))
+            XCTAssertTrue(text("Written down on this computer. The audio never leaves it. Your Library is Music/Cassini.", in: window))
             let title = window.staticTexts["library-toolbar-title"]
             XCTAssertFalse(title.exists,"Library is an accessible heading, without a visible toolbar title")
             XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"first-run-library").firstMatch.exists)

@@ -111,22 +111,42 @@ struct RecordFirstView: View {
                     source(icon:"display",title:"recordFirst.sound.title",description:"recordFirst.sound.plain",caption:systemPreviouslyCaptured ? "recordFirst.allowed" : "recordFirst.sound.caption.plain")
                 }
             }
-            HStack(spacing: 10) {
-                Button(UXText.text("recordFirst.test")) { test.presented = true }.disabled(!test.canStart).accessibilityIdentifier("record-first-test")
-                Spacer()
-                Button(UXText.text("common.notNow")) { RecordCoordinator.shared.showingFirst = false }
-                    .buttonStyle(.plain).padding(.horizontal, 18).frame(height: 36).background(CassiniTheme.chipFill, in: RoundedRectangle(cornerRadius: 6))
-                    .keyboardShortcut(.cancelAction)
-                Button { RecordCoordinator.shared.confirm() } label: {
-                    HStack(spacing: 8) { Circle().fill(CassiniTheme.onRecord).frame(width: 9, height: 9); Text(UXText.text("recordFirst.start")).fontWeight(.semibold) }
-                        .padding(.horizontal, 18).frame(height: 36).foregroundStyle(CassiniTheme.onRecord).background(CassiniTheme.record, in: RoundedRectangle(cornerRadius: 6))
-                }.buttonStyle(.plain).keyboardShortcut(.defaultAction).accessibilityIdentifier("record-first-start")
-            }.padding(.top, 8)
+            ViewThatFits(in:.horizontal) {
+                HStack(spacing:10) {
+                    testButton
+                    Spacer(minLength:0)
+                    notNowButton
+                    startButton
+                }
+                VStack(alignment:.leading,spacing:12) {
+                    testButton
+                    HStack(spacing:10) { Spacer(minLength:0); notNowButton; startButton }
+                }
+            }.padding(.top,8)
         }.font(.system(size: 13)).padding(28).frame(width: 520)
             .accessibilityElement(children: .contain).accessibilityLabel(UXText.text("recordFirst.title"))
             .sheet(isPresented:$test.presented) { TestRecordingView() }
             .onAppear(perform:refreshPermission)
             .onReceive(NotificationCenter.default.publisher(for:NSApplication.didBecomeActiveNotification)) { _ in refreshPermission() }
+    }
+    private var testButton: some View {
+        Button(UXText.text("recordFirst.test")) { test.presented = true }
+            .disabled(!test.canStart).fixedSize().accessibilityIdentifier("record-first-test")
+    }
+    private var notNowButton: some View {
+        Button(UXText.text("common.notNow")) { RecordCoordinator.shared.showingFirst = false }
+            .buttonStyle(.plain).padding(.horizontal,18).frame(height:36)
+            .background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:6))
+            .fixedSize().keyboardShortcut(.cancelAction)
+    }
+    private var startButton: some View {
+        Button { RecordCoordinator.shared.confirm() } label: {
+            HStack(spacing:8) {
+                Circle().fill(CassiniTheme.onRecord).frame(width:9,height:9)
+                Text(UXText.text("recordFirst.start")).fontWeight(.semibold)
+            }.padding(.horizontal,18).frame(height:36)
+                .foregroundStyle(CassiniTheme.onRecord).background(CassiniTheme.record,in:RoundedRectangle(cornerRadius:6))
+        }.buttonStyle(.plain).fixedSize().keyboardShortcut(.defaultAction).accessibilityIdentifier("record-first-start")
     }
     private func refreshPermission() {
         systemPreviouslyCaptured = SystemAudioCaptureKnowledge.shared.previouslyCaptured

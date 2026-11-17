@@ -41,7 +41,7 @@ final class LocalCompanionInstall: XCTestCase {
         let addButton = settings.buttons["browser-add"]
         XCTAssertTrue(addButton.waitForExistence(timeout:15),app.debugDescription)
         wait("Supported browser discovered") { addButton.isEnabled }
-        XCTAssertEqual(addButton.label,"Add from Cassini")
+        XCTAssertTrue(addButton.label.hasPrefix("Add to "),"Phase 2 names the discovered browser: " + addButton.label)
         addButton.click()
         let guide = settings.sheets.firstMatch
         XCTAssertTrue(guide.buttons["companion-copy-address"].waitForExistence(timeout:10),app.debugDescription)
