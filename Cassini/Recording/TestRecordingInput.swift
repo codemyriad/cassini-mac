@@ -21,7 +21,7 @@ protocol TestRecordingDevice: AnyObject { func close() }
         self.side = side; worker = Worker(side,open:open); fixtureAuthorization = true
     }
     #endif
-    init(_ side: CaptureSide) { self.side = side; worker = Worker(side,open:NativeDevice.open) }
+    init(_ side: CaptureSide) { self.side = side; worker = Worker(side,open:{ try NativeDevice.open($0,$1) }) }
     func authorize() async throws {
         #if DEBUG
         if fixtureAuthorization { return }

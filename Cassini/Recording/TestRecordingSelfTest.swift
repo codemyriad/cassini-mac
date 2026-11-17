@@ -15,8 +15,8 @@ import Observation
             let test = TestRecordingController.shared
             test.playAutomatically = false
             let mic = Device(), system = Device()
-            test.makeMicrophone = { TestRecordingInput(.me,open:mic.open) }
-            test.makeSystem = { TestRecordingInput(.others,open:system.open) }
+            test.makeMicrophone = { TestRecordingInput(.me,open:{ try mic.open($0,$1) }) }
+            test.makeSystem = { TestRecordingInput(.others,open:{ try system.open($0,$1) }) }
             let (duration, finish) = AsyncStream<Void>.makeStream()
             test.duration = { var iterator = duration.makeAsyncIterator(); _ = await iterator.next(); try Task.checkCancellation() }
             await withCheckedContinuation { continuation in
@@ -35,9 +35,10 @@ import Observation
             try check(mic.closedOnce && system.closedOnce,"each queued device closes once off the main actor")
             let tracks = try await Task.detached {
                 let bytes = try Data(contentsOf:folder.appendingPathComponent("session.json"))
-                return (try JSONSerialization.jsonObject(with:bytes) as! [String:Any])["tracks"] as! [[String:Any]]
+                let tracks = (try JSONSerialization.jsonObject(with:bytes) as! [String:Any])["tracks"] as! [[String:Any]]
+                return (count:tracks.count,kinds:Set(tracks.compactMap { $0["kind"] as? String }))
             }.value
-            try check(tracks.count == 2 && Set(tracks.compactMap { $0["kind"] as? String }) == ["microphone","system"],"one native track per side retained for playback")
+            try check(tracks.count == 2 && tracks.kinds == ["microphone","system"],"one native track per side retained for playback")
             await test.cancel().value
             let exists = await Task.detached { FileManager.default.fileExists(atPath:folder.path) }.value
             try check(!exists,"closing removes every test file")
@@ -79,10 +80,10 @@ import Observation
     private static func queuedOpenCancellation() async throws {
         for side in [CaptureSide.me,.others] {
             let root = TestRecordingController.root
-            let session = try await Task.detached { try RecordingSession(parent:root,title:"Queued input probe",source:"macos") }.value
+            let owner = try await Task.detached { try OwnedBrowserCapture(parent:root,title:"Queued input probe",microphone:true,browser:false) }.value
             let device = Device(held:true)
-            let driver = TestRecordingInput(side,open:device.open)
-            let sink = RecordingSink(session:session,originHostTime:mach_absolute_time(),onFailure:{ _ in device.reportFailure() })
+            let driver = TestRecordingInput(side,open:{ try device.open($0,$1) })
+            let sink = owner.nativeSink(side:side,originHostTime:mach_absolute_time(),failure:{ _ in device.reportFailure() })
             try driver.start(sink:sink,failure:{ _ in device.reportFailure() })
             var opened = device.opening.makeAsyncIterator(); _ = await opened.next()
             driver.stop()
@@ -91,19 +92,18 @@ import Observation
             // A callback already retained by Core Audio must also be harmless
             // after stop/drain, even if it arrives after the device was closed.
             device.emit(); device.reportLateFailure()
-            let empty = try await Task.detached {
-                try sink.finish(problem:nil)
-                return session.manifest.tracks.allSatisfy { $0.frames == 0 }
-            }.value
+            try await Task.detached { try sink.finish(problem:nil) }.value
+            try? await owner.finish() // Empty audio is expected after cancellation.
+            let empty = owner.snapshot.manifest.tracks.allSatisfy { $0.frames == 0 }
             try check(device.closedOnce && device.failures == 0 && empty,"late open closes once and admits neither buffers nor errors after Stop")
-            let folder = session.directory
+            let folder = owner.snapshot.directory
             try await Task.detached { try FileManager.default.removeItem(at:folder) }.value
         }
     }
     private static func queuedOpenRefusal(_ test: TestRecordingController) async throws {
         let mic = Device(fails:true), system = Device(fails:true)
-        test.makeMicrophone = { TestRecordingInput(.me,open:mic.open) }
-        test.makeSystem = { TestRecordingInput(.others,open:system.open) }
+        test.makeMicrophone = { TestRecordingInput(.me,open:{ try mic.open($0,$1) }) }
+        test.makeSystem = { TestRecordingInput(.others,open:{ try system.open($0,$1) }) }
         let (duration, finish) = AsyncStream<Void>.makeStream()
         test.duration = { var iterator = duration.makeAsyncIterator(); _ = await iterator.next() }
         test.start()
@@ -134,7 +134,8 @@ import Observation
         let collection = CaptureCollection.shared
         let admission = Task { await collection.admitAfterTestCleanupForTesting(owner) }
         var cleanupEntered = cancelled.makeAsyncIterator(); _ = await cleanupEntered.next()
-        try await owner.finish()
+        try? await owner.finish() // The browser call ended before sending audio.
+        try check(owner.snapshot.phase == .saved,"the browser call ended while test cleanup was held")
         release.yield(); release.finish()
         await admission.value
         try check(collection.captures[owner.snapshot.manifest.id] == nil,"a call ending during test cleanup cannot register a stale recording")

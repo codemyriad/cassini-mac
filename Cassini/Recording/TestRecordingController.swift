@@ -100,7 +100,15 @@ import CassiniBrowserControl
                 phase = .finishing
                 try await input.stop()
                 for driver in nativeDrivers { await driver.drain() }
-                try await owner.finish()
+                do { try await owner.finish() }
+                catch {
+                    // A disposable test with no PCM reports silent/refused sides.
+                    // Preserve real writer failures; only the writer's explicit
+                    // empty-recording outcome is expected for this dialog.
+                    let ended = owner.snapshot
+                    guard ended.phase == .saved, ended.manifest.problemKind == "empty",
+                          ended.manifest.tracks.allSatisfy({ $0.frames == 0 }) else { throw error }
+                }
                 guard generation == attempt else { return }
                 let snapshot = await Task.detached(priority:.utility) { owner.snapshot }.value
                 let tracks = snapshot.manifest.tracks.map {
