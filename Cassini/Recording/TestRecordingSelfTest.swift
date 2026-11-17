@@ -26,6 +26,7 @@ import Observation
             let folder = test.fixtureDirectory!
             try check(folder.path.hasPrefix(TestRecordingController.root.path + "/"),"test has a private destination")
             await observe { test.heard == [.me,.others] }
+            try check((test.levels[.me] ?? 0) >= 0.01 && (test.levels[.others] ?? 0) >= 0.01,"live levels track heard streams")
             await withCheckedContinuation { continuation in
                 test.changed = { if test.phase == .result { test.changed = nil; continuation.resume() } }
                 finish.yield(); finish.finish()
@@ -40,6 +41,7 @@ import Observation
             }.value
             try check(tracks.count == 2 && tracks.kinds == ["microphone","system"],"one native track per side retained for playback")
             await test.cancel().value
+            try check(test.levels.isEmpty,"closing clears live levels")
             let exists = await Task.detached { FileManager.default.fileExists(atPath:folder.path) }.value
             try check(!exists,"closing removes every test file")
             try await queuedOpenCancellation()

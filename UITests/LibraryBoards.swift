@@ -1542,7 +1542,9 @@ final class LibraryBoards: XCTestCase {
         let explanation = window.sheets.staticTexts["The others in your meeting app, so they are on the recording too."]
         XCTAssertTrue(explanation.exists)
         XCTAssertTrue(window.sheets.firstMatch.frame.contains(explanation.frame), "The plain explanation fits inside the sheet")
+        XCTAssertTrue(window.sheets.staticTexts["Not sure it hears both?"].exists)
         XCTAssertTrue(window.sheets.buttons["record-first-test"].isHittable)
+        XCTAssertEqual(window.sheets.buttons["record-first-test"].label, "Test")
         XCTAssertEqual(window.toolbars.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", "Library", "Library")).count,0)
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"first-run-library").firstMatch.exists,
                       "First-run consent keeps Library as an accessibility heading")

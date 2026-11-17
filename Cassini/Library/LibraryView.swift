@@ -14,6 +14,7 @@ struct LibraryView: View {
     @State private var navigation = MeetingNavigation.shared
     #if DEBUG
     @State private var searchFixturePrepared = false
+    @State private var screenshotTestSheet = false
     #endif
     @State private var toolbarWidth: CGFloat = 1120
     @State private var recordCoordinator = RecordCoordinator.shared
@@ -201,6 +202,9 @@ struct LibraryView: View {
         }
         #endif
         .sheet(isPresented: $recordCoordinator.showingFirst) { RecordFirstView() }
+        #if DEBUG
+        .sheet(isPresented: $screenshotTestSheet) { TestRecordingView() }
+        #endif
         .sheet(isPresented:Binding(get:{ companionSetup.presenter == .library },set:{ if !$0 { companionSetup.close() } })) { CompanionSetupView() }
         .onAppear {
             search.update(store.meetings)
@@ -243,6 +247,14 @@ struct LibraryView: View {
             }
             if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "record-first", !recordCoordinator.showingFirst {
                 recordCoordinator.showingFirst = true
+            }
+            if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "test-recording-testing", !screenshotTestSheet {
+                TestRecordingController.shared.freezeForScreenshot(phase: .recording, elapsedMs: 3_000, heard: [.me], levels: [.me: 0.42, .others: 0])
+                screenshotTestSheet = true
+            }
+            if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "test-recording-result", !screenshotTestSheet {
+                TestRecordingController.shared.freezeForScreenshot(phase: .result, elapsedMs: 8_000, heard: [.me], levels: [:])
+                screenshotTestSheet = true
             }
             if store.context.screenshot, ["meeting","export","voices-question"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""), navigation.detail == nil,
                let meeting = store.visibleMeetings.first(where: { $0.title == (LibraryLaunchContext.argument("-CassiniScreenshot") == "export" ? "Budget review" : "Client call, Rossi & Partners") }) {

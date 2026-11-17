@@ -48,9 +48,8 @@ def verify_vector_copy():
 def verify():
     pin=json.loads((FOLDER/'UPSTREAM.json').read_text())
     assert pin['repository']=='codemyriad/cassini-ux' and pin['commit']==COMMIT
-    catalog_pin=json.loads((ROOT/'Cassini/Resources/UX/UPSTREAM.json').read_text())
-    assert pin['commit']==catalog_pin['commit']
-    assert (FOLDER/'strings.json').read_bytes()==(ROOT/'Cassini/Resources/UX/strings.json').read_bytes()
+    # This standalone snapshot retains its reviewed catalog and vectors when the
+    # live app advances (D104). check-ux-copy.py validates the app's separate pin.
     for name,item in pin['files'].items():
         path=FOLDER/name
         assert path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(FOLDER.resolve()),name
@@ -59,6 +58,6 @@ def verify():
     assert json.loads((FOLDER/'format-vectors.json').read_text())['version']==5
     assert len(pin['files'])==26
     verify_vector_copy()
-    print('Standalone W2.2 snapshot: all26 hashes verified; reviewed catalog '+catalog_pin['commit'])
+    print('Standalone W2.2 snapshot: all26 hashes verified; reviewed catalog '+pin['commit'])
 
 if __name__=='__main__':verify()
