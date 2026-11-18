@@ -17,7 +17,7 @@ import CassiniWhistle
 
     static func start(_ observers: RecordedPCMObservers) -> RecordingPreview? {
         #if DEBUG
-        guard CommandLine.arguments.contains("--live-transcription-preview") else { return nil }
+        guard CommandLine.arguments.contains("--live-transcription-preview"), !TranscriptionQueue.shared.isBusy else { return nil }
         return RecordingPreview(observers.livePCM())
         #else
         return nil
