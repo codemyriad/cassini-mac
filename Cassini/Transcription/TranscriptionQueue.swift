@@ -10,6 +10,7 @@ import AudioToolbox
 import SwiftUI
 import CassiniRecording
 import CassiniKit
+import CassiniExport
 import Darwin
 #endif
 
@@ -779,8 +780,11 @@ import Darwin
             singleClosingWin.close()
         }
 
-        let singleURL = scratch.appendingPathComponent("ReceiptPreservedSingle.opus")
-        singleExporter.startExportForTesting(exportedMeeting, kind: .cassini, to: singleURL)
+        // Exercise the dialog's primary format for this plain-audio fixture
+        // while its transcript is queued.
+        let singleKind = try require(MeetingExportKind.primary(for:exportedMeeting).first)
+        let singleURL = scratch.appendingPathComponent("ReceiptPreservedSingle." + singleKind.suffix(for:exportedMeeting))
+        singleExporter.startExportForTesting(exportedMeeting, kind:singleKind, to:singleURL)
         await singleExporter.waitForShutdown()
         openHost.layoutSubtreeIfNeeded()
         singleClosingHost.layoutSubtreeIfNeeded()
