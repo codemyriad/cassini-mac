@@ -12,6 +12,7 @@ struct Response: Encodable { let id: String?; var transcript: WhistleTranscript?
 func emit(_ response: Response) throws {
     try WhistleIO.write(JSONEncoder().encode(response) + Data([10]), to: STDOUT_FILENO)
 }
+let live = CommandLine.arguments.dropFirst().first == "--live"
 do {
     // The exact C environment is checked before asset verification or dlopen.
     try WhistleEnvironment.validateLive()
@@ -55,7 +56,6 @@ do {
     #endif
     SegmentedAudio.removeAbandonedScratch()
     var arguments = Array(CommandLine.arguments.dropFirst())
-    let live = arguments.first == "--live"
     if live { arguments.removeFirst() }
     let assets = try WhistleAssets.forWorker(arguments: arguments)
     let engine = try WhistleEngine(assets: assets)
@@ -92,6 +92,6 @@ do {
         try emit(response)
     }
 } catch {
-    try? emit(Response(id: nil, error: String(describing: error)))
+    if !live { try? emit(Response(id: nil, error: String(describing: error))) }
     exit(78)
 }

@@ -75,3 +75,27 @@ class ProcessExit:
             raise OSError(event.data, 'Worker exit observation failed')
         if event.ident != self.pid or event.filter != select.KQ_FILTER_PROC or not event.fflags & select.KQ_NOTE_EXIT:
             raise RuntimeError('Unexpected worker process event')
+
+
+def exercise_live_windows(command, environment, fixture):
+    """Both native workers keep their model loaded across valid and rejected PCM requests."""
+    import base64
+    import struct
+    import subprocess
+    import wave
+
+    with wave.open(str(fixture), 'rb') as source:
+        assert (source.getnchannels(), source.getsampwidth(), source.getframerate()) == (1, 2, 16_000)
+        audio = source.readframes(8 * 16_000)
+    values = [value / 32768 for value, in struct.iter_unpack('<h', audio)]
+    pcm = base64.b64encode(struct.pack(f'<{len(values)}f', *values)).decode('ascii')
+    frames = [dict(id=1, pcm=pcm), dict(id=2, pcm='AAAA'), dict(id=3, pcm=pcm)]
+    payload = ''.join(json.dumps(request) + '\n' for request in frames).encode()
+    result = subprocess.run(command, input=payload, capture_output=True, env=environment, timeout=120)
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+    ready, first, rejected, last = [json.loads(line) for line in result.stdout.splitlines()]
+    assert ready == dict(ready=True)
+    assert not first['failed'] and first['id'] == 1 and first['transcript']['words']
+    assert rejected['failed'] and rejected['id'] == 2
+    assert not last['failed'] and last['id'] == 3
+    assert first['transcript'] == last['transcript']

@@ -40,11 +40,12 @@ public enum LiveWindowProtocol {
         public let failed: Bool
     }
 
-    public static func serve(decode: ([Float]) throws -> WhistleTranscript) throws {
-        let input = WhistleLineReader(fd: STDIN_FILENO, maximum: lineLimit)
+    public static func serve(input: Int32 = STDIN_FILENO, output: Int32 = STDOUT_FILENO,
+                             decode: ([Float]) throws -> WhistleTranscript) throws {
+        let lines = WhistleLineReader(fd: input, maximum: lineLimit)
         let decoder = JSONDecoder(), encoder = JSONEncoder()
-        try WhistleIO.write(ready + Data([10]), to: STDOUT_FILENO)
-        while let line = try input.next() {
+        try WhistleIO.write(ready + Data([10]), to: output)
+        while let line = try lines.next() {
             let request = try decoder.decode(Request.self, from: line)
             let response: Response
             do {
@@ -52,7 +53,7 @@ public enum LiveWindowProtocol {
             } catch {
                 response = Response(id: request.id, transcript: nil, failed: true)
             }
-            try WhistleIO.write(encoder.encode(response) + Data([10]), to: STDOUT_FILENO)
+            try WhistleIO.write(encoder.encode(response) + Data([10]), to: output)
 
         }
     }

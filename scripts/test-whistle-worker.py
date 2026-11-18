@@ -14,7 +14,7 @@ import sys
 import shutil
 import signal
 import tempfile
-from worker_events import OWNER_TICK_FD, ENGINE_READY_FD, ProcessExit, json_line, watchdog_ticks, discard_ticks, engine_ready
+from worker_events import OWNER_TICK_FD, ENGINE_READY_FD, ProcessExit, json_line, watchdog_ticks, discard_ticks, engine_ready, exercise_live_windows
 
 ROOT = Path(__file__).resolve().parent.parent
 SAFE = dict(NEEDLE_TELEMETRY='0', DO_NOT_TRACK='1', ORT_DISABLE_TELEMETRY='1')
@@ -242,6 +242,7 @@ child.wait()
 
     command = [str(args.worker.resolve()), '--assets', str(args.bundle.resolve())]
     text = exercise_requests(command, fixture)
+    exercise_live_windows([command[0], "--live", *command[1:]], worker_env(), fixture / "jfk.wav")
     reference = (fixture / 'jfk.txt').read_text().strip()
     words = lambda s: re.findall(r'\w+', s.casefold())
     assert words(text) == words(reference), (text, reference)
