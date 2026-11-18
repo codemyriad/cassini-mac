@@ -8,7 +8,11 @@ import CassiniWhistle
 /// The opt-in app owns the subscription and model lease. Drafts never leave memory.
 @MainActor final class RecordingPreview {
     private static var active: (id: UUID, task: Task<Void, Never>)?
-    private let drafts: Mutex<[String: [WhistleTranscript.Word]]>
+    private final class Drafts: Sendable {
+        let words = Mutex<[String: [WhistleTranscript.Word]]>([:])
+    }
+
+    private let drafts: Drafts
     private let task: Task<Void, Never>
 
     static func start(_ observers: RecordedPCMObservers) -> RecordingPreview? {
@@ -21,9 +25,10 @@ import CassiniWhistle
     }
 
     private init(_ input: AsyncStream<LivePCMEvent>) {
-        let state = Mutex<[String: [WhistleTranscript.Word]]>([:])
+        let state = Drafts()
         drafts = state
         let previous = Self.active?.task
+        previous?.cancel()
         let id = UUID()
         task = Task {
             defer { if Self.active?.id == id { Self.active = nil } }
@@ -40,7 +45,7 @@ import CassiniWhistle
                 )
                 do {
                     try await LiveCaptureTranscription.follow(input, worker: worker) { revision in
-                        state.withLock { drafts in
+                        state.words.withLock { drafts in
                             var words = drafts[revision.source] ?? []
                             words.removeAll {
                                 let midpoint = ($0.start + $0.end) * 500
@@ -63,5 +68,11 @@ import CassiniWhistle
     }
 
     func cancel() { task.cancel() }
-    var snapshot: [String: [WhistleTranscript.Word]] { drafts.withLock { $0 } }
+
+    static func yieldToSavedAudio() async {
+        let preview = active?.task
+        preview?.cancel()
+        await preview?.value
+    }
+    var snapshot: [String: [WhistleTranscript.Word]] { drafts.words.withLock { $0 } }
 }

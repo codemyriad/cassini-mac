@@ -387,6 +387,7 @@ private final class CaptureFiles: @unchecked Sendable {
         // or the control peer has gone away. Preserve the original capture URL.
         if userInitiated { service.rememberUserStop(captureID:value.captureID,key:value.key) }
         guard stopping[id] == nil else { return }
+        value.preview?.cancel()
         value.spectrogram?.stop(atMs:Double(value.elapsedMs))
         MeetingNavigation.shared.captureBeganSaving(at:value.snapshot.directory)
         captures[id]?.savingSinceMs = value.elapsedMs
@@ -599,6 +600,7 @@ private final class CaptureFiles: @unchecked Sendable {
             if let token = captures[id]?.signalReservation, stopping[id] == nil {
                 releaseSignal(token,failed:captures[id]?.admissionCancelled != true)
             }
+            captures[id]?.preview?.cancel()
             captures.removeValue(forKey:id); announced.remove(id); feedOwnership(id)
             activity.removeValue(forKey:id)
             CaptureActivityStore.shared.set(id,nil)

@@ -178,6 +178,7 @@ import Observation
     #endif
     func stop(problem: String? = nil) {
         guard phase == .starting || phase == .recording else { return }
+        preview?.cancel()
         spectrogram?.stop(atMs:Double(elapsedMs))
         completedElapsedMs = elapsedMs
         generation += 1

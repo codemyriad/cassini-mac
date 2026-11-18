@@ -275,6 +275,7 @@ import Darwin
                 case .eligible:
                     struct Request: Encodable { let id: String; let meeting: String; let me: String; let others: String; let uiLanguage: String }
                     let input = try JSONEncoder().encode(Request(id: UUID().uuidString, meeting: meeting.folder.path, me: UXText.text("common.me"), others: UXText.text("common.theOthers"),uiLanguage:UXText.language.rawValue)) + Data([10])
+                    await RecordingPreview.yieldToSavedAudio()
                     let model = try await SpeechModelController.shared.modelForNewJob()
                     defer { withExtendedLifetime(model) {} }
                     var worker = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/" + (model == nil ? "cassini-whistle-worker" : "cassini-parakeet-worker"))
