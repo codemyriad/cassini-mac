@@ -598,8 +598,8 @@ final class LibraryBoards: XCTestCase {
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:20))
-        XCTAssertTrue(text("⌘R records from anywhere in Cassini.",in:window))
-        XCTAssertFalse(text("⌥⌘R records from anywhere in Cassini.",in:window))
+        let shortcut = window.descendants(matching:.any).matching(identifier:"first-run-shortcut").firstMatch
+        XCTAssertEqual(shortcut.label,"⌘R records from anywhere in Cassini.")
         window.buttons["first-run-record"].click()
         XCTAssertTrue(window.sheets.staticTexts["Before you record"].waitForExistence(timeout:10))
         XCTAssertTrue(text("Allowed",in:window.sheets.firstMatch))
