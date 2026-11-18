@@ -651,35 +651,30 @@ struct LibraryView: View {
             let compact = geometry.size.height < FirstRunHeroMetrics.compactHeight
             ScrollView {
                 VStack(alignment:.leading,spacing:compact ? FirstRunHeroMetrics.compactGap : FirstRunHeroMetrics.gap) {
-                    CassiniBrandMark(height:compact ? FirstRunHeroMetrics.compactMark : FirstRunHeroMetrics.mark)
+                    HStack(spacing:32) {
+                        CassiniBrandMark(height:FirstRunHeroMetrics.mark)
+                        FirstRunWave().frame(maxWidth:501).frame(height:FirstRunHeroMetrics.mark)
+                    }.padding(.bottom,4)
                     VStack(alignment:.leading,spacing:0) {
                         Text(UXText.text("firstRun.hero.title"))
                             .foregroundStyle(CassiniTheme.ink).accessibilityIdentifier("first-run-hero-title")
-                        Text(UXText.text("firstRun.hero.subtitle"))
+                        Text(UXText.text("firstRun.hero.subtitle.computer"))
                             .foregroundStyle(CassiniTheme.ink3).accessibilityIdentifier("first-run-hero-subtitle")
-                    }.font(.system(size:FirstRunHeroMetrics.headline,weight:.bold))
+                    }.font(.system(size:FirstRunHeroMetrics.headline,weight:.bold)).tracking(-1.92)
                         .lineLimit(1).minimumScaleFactor(0.45)
                         .frame(maxWidth:.infinity,alignment:.leading).accessibilityAddTraits(.isHeader)
                     if let line = RecordingOverview.libraryDiskLine {
                         Text(line).foregroundStyle(CassiniTheme.warningNotice)
                     }
-                    HStack(spacing:FirstRunHeroMetrics.gap) {
+                    HStack(spacing:14) {
                         recordButton(big:true).fixedSize()
-                        FirstRunWave().frame(height:compact ? FirstRunHeroMetrics.compactMark : FirstRunHeroMetrics.mark)
+                        FirstRunShortcut()
                     }
-                    VStack(alignment:.leading,spacing:10) {
-                        Text(UXText.text("firstRun.howTo")).font(.system(size:13)).lineSpacing(4)
-                            .fixedSize(horizontal:false,vertical:true)
-                        Text(UXText.text("firstRun.shortcutLine",["shortcut":UXText.text("common.shortcut.record")]))
-                            .font(.system(size:11.5))
-                        HStack(alignment:.top,spacing:8) {
-                            Image(systemName:"lock").accessibilityHidden(true)
-                            Text(UXText.text("privacy.onDevice.computer") + " " + UXText.text("firstRun.libraryLocation",["folder":(store.context.screenshot ? LibraryLocationModel.display(LibraryLocation.standardRoot) : LibraryLocationModel.shared.displayPath).replacingOccurrences(of:" › ",with:"/")]))
-                        }.font(.system(size:11.5)).fixedSize(horizontal:false,vertical:true)
-                    }.foregroundStyle(CassiniTheme.ink2)
+                    FirstRunPrivacy(screenshot:store.context.screenshot)
                 }.padding(.horizontal,FirstRunHeroMetrics.horizontalPadding)
                     .padding(.vertical,compact ? FirstRunHeroMetrics.compactPadding : FirstRunHeroMetrics.padding)
                     .frame(maxWidth:FirstRunHeroMetrics.maxWidth + 2 * FirstRunHeroMetrics.horizontalPadding,alignment:.leading)
+                    .padding(.bottom,40)
                     .frame(maxWidth:.infinity,minHeight:geometry.size.height,alignment:.center)
             }.accessibilityElement(children:.contain).accessibilityLabel(UXText.text("library.title"))
                 .accessibilityAddTraits(.isHeader).accessibilityIdentifier("first-run-library")
@@ -963,37 +958,121 @@ struct UpdateReadyFooter: View {
     }
 }
 
-// L-27: desktop headline size is decided; the adaptable geometry stays here.
+// D105: desktop headline size is decided; narrow/short windows remain usable.
 private enum FirstRunHeroMetrics {
     static let headline: CGFloat = 64
-    static let maxWidth: CGFloat = 960
+    static let maxWidth: CGFloat = 860
     static let horizontalPadding: CGFloat = 48
     static let gap: CGFloat = 24
     static let compactGap: CGFloat = 16
-    static let mark: CGFloat = 64
-    static let compactMark: CGFloat = 48
+    static let mark: CGFloat = 40
     static let padding: CGFloat = 32
     static let compactPadding: CGFloat = 24
     static let compactHeight: CGFloat = 600
 }
 
-/// Decorative and static: no microphone input, timer or motion to announce.
+/// D105 keeps the placeholder in its localized position, rendered as one key chip.
+private struct FirstRunShortcut: View {
+    private var parts: [String] { UXText.text("firstRun.shortcutLine").components(separatedBy:"{shortcut}") }
+    var body: some View {
+        HStack(spacing:0) {
+            Text(parts[0])
+            Text(UXText.text("common.shortcut.record"))
+                .font(.system(size:12,weight:.medium,design:.monospaced))
+                .padding(.horizontal,5).padding(.vertical,2)
+                .background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:4))
+                .overlay(RoundedRectangle(cornerRadius:4).stroke(CassiniTheme.tagStroke))
+                .fixedSize()
+            Text(parts.dropFirst().joined(separator:"{shortcut}"))
+                .fixedSize(horizontal:false,vertical:true)
+        }.font(.system(size:14)).foregroundStyle(CassiniTheme.ink2)
+            .accessibilityElement(children:.ignore)
+            .accessibilityLabel(UXText.text("firstRun.shortcutLine",["shortcut":UXText.text("common.shortcut.record")]))
+            .accessibilityIdentifier("first-run-shortcut")
+    }
+}
+
+private struct FirstRunPrivacy: View {
+    let screenshot: Bool
+    private var location: LibraryLocationModel { .shared }
+    private var move: LibraryMoveCoordinator { .shared }
+    private static let folderLink = URL(string:"cassini-first-run://library")!
+    private var line: AttributedString {
+        // Build attributed text directly: folder names are literal, including
+        // Markdown, braces, and punctuation. Only the catalog placeholder links.
+        let parts = UXText.text("firstRun.privacy.computer").components(separatedBy:"{folder}")
+        let folder = (screenshot ? LibraryLocationModel.display(LibraryLocation.standardRoot) : location.displayPath)
+            .replacingOccurrences(of:" › ",with:"/")
+        var result = AttributedString(parts[0])
+        var link = AttributedString(folder)
+        link.link = Self.folderLink
+        link.foregroundColor = CassiniTokens.accent
+        result.append(link)
+        result.append(AttributedString(parts.dropFirst().joined(separator:"{folder}")))
+        return result
+    }
+    var body: some View {
+        HStack(alignment:.firstTextBaseline,spacing:6) {
+            Image(systemName:"shield").foregroundStyle(CassiniTokens.accent).accessibilityHidden(true)
+            Text(line).fixedSize(horizontal:false,vertical:true)
+                .help(UXText.text("firstRun.openFolder.tooltip"))
+                .environment(\.openURL,OpenURLAction { url in
+                    guard url == Self.folderLink else { return .discarded }
+                    openFolder()
+                    return .handled
+                })
+                .accessibilityIdentifier("first-run-privacy")
+            Button { move.choose(parent:NSApp.keyWindow) } label: {
+                Image(systemName:"pencil").font(.system(size:12)).frame(width:20,height:20)
+                    .contentShape(Rectangle())
+            }.buttonStyle(.plain).foregroundStyle(CassiniTheme.ink3)
+                .help(UXText.text("firstRun.changeFolder.tooltip"))
+                .accessibilityLabel(UXText.text("firstRun.changeFolder"))
+                .accessibilityIdentifier("first-run-change-folder").disabled(!move.canChoose)
+        }.font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
+    }
+    private func openFolder() {
+        let root = location.roots[0]
+        Task {
+            do {
+                // A new default Library need not exist yet. Prepare it off the
+                // main actor; a disconnected custom Library must not be recreated.
+                try await Task.detached(priority:.utility) {
+                    if root == LibraryLocation.standardRoot {
+                        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
+                    } else {
+                        guard try root.resourceValues(forKeys:[.isDirectoryKey]).isDirectory == true else { throw POSIXError(.ENOENT) }
+                    }
+                }.value
+                NSWorkspace.shared.open(root)
+            } catch { NSApp.presentError(error) }
+        }
+    }
+}
+
+/// Decorative and static: verbatim heights/fades from P2FirstRun-Desktop,
+/// canvas 1794987301-5bc7. Four phrases, three pauses, then a fading tail.
 private struct FirstRunWave: View {
-    private static let barWidth: CGFloat = 4
-    private static let pitch: CGFloat = 8
-    private static let maxBars = 96
-    private static let fadeBars = 10
-    private static let levels: [CGFloat] = [12,20,28,44,60,36,24,16,32,52,40,20,12,28,48,64,44,24,16]
+    private static let bars: [(CGFloat,Double)] = [
+        (7,1.00),(22,1.00),(12,1.00),(23,1.00),(22,1.00),(25,1.00),(30,1.00),(19,1.00),
+        (30,1.00),(24,1.00),(14,1.00),(15,1.00),(22,1.00),(8,1.00),(10,1.00),(15,1.00),
+        (25,1.00),(19,1.00),(23,1.00),(18,1.00),(19,0.93),(8,0.83),(6,0.78),(6,0.78),
+        (8,0.83),(13,0.93),(14,1.00),(18,1.00),(17,1.00),(14,1.00),(19,1.00),(15,1.00),
+        (11,1.00),(13,1.00),(11,1.00),(16,1.00),(22,1.00),(22,1.00),(16,1.00),(12,1.00),
+        (13,1.00),(8,1.00),(15,1.00),(20,1.00),(15,1.00),(25,1.00),(18,1.00),(18,0.93),
+        (6,0.78),(12,0.93),(19,1.00),(15,1.00),(15,1.00),(17,1.00),(16,1.00),(9,1.00),
+        (17,1.00),(25,1.00),(27,1.00),(32,1.00),(19,1.00),(18,1.00),(35,1.00),(16,1.00),
+        (16,1.00),(15,1.00),(22,1.00),(10,0.85),(6,0.78),(6,0.76),(8,0.81),(17,0.90),
+        (22,0.87),(23,0.83),(19,0.80),(15,0.77),(8,0.73),(11,0.70),(6,0.67),(6,0.63),
+        (6,0.60),(6,0.57),(6,0.53),(6,0.50),
+    ]
     var body: some View {
         Canvas { context,size in
-            let count = max(1,min(Self.maxBars,Int(size.width / Self.pitch)))
-            let width = CGFloat(count - 1) * Self.pitch + Self.barWidth
-            let start = (size.width - width) / 2
-            for index in 0..<count {
-                let height = min(size.height,Self.levels[index % Self.levels.count])
-                let fade = min(1,Double(min(index,count - 1 - index)) / Double(Self.fadeBars))
-                let bar = CGRect(x:start + CGFloat(index) * Self.pitch,y:(size.height - height) / 2,width:Self.barWidth,height:height)
-                context.fill(Path(bar),with:.color(CassiniTokens.accent.opacity(fade)))
+            // Preserve all phrases on narrow windows by reducing the gap only.
+            let pitch = min(6,max(3,(size.width - 3) / CGFloat(Self.bars.count - 1)))
+            for (index,level) in Self.bars.enumerated() {
+                let bar = CGRect(x:CGFloat(index) * pitch,y:(size.height - level.0) / 2,width:3,height:level.0)
+                context.fill(Path(roundedRect:bar,cornerRadius:1.5),with:.color(CassiniTheme.ink3.opacity(level.1)))
             }
         }.accessibilityHidden(true).allowsHitTesting(false)
     }

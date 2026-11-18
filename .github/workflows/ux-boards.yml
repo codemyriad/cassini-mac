@@ -176,6 +176,8 @@ jobs:
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testStarsPersistAndSearchCarriesLibraryChoiceThenResetsOtherFilters \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testLibrary \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testFirstRun \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testFirstRunChangeFolderUsesLibraryChooserAndCancels \
+          -only-testing:CassiniWindowScreenshots/LibraryBoards/testFirstRunHeroFitsMinimumWindow \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testSearchBoardFiltersAndOpeningTheHit \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testReceivedBoard \
           -only-testing:CassiniWindowScreenshots/LibraryBoards/testOpenAndFinderRoutingWithLibraryClosed \
