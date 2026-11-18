@@ -54,7 +54,10 @@ do {
     }
     #endif
     SegmentedAudio.removeAbandonedScratch()
-    let assets = try WhistleAssets.forWorker(arguments: Array(CommandLine.arguments.dropFirst()))
+    var arguments = Array(CommandLine.arguments.dropFirst())
+    let live = arguments.first == "--live"
+    if live { arguments.removeFirst() }
+    let assets = try WhistleAssets.forWorker(arguments: arguments)
     let engine = try WhistleEngine(assets: assets)
     #if DEBUG
     // Private inherited-FD event: initialization finished, before any input or
@@ -65,6 +68,10 @@ do {
         try WhistleIO.write(Data([1]), to:fd)
     }
     #endif
+    if live {
+        try LiveWindowProtocol.serve(decode: engine.transcribe(samples:))
+        exit(0)
+    }
     var vadAssets: VADAssets?
     let lines = WhistleLineReader(fd: STDIN_FILENO)
     while let line = try lines.next() {
