@@ -24,15 +24,96 @@ public enum LivePCMEvent: Sendable {
     case ended(id: String)
 }
 
+/// Keep source ends independently of the lossy PCM budget. All operations
+/// except next() are synchronous and bounded on capture producer threads.
+private final class LivePCMFeed: @unchecked Sendable {
+    private let lock = NSLock()
+    private var queue: [LivePCMEvent] = []
+    private var audioCount = 0
+    private var endIDs: Set<String> = []
+    private var waiting: CheckedContinuation<LivePCMEvent?, Never>?
+    private var closed = false
+
+    func next() async -> LivePCMEvent? {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { reply in
+                lock.lock()
+                if Task.isCancelled {
+                    lock.unlock()
+                    reply.resume(returning: nil)
+                } else if !queue.isEmpty {
+                    let event = queue.removeFirst()
+                    switch event {
+                    case .audio: audioCount -= 1
+                    case let .ended(id): endIDs.remove(id)
+                    }
+                    lock.unlock()
+                    reply.resume(returning: event)
+                } else if closed {
+                    lock.unlock()
+                    reply.resume(returning: nil)
+                } else {
+                    precondition(waiting == nil, "The live PCM feed supports one consumer")
+                    waiting = reply
+                    lock.unlock()
+                }
+            }
+        } onCancel: { self.close(discard: true) }
+    }
+
+    func offer(_ event: LivePCMEvent) {
+        let reply = lock.withLock {
+            () -> CheckedContinuation<LivePCMEvent?, Never>? in
+            guard !closed else { return nil }
+            if let waiting {
+                self.waiting = nil
+                return waiting
+            }
+            switch event {
+            case .audio:
+                if audioCount == 32, let old = queue.firstIndex(where: {
+                    if case .audio = $0 { return true }
+                    return false
+                }) {
+                    queue.remove(at: old)
+                    audioCount -= 1
+                }
+                audioCount += 1
+            case let .ended(id):
+                guard endIDs.count < 64, endIDs.insert(id).inserted else { return nil }
+            }
+            queue.append(event)
+            return nil
+        }
+        reply?.resume(returning: event)
+    }
+
+    func close(discard: Bool = false) {
+        let reply = lock.withLock {
+            closed = true
+            if discard {
+                queue.removeAll()
+                endIDs.removeAll()
+                audioCount = 0
+            }
+            let active = waiting
+            waiting = nil
+            return active
+        }
+        reply?.resume(returning: nil)
+    }
+}
+
 /// A session's visual observer and independent bounded inference subscription.
 public final class RecordedPCMObservers: @unchecked Sendable {
     private final class WeakPolicy { weak var value: RecordedPCMPolicy?; init(_ value: RecordedPCMPolicy) { self.value = value } }
     private let lock = NSLock()
     private weak var observer: (any RecordedPCMObserver)?
     private var policies: [WeakPolicy] = []
-    private var live: (id: UUID, continuation: AsyncStream<LivePCMEvent>.Continuation)?
+    private var live: (id: UUID, feed: LivePCMFeed)?
     private var liveFinished = false
     public init() {}
+    deinit { live?.feed.close() }
     public func set(_ value: (any RecordedPCMObserver)?) {
         let clear: [RecordedPCMPolicy] = lock.withLock {
             observer = value; policies.removeAll { $0.value == nil }
@@ -49,17 +130,19 @@ public final class RecordedPCMObservers: @unchecked Sendable {
     /// Calling again replaces the previous inference subscription.
     public func livePCM() -> AsyncStream<LivePCMEvent> {
         let id = UUID()
-        let (stream, continuation) = AsyncStream.makeStream(of: LivePCMEvent.self, bufferingPolicy: .bufferingNewest(32))
-        continuation.onTermination = { [weak self] _ in self?.removeLive(id: id) }
+        let feed = LivePCMFeed()
         let (closed, previous) = lock.withLock {
-            if liveFinished { return (true, nil as AsyncStream<LivePCMEvent>.Continuation?) }
-            let previous = live?.continuation
-            live = (id, continuation)
+            if liveFinished { return (true, nil as LivePCMFeed?) }
+            let previous = live?.feed
+            live = (id, feed)
             return (false, previous)
         }
-        previous?.finish()
-        if closed { continuation.finish() }
-        return stream
+        previous?.close(discard: true)
+        if closed { feed.close() }
+        return AsyncStream(unfolding: { await feed.next() }, onCancel: { [weak self] in
+            feed.close(discard: true)
+            self?.removeLive(id: id)
+        })
     }
 
     private func removeLive(id: UUID) {
@@ -72,23 +155,24 @@ public final class RecordedPCMObservers: @unchecked Sendable {
     }
 
     func finishLive() {
-        let continuation = lock.withLock {
+        let (feed, clear) = lock.withLock {
             liveFinished = true
-            let continuation = live?.continuation
+            let feed = live?.feed
             live = nil
-            return continuation
+            return (feed, observer == nil ? policies.compactMap(\.value) : [])
         }
-        continuation?.finish()
+        feed?.close()
+        clear.forEach { $0.clearPending() }
     }
 
     public func offer(source: RecordedPCMSource, pcm: Data, offsetMs: Double) {
-        let (visual, inference) = lock.withLock { (observer, live?.continuation) }
-        inference?.yield(.audio(source: source, pcm16LE: pcm, offsetMs: offsetMs))
+        let (visual, inference) = lock.withLock { (observer, live?.feed) }
+        inference?.offer(.audio(source: source, pcm16LE: pcm, offsetMs: offsetMs))
         visual?.offer(source: source, pcm: pcm, offsetMs: offsetMs)
     }
     public func sourceEnded(id: String) {
-        let (visual, inference) = lock.withLock { (observer, live?.continuation) }
-        inference?.yield(.ended(id: id))
+        let (visual, inference) = lock.withLock { (observer, live?.feed) }
+        inference?.offer(.ended(id: id))
         visual?.sourceEnded(id: id)
     }
     fileprivate var hasObservers: Bool { lock.withLock { observer != nil || live != nil } }
