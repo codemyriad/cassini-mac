@@ -215,7 +215,7 @@ final class LibraryBoards: XCTestCase {
             }
             let resume = window.buttons["meeting-write-down"]
             XCTAssertTrue(resume.waitForExistence(timeout:10),app.debugDescription)
-            XCTAssertEqual(resume.label,"Write it down")
+            XCTAssertEqual(resume.label,"Transcribe")
             XCTAssertFalse(status.exists)
             XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
             app.terminate()
@@ -244,7 +244,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(record.waitForExistence(timeout:20),first.debugDescription)
         XCTAssertEqual(record.label,"Enregistrer")
         XCTAssertEqual(empty.staticTexts["first-run-hero-title"].label,"Chaque mot transcrit.",first.debugDescription)
-        XCTAssertEqual(empty.staticTexts["first-run-hero-subtitle"].label,"Rien n’est mis en ligne.",first.debugDescription)
+        XCTAssertEqual(empty.staticTexts["first-run-hero-subtitle"].label,"Ici même, sur cet ordinateur.",first.debugDescription)
         capture(empty,name:"first-run-fr")
         record.click()
         let start=empty.sheets.buttons["record-first-start"]
@@ -598,8 +598,8 @@ final class LibraryBoards: XCTestCase {
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.buttons["first-run-record"].waitForExistence(timeout:20))
-        XCTAssertTrue(text("⌘R records from anywhere in Cassini.",in:window))
-        XCTAssertFalse(text("⌥⌘R records from anywhere in Cassini.",in:window))
+        let shortcut = window.descendants(matching:.any).matching(identifier:"first-run-shortcut").firstMatch
+        XCTAssertEqual(shortcut.label,"⌘R records from anywhere in Cassini.")
         window.buttons["first-run-record"].click()
         XCTAssertTrue(window.sheets.staticTexts["Before you record"].waitForExistence(timeout:10))
         XCTAssertTrue(text("Allowed",in:window.sheets.firstMatch))
@@ -1026,8 +1026,8 @@ final class LibraryBoards: XCTestCase {
         let window = app.windows["cassini-settings-window"]
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"settings-whistle-row").firstMatch.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"settings-speech-models-ready").firstMatch.waitForExistence(timeout:20),app.debugDescription)
-        XCTAssertTrue(text("Writing down what was said",in:window))
-        XCTAssertTrue(text("Written down on this computer. Cassini goes online only to download a model you ask for, and each file is checked first.",in:window))
+        XCTAssertTrue(text("Transcription",in:window))
+        XCTAssertTrue(text("Transcribed on this computer. Cassini goes online only to download a model you ask for, and each file is checked first.",in:window))
         XCTAssertTrue(window.buttons["settings-download-parakeet"].waitForExistence(timeout:5))
         XCTAssertTrue(text("Parakeet Ultra",in:window)); XCTAssertFalse(text("Tell speakers apart",in:window))
         let parakeet = window.radioButtons["settings-parakeet-radio"]
@@ -1135,6 +1135,20 @@ final class LibraryBoards: XCTestCase {
     }
     @MainActor func testLibrary() throws { try board("library", fixture: "main") }
     @MainActor func testFirstRun() throws { try board("first-run", fixture: "empty") }
+    @MainActor func testFirstRunChangeFolderUsesLibraryChooserAndCancels() throws {
+        let app = try launch("first-run",fixture:"empty"); defer { app.terminate() }
+        let window = app.windows["cassini-library-window"]
+        let pencil = window.buttons["first-run-change-folder"]
+        XCTAssertTrue(pencil.waitForExistence(timeout:20),app.debugDescription)
+        pencil.click()
+        let chooser = app.windows["open-panel"]
+        XCTAssertTrue(chooser.waitForExistence(timeout:5),app.debugDescription)
+        app.typeKey(.escape,modifierFlags:[])
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(
+            predicate:NSPredicate(format:"exists == false"),object:chooser)],timeout:5),.completed)
+        XCTAssertTrue(pencil.isEnabled)
+        XCTAssertTrue(text("Transcribed on this computer, kept in Music/Cassini",in:window))
+    }
     @MainActor func testFirstRunHeroFitsMinimumWindow() throws {
         let app = try launch("first-run",fixture:"empty",extra:["-CassiniScreenshotSize","760x480"],language:"fr",locale:"fr_FR")
         defer { app.terminate() }
@@ -1848,7 +1862,7 @@ final class LibraryBoards: XCTestCase {
         window.buttons["recording-stop"].click()
         let retry = window.buttons["Try again"]
         XCTAssertTrue(waitForPresent(retry,timeout: 20), app.debugDescription)
-        XCTAssertTrue(text("Could not write this meeting down. The audio is fine.", in: window))
+        XCTAssertTrue(text("Could not transcribe this meeting. The audio is fine.", in: window))
         XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
         capture(window, name: "qa-transcription-retry")
         retry.click()
@@ -2215,13 +2229,22 @@ final class LibraryBoards: XCTestCase {
             let primary = window.staticTexts["first-run-hero-title"]
             let secondary = window.staticTexts["first-run-hero-subtitle"]
             XCTAssertEqual(primary.label,"Every word written down.")
-            XCTAssertEqual(secondary.label,"None of it uploaded.")
+            XCTAssertEqual(secondary.label,"Right here, on this computer.")
+            XCTAssertFalse(window.buttons["toolbar-record"].exists,"First run has one Record action under the hero")
+            XCTAssertTrue(window.buttons["toolbar-import"].exists)
+            XCTAssertGreaterThan(window.buttons["toolbar-import"].frame.minX,window.frame.midX,"Import stays at the trailing edge")
             XCTAssertEqual(primary.frame.minX,secondary.frame.minX,accuracy:1)
             for line in [primary,secondary] {
                 XCTAssertTrue(window.frame.contains(line.frame),window.debugDescription)
                 XCTAssertLessThan(line.frame.height,100,"Each headline stays on one line")
             }
-            XCTAssertTrue(text("Written down on this computer. The audio never leaves it. Your Library is Music/Cassini.", in: window))
+            XCTAssertTrue(text("Transcribed on this computer, kept in Music/Cassini", in: window))
+            let pencil = window.buttons["first-run-change-folder"]
+            XCTAssertEqual(pencil.label,"Change Library folder")
+            XCTAssertTrue(pencil.isEnabled)
+            XCTAssertTrue(window.frame.contains(pencil.frame))
+            XCTAssertEqual(primary.frame.minX,window.buttons["first-run-record"].frame.minX,accuracy:1)
+            XCTAssertFalse(text("Press Record when the meeting starts. Press Stop when it ends.",in:window))
             let title = window.staticTexts["library-toolbar-title"]
             XCTAssertFalse(title.exists,"Library is an accessible heading, without a visible toolbar title")
             XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"first-run-library").firstMatch.exists)
