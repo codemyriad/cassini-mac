@@ -58,7 +58,7 @@ struct LibraryView: View {
             VStack(alignment:.leading,spacing:0) {
                 ParakeetRecommendationView(afterFirst:true)
                 ParakeetDefaultNotice()
-            }.padding(.horizontal,18).background(CassiniTheme.paneGround)
+            }.padding(.horizontal,18).background(showsFirstRun ? CassiniTheme.surface : CassiniTheme.paneGround)
 
             if !store.context.screenshot && companionSetup.showLibraryState && showsSplit && !search.visible {
                 BrowserConnectionStateView(identifier:"library-browser-status",presenter:.library)
@@ -131,8 +131,7 @@ struct LibraryView: View {
                     }) { }
                 }
             } else if showsFirstRun && !search.visible {
-                // A distinct item lets AppKit move Import to the trailing edge
-                // when the initial Library scan resolves to first run.
+                ToolbarItem(placement:.automatic) { Spacer() }
                 ToolbarItem(id:"first-run-actions",placement:.primaryAction) { toolbarControl }
             } else {
             ToolbarItem(placement: .navigation) {
@@ -695,14 +694,14 @@ struct LibraryView: View {
             }.frame(minWidth:90).fixedSize(horizontal:true,vertical:false)
         } else {
         Button { sessionPlayback.stop(); RecordCoordinator.shared.request(parent: store.context.root) } label: {
-            HStack(spacing: big ? 10 : 7) {
+            HStack(spacing: 9) {
                 if saving {
                     ProgressView().controlSize(.small)
                 } else {
-                    Circle().fill(enabled ? CassiniTheme.onRecord : CassiniTheme.ink3).frame(width: big ? 12 : 9, height: big ? 12 : 9)
+                    Circle().fill(enabled ? CassiniTheme.onRecord : CassiniTheme.ink3).frame(width:10,height:10)
                 }
                 Text(title).fontWeight(.semibold)
-            }.padding(.horizontal, big ? 22 : 14).frame(minWidth: big ? nil : 90).frame(height: big ? 44 : 34)
+            }.font(.system(size:15)).padding(.leading,20).padding(.trailing,24).frame(height:46)
                 .foregroundStyle(saving ? CassiniTheme.ink2 : enabled ? CassiniTheme.onRecord : CassiniTheme.ink3)
                 .background(saving || !enabled ? CassiniTheme.chipFill : CassiniTheme.record, in: Capsule())
         }.buttonStyle(.plain).disabled(!enabled).accessibilityLabel(title).accessibilityIdentifier("first-run-record")
@@ -982,14 +981,14 @@ private struct FirstRunShortcut: View {
         HStack(spacing:0) {
             Text(parts[0])
             Text(UXText.text("common.shortcut.record"))
-                .font(.system(size:12,weight:.medium,design:.monospaced))
+                .font(.system(size:13.5,weight:.semibold))
                 .padding(.horizontal,5).padding(.vertical,2)
                 .background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:4))
                 .overlay(RoundedRectangle(cornerRadius:4).stroke(CassiniTheme.tagStroke))
                 .fixedSize()
             Text(parts.dropFirst().joined(separator:"{shortcut}"))
                 .fixedSize(horizontal:false,vertical:true)
-        }.font(.system(size:14)).foregroundStyle(CassiniTheme.ink2)
+        }.font(.system(size:15)).foregroundStyle(CassiniTheme.ink2)
             .accessibilityElement(children:.ignore)
             .accessibilityLabel(UXText.text("firstRun.shortcutLine",["shortcut":UXText.text("common.shortcut.record")]))
             .accessibilityIdentifier("first-run-shortcut")
@@ -1013,13 +1012,15 @@ private struct FirstRunPrivacy: View {
         var link = AttributedString(folder)
         link.link = Self.folderLink
         link.foregroundColor = CassiniTokens.accent
+        link.font = .system(size:14,weight:.semibold)
+        link.underlineStyle = .single
         result.append(link)
         result.append(AttributedString(parts.dropFirst().joined(separator:"{folder}")))
         return result
     }
     var body: some View {
         HStack(alignment:.firstTextBaseline,spacing:6) {
-            Image(systemName:"shield").foregroundStyle(CassiniTokens.accent).accessibilityHidden(true)
+            Image(systemName:"shield").font(.system(size:15)).foregroundStyle(CassiniTokens.accent).accessibilityHidden(true)
             Text(line).fixedSize(horizontal:false,vertical:true)
                 .help(UXText.text("firstRun.openFolder.tooltip"))
                 .environment(\.openURL,OpenURLAction { url in
@@ -1035,7 +1036,7 @@ private struct FirstRunPrivacy: View {
                 .help(UXText.text("firstRun.changeFolder.tooltip"))
                 .accessibilityLabel(UXText.text("firstRun.changeFolder"))
                 .accessibilityIdentifier("first-run-change-folder").disabled(!move.canChoose)
-        }.font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
+        }.font(.system(size:14)).foregroundStyle(CassiniTheme.ink2)
     }
     private func openFolder() {
         let root = root
