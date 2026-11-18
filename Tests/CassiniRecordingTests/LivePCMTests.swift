@@ -16,14 +16,14 @@ final class LivePCMTests: XCTestCase {
         observers.sourceEnded(id: source.id)
         observers.finishLive()
         var reader = stream.makeAsyncIterator()
-        if case let .audio(actual, bytes, offset) = await reader.next() {
+        if case let .audio(actual, bytes, offset)? = await reader.next() {
             XCTAssertEqual(actual, source)
             XCTAssertEqual(bytes, pcm)
             XCTAssertEqual(offset, 100)
         } else {
             XCTFail("Expected bootstrapped PCM")
         }
-        if case let .ended(id) = await reader.next() {
+        if case let .ended(id)? = await reader.next() {
             XCTAssertEqual(id, source.id)
         } else {
             XCTFail("Expected source end")
@@ -38,10 +38,10 @@ final class LivePCMTests: XCTestCase {
         let session = try RecordingSession(parent: root, title: "test", source: "chromium")
         let input = session.pcmObservers.livePCM()
         session.pcmObservers.sourceEnded(id: "retired")
-        let active = RecordedPCMSource(id: "remote", kind: "remote", sampleRate: 48_000,
-                                       channels: 1, startOffsetMs: 0)
+        try session.addTrack(id: "remote", label: "Remote", kind: "remote", sampleRate: 48_000, channels: 1)
+        let pcm = Data(repeating: 1, count: 48 * 2)
         for index in 0..<40 {
-            session.pcmObservers.offer(source: active, pcm: Data([1, 0]), offsetMs: Double(index))
+            try session.append(id: "remote", pcm: pcm, offsetMs: Double(index))
         }
         try session.finish()
         var iterator = input.makeAsyncIterator()
