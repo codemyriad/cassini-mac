@@ -18,17 +18,25 @@ public protocol RecordedPCMObserver: AnyObject, Sendable {
     func sourceEnded(id: String)
 }
 public extension RecordedPCMObserver { func sourceEnded(id: String) {} }
-/// A session's one analyser subscription, independent of slow file writes.
+/// App-local PCM for inference. Frame gaps reveal preview backpressure or source discontinuities.
+public enum LivePCMEvent: Sendable {
+    case audio(source: RecordedPCMSource, pcm16LE: Data, offsetMs: Double)
+    case ended(id: String)
+}
+
+/// A session's visual observer and independent bounded inference subscription.
 public final class RecordedPCMObservers: @unchecked Sendable {
     private final class WeakPolicy { weak var value: RecordedPCMPolicy?; init(_ value: RecordedPCMPolicy) { self.value = value } }
     private let lock = NSLock()
     private weak var observer: (any RecordedPCMObserver)?
     private var policies: [WeakPolicy] = []
+    private var live: (id: UUID, continuation: AsyncStream<LivePCMEvent>.Continuation)?
+    private var liveFinished = false
     public init() {}
     public func set(_ value: (any RecordedPCMObserver)?) {
         let clear: [RecordedPCMPolicy] = lock.withLock {
             observer = value; policies.removeAll { $0.value == nil }
-            return value == nil ? policies.compactMap(\.value) : []
+            return value == nil && live == nil ? policies.compactMap(\.value) : []
         }
         // Release bootstrapping buffers immediately when all views disappear.
         // Never hold the subscription lock while entering a policy lock.
@@ -37,11 +45,53 @@ public final class RecordedPCMObservers: @unchecked Sendable {
     fileprivate func register(_ policy: RecordedPCMPolicy) {
         lock.withLock { policies.removeAll { $0.value == nil }; policies.append(WeakPolicy(policy)) }
     }
-    public func offer(source: RecordedPCMSource, pcm: Data, offsetMs: Double) {
-        current?.offer(source:source,pcm:pcm,offsetMs:offsetMs)
+    /// The oldest preview blocks may be displaced when recognition falls behind.
+    /// Calling again replaces the previous inference subscription.
+    public func livePCM() -> AsyncStream<LivePCMEvent> {
+        let id = UUID()
+        let (stream, continuation) = AsyncStream.makeStream(of: LivePCMEvent.self, bufferingPolicy: .bufferingNewest(32))
+        continuation.onTermination = { [weak self] _ in self?.removeLive(id: id) }
+        let (closed, previous) = lock.withLock {
+            if liveFinished { return (true, nil as AsyncStream<LivePCMEvent>.Continuation?) }
+            let previous = live?.continuation
+            live = (id, continuation)
+            return (false, previous)
+        }
+        previous?.finish()
+        if closed { continuation.finish() }
+        return stream
     }
-    public func sourceEnded(id: String) { current?.sourceEnded(id:id) }
-    fileprivate var current: (any RecordedPCMObserver)? { lock.withLock { observer } }
+
+    private func removeLive(id: UUID) {
+        let clear: [RecordedPCMPolicy] = lock.withLock {
+            guard live?.id == id else { return [] }
+            live = nil
+            return observer == nil ? policies.compactMap(\.value) : []
+        }
+        clear.forEach { $0.clearPending() }
+    }
+
+    func finishLive() {
+        let continuation = lock.withLock {
+            liveFinished = true
+            let continuation = live?.continuation
+            live = nil
+            return continuation
+        }
+        continuation?.finish()
+    }
+
+    public func offer(source: RecordedPCMSource, pcm: Data, offsetMs: Double) {
+        let (visual, inference) = lock.withLock { (observer, live?.continuation) }
+        inference?.yield(.audio(source: source, pcm16LE: pcm, offsetMs: offsetMs))
+        visual?.offer(source: source, pcm: pcm, offsetMs: offsetMs)
+    }
+    public func sourceEnded(id: String) {
+        let (visual, inference) = lock.withLock { (observer, live?.continuation) }
+        inference?.yield(.ended(id: id))
+        visual?.sourceEnded(id: id)
+    }
+    fileprivate var hasObservers: Bool { lock.withLock { observer != nil || live != nil } }
 }
 /// Independent metadata lock, never held across a write or analyser callback.
 /// Keep bounded admitted PCM until the first write establishes its real span
@@ -76,9 +126,9 @@ public final class RecordedPCMPolicy: @unchecked Sendable {
                 return batch
             }
             guard !chunks.isEmpty else { return }
-            guard let observer = observers.current else { clearPending(); lock.withLock { _ = flushing.remove(inputID) }; return }
+            guard observers.hasObservers else { clearPending(); lock.withLock { _ = flushing.remove(inputID) }; return }
             for chunk in chunks.sorted(by: { $0.offset < $1.offset }) {
-                deliver(source:source,pcm:chunk.pcm,offsetMs:chunk.offset,observer:observer)
+                deliver(source:source,pcm:chunk.pcm,offsetMs:chunk.offset)
             }
         }
     }
@@ -104,13 +154,12 @@ public final class RecordedPCMPolicy: @unchecked Sendable {
     }
     private func offer(inputID: String, pcm: Data, offsetMs: Double, depth: Int) {
         guard depth < 3, offsetMs.isFinite, offsetMs >= 0, !pcm.isEmpty else { return }
-        let observer = observers.current
         let action: Action = lock.withLock {
             guard enabled else { return .none }
             // Decide forwarding and buffering under the same lock as activation:
             // an offer cannot append to a staged buffer after it was transferred.
             if let target { return .forward(target) }
-            guard observer != nil, observers.current != nil else { return .none }
+            guard observers.hasObservers else { return .none }
             if let value = sources[inputID], !flushing.contains(inputID) { return .deliver(value) }
             guard pendingBytes+pcm.count <= 1_048_576, pending.count < 64 || pending[inputID] != nil,
                   pending[inputID,default:[]].count < 64 else { bootstrapDrops &+= 1; return .none }
@@ -121,11 +170,11 @@ public final class RecordedPCMPolicy: @unchecked Sendable {
         case .none: break
         case .forward(let next): next.offer(inputID:inputID,pcm:pcm,offsetMs:offsetMs,depth:depth+1)
         case .deliver(let source):
-            if let observer { deliver(source:source,pcm:pcm,offsetMs:offsetMs,observer:observer) }
+            deliver(source:source,pcm:pcm,offsetMs:offsetMs)
         }
     }
 
-    private func deliver(source: RecordedPCMSource, pcm: Data, offsetMs: Double, observer: any RecordedPCMObserver) {
+    private func deliver(source: RecordedPCMSource, pcm: Data, offsetMs: Double) {
         let frameBytes = source.channels*2
         guard pcm.count%frameBytes == 0 else { return }
         let before = max(0,(source.startOffsetMs-offsetMs)*Double(source.sampleRate)/1000)
@@ -135,7 +184,7 @@ public final class RecordedPCMPolicy: @unchecked Sendable {
         let frames = abs(before-nearest) < 0.00001 ? nearest : ceil(before)
         let trim = Int(min(Double(pcm.count/frameBytes),frames))
         guard trim*frameBytes < pcm.count else { return }
-        observer.offer(source:source,pcm:trim == 0 ? pcm : Data(pcm.dropFirst(trim*frameBytes)),
+        observers.offer(source:source,pcm:trim == 0 ? pcm : Data(pcm.dropFirst(trim*frameBytes)),
                        offsetMs:offsetMs+Double(trim)/Double(source.sampleRate)*1000)
     }
 }

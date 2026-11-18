@@ -498,6 +498,7 @@ public final class RecordingSession {
         guard !finished else { return }
         if let atMs { guard atMs.isFinite, atMs >= 0 else { throw RecordingError.invalid("Invalid recording stop time.") } }
         finished = true
+        defer { pcmObservers.finishLive() }
         var closeFailures: [Error] = []
         for track in manifest.tracks {
             do { try writers[track.id]?.close() } catch { closeFailures.append(error) }
