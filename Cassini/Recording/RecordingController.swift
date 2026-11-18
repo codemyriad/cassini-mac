@@ -36,6 +36,7 @@ import Observation
     private(set) var waitingForAudio = false
     private(set) var microphoneSilent = false
     @ObservationIgnored private(set) var spectrogram: RecordingSpectrogram?
+    @ObservationIgnored private(set) var preview: RecordingPreview?
     @ObservationIgnored private var timelineStart: TimeInterval?
     @ObservationIgnored private var lastMicSound: TimeInterval = 0
     @ObservationIgnored private var completedElapsedMs: Int64 = 0
@@ -97,6 +98,7 @@ import Observation
             #if DEBUG
             if fixtureUptime != nil { (inputs as? HostedRecordingInputs)?.useFixtureClock(origin:origin) }
             #endif
+            preview = RecordingPreview.start(session.pcmObservers)
             spectrogram = RecordingSpectrogram.enabled ? RecordingSpectrogram(originUptime:origin,observers:session.pcmObservers) : nil
             timelineStart = origin; lastMicSound = origin; completedElapsedMs = 0; microphoneSilent = false
             let sink = RecordingSink(session: session, originHostTime: AVAudioTime.hostTime(forSeconds: origin)) { [weak self] message in

@@ -44,6 +44,7 @@ private struct BrowserSourceObservation: Equatable {
     let captureID: String
     let originUptime: TimeInterval
     let spectrogram: RecordingSpectrogram?
+    @ObservationIgnored var preview: RecordingPreview?
     @ObservationIgnored var snapshot: OwnedCaptureSnapshot {
         didSet {
             refreshPresentation()
@@ -498,6 +499,7 @@ private final class CaptureFiles: @unchecked Sendable {
         spectrogram?.update(events:snapshot.manifest.events ?? [])
         captures[id] = .init(owner:owner,input:input,captureID:info.captureID,originUptime:origin,spectrogram:spectrogram,snapshot:snapshot,key:meetingKey,
                              peerKnown:peers.contains { $0.id == meetingKey?.peer })
+        captures[id]?.preview = RecordingPreview.start(owner.pcmObservers)
         captures[id]?.signalReservation = signal
         // The call this recording belongs to, as the Start named it (the broker recorded it first).
         if let generation = info.callGeneration ?? ownership.snapshot.binding(id)?.callGeneration {

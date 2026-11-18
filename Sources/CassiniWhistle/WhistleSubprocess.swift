@@ -33,7 +33,7 @@ public enum WhistleSubprocess {
         private(set) var cancelled = false
         private(set) var timedOut = false
         func attach(_ process: Process) {
-            lock.lock(); self.process = process; let stop = cancelled; lock.unlock()
+            lock.lock(); self.process = process; let stop = cancelled || timedOut; lock.unlock()
             if stop { terminate(process) }
         }
         func stop(timeout: Bool) {
@@ -64,6 +64,104 @@ public enum WhistleSubprocess {
     public static func run(executable: URL, arguments: [String], environment: [String: String], input: Data, timeout: TimeInterval = 30) async throws -> Output {
         try await run(executable:executable,arguments:arguments,environment:environment,input:input,timeout:timeout,clock:.live)
     }
+    /// Persistent worker for the opt-in realtime path. Pipe operations are serialized
+    /// off the UI actor. A cancellation or deadline terminates only this process.
+    public final class WindowSession: @unchecked Sendable {
+        private struct Transport {
+            let process: Process
+            let input: FileHandle
+            let output: FileHandle
+            let reader: WhistleLineReader
+        }
+
+        private let executable: URL
+        private let arguments: [String]
+        private let environment: [String: String]
+        private let io = DispatchQueue(label: "Cassini live worker pipes", qos: .userInitiated)
+        private let control = Control(clock: .live)
+        // Only the IO queue accesses the transport and counter.
+        private var transport: Transport?
+        private var counter: UInt64 = 0
+
+        public init(executable: URL, arguments: [String], environment: [String: String]) {
+            self.executable = executable
+            self.arguments = arguments
+            self.environment = environment
+        }
+
+        public func decode(_ samples: [Float]) async throws -> WhistleTranscript {
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    io.async {
+                        continuation.resume(with: Result { try self.exchange(samples) })
+                    }
+                }
+            } onCancel: { self.control.stop(timeout: false) }
+        }
+
+        public func close() async {
+            control.stop(timeout: false)
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                io.async {
+                    if let transport = self.transport {
+                        try? transport.input.close()
+                        transport.process.waitUntilExit()
+                        transport.process.terminationHandler = nil
+                        try? transport.output.close()
+                        self.transport = nil
+                    }
+                    continuation.resume()
+                }
+            }
+        }
+
+        private func exchange(_ samples: [Float]) throws -> WhistleTranscript {
+            if control.outcome().cancelled { throw CancellationError() }
+            let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+            timer.schedule(deadline: .now() + .seconds(15))
+            timer.setEventHandler { [control] in control.stop(timeout: true) }
+            timer.resume()
+            defer { timer.cancel() }
+            do {
+                if transport == nil { transport = try open() }
+                guard let transport else { throw WhistleFailure.audio }
+                counter += 1
+                let request = try LiveWindowProtocol.Request(id: counter, samples: samples)
+                let packet = try JSONEncoder().encode(request) + Data([10])
+                try WhistleIO.write(packet, to: transport.input.fileDescriptor)
+                guard let line = try transport.reader.next() else { throw WhistleFailure.audio }
+                let response = try JSONDecoder().decode(LiveWindowProtocol.Response.self, from: line)
+                guard response.id == counter, !response.failed, let transcript = response.transcript else {
+                    throw WhistleFailure.audio
+                }
+                if control.outcome().cancelled { throw CancellationError() }
+                return transcript
+            } catch {
+                let outcome = control.outcome()
+                if outcome.timedOut { throw Failure.timedOut }
+                if outcome.cancelled { throw CancellationError() }
+                throw error
+            }
+        }
+
+        private func open() throws -> Transport {
+            let process = Process()
+            process.executableURL = executable
+            process.arguments = ["--live"] + arguments
+            process.environment = environment
+            let input = Pipe(), output = Pipe()
+            process.standardInput = input
+            process.standardOutput = output
+            process.standardError = FileHandle.nullDevice
+            process.terminationHandler = { [control] _ in control.exited.signal() }
+            try process.run()
+            control.attach(process)
+            return Transport(process: process, input: input.fileHandleForWriting,
+                             output: output.fileHandleForReading,
+                             reader: WhistleLineReader(fd: output.fileHandleForReading.fileDescriptor, maximum: 1_048_576))
+        }
+    }
+
     static func run(executable: URL, arguments: [String], environment: [String: String], input: Data, timeout: TimeInterval = 30, clock: WatchdogClock) async throws -> Output {
         let control = Control(clock:clock)
         return try await withTaskCancellationHandler {
