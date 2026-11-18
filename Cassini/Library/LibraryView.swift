@@ -130,14 +130,17 @@ struct LibraryView: View {
                         return LibraryToolbarAction.menu(entries)
                     }) { }
                 }
+            } else if showsFirstRun && !search.visible {
+                // A distinct item lets AppKit move Import to the trailing edge
+                // when the initial Library scan resolves to first run.
+                ToolbarItem(id:"first-run-actions",placement:.primaryAction) { toolbarControl }
             } else {
-            ToolbarItem(placement: showsFirstRun && !search.visible ? .primaryAction : .navigation) {
-                let emptyToolbar = showsFirstRun && !search.visible
+            ToolbarItem(placement: .navigation) {
                 HStack(spacing: 0) {
                     toolbarControl
-                        .padding(.trailing, emptyToolbar ? 0 : 10)
-                        .frame(width: search.visible ? 388 : emptyToolbar ? nil : 328, alignment: emptyToolbar ? .leading : .trailing)
-                    if search.visible || (!emptyToolbar && !recordingSelected) { toolbarTitle }
+                        .padding(.trailing,10)
+                        .frame(width:search.visible ? 388 : 328,alignment:.trailing)
+                    if search.visible || !recordingSelected { toolbarTitle }
                 }
             }
             if recordingSelected, let meeting = store.selected {
@@ -156,6 +159,7 @@ struct LibraryView: View {
         .background(WindowAccessor { window in
             guard let window else { return }
             window.setAccessibilityIdentifier("cassini-library-window")
+            window.backgroundColor = showsFirstRun ? NSColor(CassiniTheme.surface) : .windowBackgroundColor
             ScrollEdgeChrome.configureUnifiedWindow(window)
             window.titleVisibility = .hidden
             RecordingConfirmation.attach(to: window)

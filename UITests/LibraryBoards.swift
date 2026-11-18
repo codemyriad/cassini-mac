@@ -2232,6 +2232,7 @@ final class LibraryBoards: XCTestCase {
             XCTAssertEqual(secondary.label,"Right here, on this computer.")
             XCTAssertFalse(window.buttons["toolbar-record"].exists,"First run has one Record action under the hero")
             XCTAssertTrue(window.buttons["toolbar-import"].exists)
+            XCTAssertGreaterThan(window.buttons["toolbar-import"].frame.minX,window.frame.midX,"Import stays at the trailing edge")
             XCTAssertEqual(primary.frame.minX,secondary.frame.minX,accuracy:1)
             for line in [primary,secondary] {
                 XCTAssertTrue(window.frame.contains(line.frame),window.debugDescription)
