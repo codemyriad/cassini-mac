@@ -67,6 +67,7 @@ public enum WhistleSubprocess {
     /// Persistent worker for the opt-in realtime path. Pipe operations are serialized
     /// off the UI actor. A cancellation or deadline terminates only this process.
     public final class WindowSession: @unchecked Sendable {
+        public enum RequestFailure: Error { case rejected, invalidResponse }
         private struct Transport {
             let process: Process
             let input: FileHandle
@@ -117,31 +118,47 @@ public enum WhistleSubprocess {
 
         private func exchange(_ samples: [Float]) throws -> WhistleTranscript {
             if control.outcome().cancelled { throw CancellationError() }
-            let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-            timer.schedule(deadline: .now() + .seconds(15))
-            timer.setEventHandler { [control] in control.stop(timeout: true) }
-            timer.resume()
-            defer { timer.cancel() }
             do {
-                if transport == nil { transport = try open() }
-                guard let transport else { throw WhistleFailure.audio }
-                counter += 1
-                let request = try LiveWindowProtocol.Request(id: counter, samples: samples)
-                let packet = try JSONEncoder().encode(request) + Data([10])
-                try WhistleIO.write(packet, to: transport.input.fileDescriptor)
-                guard let line = try transport.reader.next() else { throw WhistleFailure.audio }
-                let response = try JSONDecoder().decode(LiveWindowProtocol.Response.self, from: line)
-                guard response.id == counter, !response.failed, let transcript = response.transcript else {
-                    throw WhistleFailure.audio
+                if transport == nil {
+                    try withDeadline(seconds: 45) {
+                        let connection = try open()
+                        transport = connection
+                        guard try connection.reader.next() == LiveWindowProtocol.ready else {
+                            throw WhistleFailure.audio
+                        }
+                    }
                 }
-                if control.outcome().cancelled { throw CancellationError() }
-                return transcript
+                guard let transport else { throw WhistleFailure.audio }
+                return try withDeadline(seconds: 15) {
+                    counter += 1
+                    let request = try LiveWindowProtocol.Request(id: counter, samples: samples)
+                    let packet = try JSONEncoder().encode(request) + Data([10])
+                    try WhistleIO.write(packet, to: transport.input.fileDescriptor)
+                    guard let line = try transport.reader.next() else { throw RequestFailure.invalidResponse }
+                    let response = try JSONDecoder().decode(LiveWindowProtocol.Response.self, from: line)
+                    guard response.id == counter else { throw RequestFailure.invalidResponse }
+                    if response.failed { throw RequestFailure.rejected }
+                    guard let transcript = response.transcript else { throw RequestFailure.invalidResponse }
+                    if control.outcome().cancelled { throw CancellationError() }
+                    return transcript
+                }
             } catch {
                 let outcome = control.outcome()
                 if outcome.timedOut { throw Failure.timedOut }
                 if outcome.cancelled { throw CancellationError() }
                 throw error
             }
+        }
+
+        private func withDeadline<T>(seconds: Int, _ body: () throws -> T) throws -> T {
+            let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+            timer.schedule(deadline: .now() + .seconds(seconds))
+            timer.setEventHandler { [control] in control.stop(timeout: true) }
+            timer.resume()
+            defer { timer.cancel() }
+            let value = try body()
+            if control.outcome().timedOut { throw Failure.timedOut }
+            return value
         }
 
         private func open() throws -> Transport {

@@ -15,3 +15,27 @@ final class LiveWindowProtocolTests: XCTestCase {
         ))
     }
 }
+
+extension LiveWindowProtocolTests {
+    func testWorkerWaitsForReadyAndRejectsMismatchedID() async throws {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: path) }
+        try """
+        #!/bin/sh
+        printf '%s\\n' '{"ready":true}'
+        IFS= read -r request
+        printf '%s\\n' '{"id":99,"failed":false,"transcript":{"text":"","language":"en"}}'
+        """.write(to: path, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: path.path)
+        let worker = WhistleSubprocess.WindowSession(executable: path, arguments: [], environment: [:])
+        do {
+            _ = try await worker.decode([0.5])
+            XCTFail("Accepted a response for a different request")
+        } catch WhistleSubprocess.WindowSession.RequestFailure.invalidResponse {
+            // The fake child acknowledged startup and wrote an answer for the wrong request.
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        await worker.close()
+    }
+}

@@ -7,14 +7,13 @@ import CassiniWhistle
 
 /// The opt-in app owns the subscription and model lease. Drafts never leave memory.
 @MainActor final class RecordingPreview {
-    private static var active = false
+    private static var active: (id: UUID, task: Task<Void, Never>)?
     private let drafts: Mutex<[String: [WhistleTranscript.Word]]>
     private let task: Task<Void, Never>
 
     static func start(_ observers: RecordedPCMObservers) -> RecordingPreview? {
         #if DEBUG
-        guard CommandLine.arguments.contains("--live-transcription-preview"), !active else { return nil }
-        active = true
+        guard CommandLine.arguments.contains("--live-transcription-preview") else { return nil }
         return RecordingPreview(observers.livePCM())
         #else
         return nil
@@ -24,8 +23,11 @@ import CassiniWhistle
     private init(_ input: AsyncStream<LivePCMEvent>) {
         let state = Mutex<[String: [WhistleTranscript.Word]]>([:])
         drafts = state
+        let previous = Self.active?.task
+        let id = UUID()
         task = Task {
-            defer { Self.active = false }
+            defer { if Self.active?.id == id { Self.active = nil } }
+            await previous?.value
             do {
                 let model = try await SpeechModelController.shared.modelForNewJob()
                 defer { withExtendedLifetime(model) {} }
@@ -42,7 +44,7 @@ import CassiniWhistle
                             var words = drafts[revision.source] ?? []
                             words.removeAll {
                                 let midpoint = ($0.start + $0.end) * 500
-                                return revision.fromMs <= midpoint && midpoint <= revision.throughMs
+                                return revision.fromMs <= midpoint && midpoint < revision.throughMs
                             }
                             words.append(contentsOf: revision.words)
                             drafts[revision.source] = words
@@ -57,8 +59,9 @@ import CassiniWhistle
                 // A preview failure cannot block capture or the saved-audio job.
             }
         }
+        Self.active = (id, task)
     }
 
-    deinit { task.cancel() }
+    func cancel() { task.cancel() }
     var snapshot: [String: [WhistleTranscript.Word]] { drafts.withLock { $0 } }
 }

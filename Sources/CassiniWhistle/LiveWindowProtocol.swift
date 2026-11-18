@@ -6,6 +6,7 @@ import Darwin
 public enum LiveWindowProtocol {
     public static let sampleLimit = 8 * 16_000
     public static let lineLimit = 700_000
+    static let ready = Data(#"{"ready":true}"#.utf8)
 
     public struct Request: Codable, Sendable {
         public let id: UInt64
@@ -42,6 +43,7 @@ public enum LiveWindowProtocol {
     public static func serve(decode: ([Float]) throws -> WhistleTranscript) throws {
         let input = WhistleLineReader(fd: STDIN_FILENO, maximum: lineLimit)
         let decoder = JSONDecoder(), encoder = JSONEncoder()
+        try WhistleIO.write(ready + Data([10]), to: STDOUT_FILENO)
         while let line = try input.next() {
             let request = try decoder.decode(Request.self, from: line)
             let response: Response
@@ -51,7 +53,7 @@ public enum LiveWindowProtocol {
                 response = Response(id: request.id, transcript: nil, failed: true)
             }
             try WhistleIO.write(encoder.encode(response) + Data([10]), to: STDOUT_FILENO)
-            if response.failed { return }
+
         }
     }
 }

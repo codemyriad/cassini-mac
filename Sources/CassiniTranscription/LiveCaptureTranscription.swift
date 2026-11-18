@@ -13,6 +13,35 @@ public enum LiveCaptureTranscription {
         public let words: [WhistleTranscript.Word]
     }
 
+    private struct Work: Sendable {
+        let source: String
+        let span: UUID
+        let origin: Double
+        let start: Double
+        let samples: [Float]
+        let final: Bool
+        var end: Double { start + Double(samples.count) / 16 }
+    }
+
+    /// A busy recognizer skips superseded windows, so it never holds up the audio reader.
+    private actor Mailbox {
+        private var pending: [Work] = []
+        let wake: AsyncStream<Void>.Continuation
+        init(_ wake: AsyncStream<Void>.Continuation) { self.wake = wake }
+
+        func offer(_ work: Work) {
+            if let index = pending.firstIndex(where: { $0.span == work.span }) {
+                pending[index] = work
+            } else {
+                if pending.count == 64 { pending.removeFirst() }
+                pending.append(work)
+            }
+            wake.yield()
+        }
+
+        func next() -> Work? { pending.isEmpty ? nil : pending.removeFirst() }
+    }
+
     public static func follow(_ input: AsyncStream<LivePCMEvent>, worker: WhistleSubprocess.WindowSession,
                               update: @Sendable (Revision) -> Void) async throws {
         try await follow(input, decode: worker.decode, update: update)
@@ -21,16 +50,56 @@ public enum LiveCaptureTranscription {
     static func follow(_ input: AsyncStream<LivePCMEvent>,
                        decode: @Sendable ([Float]) async throws -> WhistleTranscript,
                        update: @Sendable (Revision) -> Void) async throws {
+        let (wakes, wake) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let mailbox = Mailbox(wake)
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                defer { wake.finish() }
+                try await ingest(input, mailbox: mailbox)
+            }
+            var settled: [String: (UUID, Double)] = [:]
+            for await _ in wakes {
+                while let work = await mailbox.next() {
+                    try Task.checkCancellation()
+                    let result: [WhistleTranscript.Word]
+                    do {
+                        result = work.samples.count >= 4800 && work.samples.contains(where: { $0 != 0 })
+                            ? try await decode(work.samples).words ?? [] : []
+                    } catch WhistleSubprocess.WindowSession.RequestFailure.rejected {
+                        continue
+                    }
+                    try Task.checkCancellation()
+                    let previous = settled[work.source]
+                    let from = max(work.start, previous?.0 == work.span ? previous!.1 : work.origin)
+                    let words = result.compactMap { item -> WhistleTranscript.Word? in
+                        guard item.start.isFinite, item.end.isFinite else { return nil }
+                        let begin = min(work.end, work.start + max(0, item.start * 1000))
+                        let end = min(work.end, work.start + max(0, item.end * 1000))
+                        let midpoint = begin + (end - begin) / 2
+                        guard end >= begin, from <= midpoint, midpoint < work.end else { return nil }
+                        return .init(word: item.word, start: begin / 1000, end: end / 1000, probability: item.probability)
+                    }
+                    let boundary = work.final ? work.end : max(from, work.end - 2000)
+                    update(Revision(source: work.source, fromMs: from, throughMs: work.end,
+                                    settledMs: boundary, words: words))
+                    settled[work.source] = (work.span, boundary)
+                }
+            }
+            try await group.waitForAll()
+        }
+    }
+
+    private static func ingest(_ input: AsyncStream<LivePCMEvent>, mailbox: Mailbox) async throws {
         var spans: [String: Span] = [:]
         for await event in input {
             try Task.checkCancellation()
             switch event {
             case let .ended(id):
-                if var span = spans.removeValue(forKey: id) {
-                    try await span.finish(recognize: decode, update: update)
+                if var span = spans.removeValue(forKey: id), let last = span.finish() {
+                    await mailbox.offer(last)
                 }
             case let .audio(source, pcm, offset):
-                guard [16_000, 48_000].contains(source.sampleRate) else { continue }
+                guard [16_000, 48_000].contains(source.sampleRate), offset.isFinite else { continue }
                 let frameBytes = source.channels * 2
                 guard !pcm.isEmpty, pcm.count.isMultiple(of: frameBytes) else { continue }
                 let position = max(0, Int64(((offset - source.startOffsetMs) * Double(source.sampleRate) / 1000).rounded()))
@@ -40,7 +109,7 @@ public enum LiveCaptureTranscription {
                         spans[source.id] = span
                         continue
                     }
-                    try await span.finish(recognize: decode, update: update)
+                    if let last = span.finish() { await mailbox.offer(last) }
                     span = try Span(source, frame: position)
                 }
                 let samples = pcm.withUnsafeBytes { bytes in
@@ -53,22 +122,23 @@ public enum LiveCaptureTranscription {
                     }
                 }
                 span.nextFrame += Int64(samples.count)
-                let resampled = span.resampler.feed(samples)
-                try await span.accept(resampled, recognize: decode, update: update)
+                if let work = span.accept(samples) { await mailbox.offer(work) }
                 spans[source.id] = span
             }
         }
         try Task.checkCancellation()
-        for var span in spans.values { try await span.finish(recognize: decode, update: update) }
+        for var span in spans.values {
+            if let last = span.finish() { await mailbox.offer(last) }
+        }
     }
 
     private struct Span {
         let source: RecordedPCMSource
+        let id = UUID()
         var resampler: MeetingResampler
         var nextFrame: Int64
         let originMs: Double
         var start = 0
-        var settledMs: Double
         var window: [Float] = []
         var pending = 0
         let cadence = 24_000
@@ -78,51 +148,33 @@ public enum LiveCaptureTranscription {
             resampler = try MeetingResampler(rate: source.sampleRate)
             nextFrame = frame
             originMs = source.startOffsetMs + Double(frame) * 1000 / Double(source.sampleRate)
-            settledMs = originMs
         }
 
-        mutating func accept(_ samples: [Float], recognize: @Sendable ([Float]) async throws -> WhistleTranscript,
-                             update: (Revision) -> Void) async throws {
-            var at = 0
-            while at < samples.count {
-                let count = min(cadence - pending, samples.count - at)
-                window.append(contentsOf: samples[at..<at + count])
-                pending += count
-                at += count
-                if pending == cadence { try await decode(recognize: recognize, final: false, update: update) }
-            }
+        mutating func accept(_ samples: [Float]) -> Work? {
+            let pcm = resampler.feed(samples)
+            append(pcm)
+            guard pending >= cadence else { return nil }
+            pending %= cadence
+            return work(final: false)
         }
 
-        mutating func finish(recognize: @Sendable ([Float]) async throws -> WhistleTranscript, update: (Revision) -> Void) async throws {
+        mutating func finish() -> Work? {
             let last = resampler.feed([], final: true)
-            try await accept(last, recognize: recognize, update: update)
-            try await decode(recognize: recognize, final: true, update: update)
+            append(last)
+            return window.isEmpty ? nil : work(final: true)
         }
 
-        mutating func decode(recognize: @Sendable ([Float]) async throws -> WhistleTranscript, final: Bool,
-                             update: (Revision) -> Void) async throws {
-            guard !window.isEmpty else { return }
-            try Task.checkCancellation()
-            let result = window.contains(where: { $0 != 0 }) ? try await recognize(window).words ?? [] : []
-            try Task.checkCancellation()
-            let from = originMs + Double(start) / 16
-            let through = from + Double(window.count) / 16
-            let words = result.compactMap { item -> WhistleTranscript.Word? in
-                guard item.start.isFinite, item.end.isFinite else { return nil }
-                let begin = min(through, from + max(0, item.start * 1000))
-                let end = min(through, from + max(0, item.end * 1000))
-                guard end >= begin, begin + (end - begin) / 2 >= settledMs else { return nil }
-                return .init(word: item.word, start: begin / 1000, end: end / 1000, probability: item.probability)
-            }
-            let boundary = final ? through : max(settledMs, through - 2000)
-            update(Revision(source: source.id, fromMs: settledMs, throughMs: through, settledMs: boundary, words: words))
-            settledMs = boundary
-            pending = 0
-            if !final {
-                let trim = max(0, window.count - (LiveWindowProtocol.sampleLimit - cadence))
-                window.removeFirst(trim)
-                start += trim
-            }
+        mutating func append(_ samples: [Float]) {
+            window.append(contentsOf: samples)
+            pending += samples.count
+            let trim = max(0, window.count - LiveWindowProtocol.sampleLimit)
+            window.removeFirst(trim)
+            start += trim
+        }
+
+        func work(final: Bool) -> Work {
+            Work(source: source.id, span: id, origin: originMs, start: originMs + Double(start) / 16,
+                 samples: window, final: final)
         }
     }
 }
