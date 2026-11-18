@@ -244,7 +244,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(record.waitForExistence(timeout:20),first.debugDescription)
         XCTAssertEqual(record.label,"Enregistrer")
         XCTAssertEqual(empty.staticTexts["first-run-hero-title"].label,"Chaque mot transcrit.",first.debugDescription)
-        XCTAssertEqual(empty.staticTexts["first-run-hero-subtitle"].label,"Rien n’est mis en ligne.",first.debugDescription)
+        XCTAssertEqual(empty.staticTexts["first-run-hero-subtitle"].label,"Ici même, sur cet ordinateur.",first.debugDescription)
         capture(empty,name:"first-run-fr")
         record.click()
         let start=empty.sheets.buttons["record-first-start"]
@@ -1026,7 +1026,7 @@ final class LibraryBoards: XCTestCase {
         let window = app.windows["cassini-settings-window"]
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"settings-whistle-row").firstMatch.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"settings-speech-models-ready").firstMatch.waitForExistence(timeout:20),app.debugDescription)
-        XCTAssertTrue(text("Writing down what was said",in:window))
+        XCTAssertTrue(text("Transcription",in:window))
         XCTAssertTrue(text("Transcribed on this computer. Cassini goes online only to download a model you ask for, and each file is checked first.",in:window))
         XCTAssertTrue(window.buttons["settings-download-parakeet"].waitForExistence(timeout:5))
         XCTAssertTrue(text("Parakeet Ultra",in:window)); XCTAssertFalse(text("Tell speakers apart",in:window))
@@ -1862,7 +1862,7 @@ final class LibraryBoards: XCTestCase {
         window.buttons["recording-stop"].click()
         let retry = window.buttons["Try again"]
         XCTAssertTrue(waitForPresent(retry,timeout: 20), app.debugDescription)
-        XCTAssertTrue(text("Could not write this meeting down. The audio is fine.", in: window))
+        XCTAssertTrue(text("Could not transcribe this meeting. The audio is fine.", in: window))
         XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
         capture(window, name: "qa-transcription-retry")
         retry.click()
