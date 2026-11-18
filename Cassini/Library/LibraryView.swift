@@ -131,7 +131,7 @@ struct LibraryView: View {
                     }) { }
                 }
             } else {
-            ToolbarItem(placement: .navigation) {
+            ToolbarItem(placement: showsFirstRun && !search.visible ? .primaryAction : .navigation) {
                 let emptyToolbar = showsFirstRun && !search.visible
                 HStack(spacing: 0) {
                     toolbarControl
@@ -565,7 +565,7 @@ struct LibraryView: View {
                     Text(UXText.text("common.stop")).font(.system(size: 12, weight: .semibold)).foregroundStyle(CassiniTheme.onRecord)
                         .padding(.horizontal, 12).frame(height: 26).background(CassiniTheme.record, in: Capsule())
                 }.fixedSize().padding(.leading, 13).padding(.trailing, 4).frame(height: 34).background(CassiniTheme.recordTint, in: Capsule())
-            } else { recordButton(big: false) }
+            } else if !showsFirstRun || search.visible { recordButton(big: false) }
         }.accessibilityElement(children: .contain)
     }
     private func row(_ meeting: LibraryMeeting) -> some View {
@@ -678,7 +678,7 @@ struct LibraryView: View {
                     .frame(maxWidth:.infinity,minHeight:geometry.size.height,alignment:.center)
             }.accessibilityElement(children:.contain).accessibilityLabel(UXText.text("library.title"))
                 .accessibilityAddTraits(.isHeader).accessibilityIdentifier("first-run-library")
-        }.background(CassiniTheme.paneGround)
+        }.background(CassiniTheme.surface)
             .overlay { LibraryDropListOverlay(state:dropState) }
     }
     @ViewBuilder private func recordButton(big: Bool) -> some View {

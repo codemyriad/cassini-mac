@@ -2230,6 +2230,8 @@ final class LibraryBoards: XCTestCase {
             let secondary = window.staticTexts["first-run-hero-subtitle"]
             XCTAssertEqual(primary.label,"Every word written down.")
             XCTAssertEqual(secondary.label,"Right here, on this computer.")
+            XCTAssertFalse(window.buttons["toolbar-record"].exists,"First run has one Record action under the hero")
+            XCTAssertTrue(window.buttons["toolbar-import"].exists)
             XCTAssertEqual(primary.frame.minX,secondary.frame.minX,accuracy:1)
             for line in [primary,secondary] {
                 XCTAssertTrue(window.frame.contains(line.frame),window.debugDescription)
