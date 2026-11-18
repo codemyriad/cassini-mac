@@ -3,7 +3,7 @@
 """Offline D16 worker, trust-boundary and owner-lifetime checks over private files."""
 import argparse,ctypes,hashlib,json,os,shutil,signal,subprocess,sys,tempfile,time,uuid
 from pathlib import Path
-from worker_events import OWNER_TICK_FD, ProcessExit, json_line, watchdog_ticks
+from worker_events import OWNER_TICK_FD, ProcessExit, json_line, watchdog_ticks, exercise_live_windows
 ROOT=Path(__file__).resolve().parent.parent
 SAFE=dict(NEEDLE_TELEMETRY='0',DO_NOT_TRACK='1',ORT_DISABLE_TELEMETRY='1',PATH='/usr/bin:/bin:/usr/sbin:/sbin',LANG='C',LC_ALL='C')
 p=argparse.ArgumentParser(description=__doc__)
@@ -58,6 +58,11 @@ with tempfile.TemporaryDirectory(prefix='cassini-parakeet-proof-') as temp:
     rejected=subprocess.run(bad_command,input=request.encode(),capture_output=True,env=SAFE,timeout=15)
     assert rejected.returncode==78 and json.loads(rejected.stdout)['code']=='invalid-model',rejected
     assert (meeting/'meeting.json').read_bytes()==untouched
+    exercise_live_windows(
+        [command[0], '--live', *command[1:-2]],
+        SAFE,
+        ROOT / 'Tests/CassiniTranscriptionTests/Goldens/jfk.wav',
+    )
     # The grandparent keeps stdin open after killing only the worker's owner.
     read_fd,write_fd=os.pipe();tick_read,tick_write=os.pipe()
     shim='import json,subprocess,sys,os\np=subprocess.Popen(sys.argv[2:],stdin=int(sys.argv[1]),stdout=sys.stdout,stderr=subprocess.DEVNULL,pass_fds=(int(os.environ["CASSINI_TEST_OWNER_TICK_FD"]),))\nprint(json.dumps({"child":p.pid}),flush=True)\np.wait()\n'

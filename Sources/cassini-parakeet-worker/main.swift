@@ -10,6 +10,7 @@ struct Request: Decodable { let id: String; let meeting: String; let me: String?
 struct Response: Encodable { let id: String?; let error: String?; let code: String? }
 func emit(_ response: Response) throws { try WhistleIO.write(JSONEncoder().encode(response) + Data([10]),to:STDOUT_FILENO) }
 var requestID: String?
+let live = CommandLine.arguments.dropFirst().first == "--live"
 do {
     try WhistleEnvironment.validateLive()
     #if DEBUG
@@ -36,9 +37,8 @@ do {
     watchdog.resume(); defer { watchdog.cancel() }
     SegmentedAudio.removeAbandonedScratch()
     var arguments = Array(CommandLine.arguments.dropFirst()), standaloneVAD: URL?
-    let live = arguments.first == "--live"
     if live { arguments.removeFirst() }
-    if arguments.count == 6, arguments[4] == "--vad" {
+    if !live, arguments.count == 6, arguments[4] == "--vad" {
         standaloneVAD = URL(fileURLWithPath:arguments[5]); arguments.removeLast(2)
     }
     if !live, arguments.count == 3, ["--voice","--voice-guided"].contains(arguments[0]), arguments[1] == "--model" {
@@ -96,6 +96,7 @@ do {
     try emit(Response(id:request.id,error:nil,code:nil))
     // One recognizer/job/process. Its model memory is released on exit.
 } catch {
+    if live { exit(78) }
     let code: String
     if case ParakeetFailure.invalidModel = error { code = "invalid-model" }
     else if case ParakeetFailure.invalidAudio = error, ["--voice","--voice-guided"].contains(CommandLine.arguments.dropFirst().first ?? "") { code = "voice-too-short" }

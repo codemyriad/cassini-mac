@@ -15,3 +15,33 @@ final class LiveWindowProtocolTests: XCTestCase {
         ))
     }
 }
+
+extension LiveWindowProtocolTests {
+    func testRejectedWirePCMDoesNotDiscardTheNextRequest() throws {
+        let input = Pipe(), output = Pipe()
+        let valid = try LiveWindowProtocol.Request(id: 2, samples: [0.25, -0.5])
+        let encoder = JSONEncoder()
+        let malformed = Data(#"{"id":1,"pcm":"AAAA"}"#.utf8)
+        let inputData = malformed + Data([10]) + (try encoder.encode(valid)) + Data([10])
+        try input.fileHandleForWriting.write(contentsOf: inputData)
+        try input.fileHandleForWriting.close()
+        try LiveWindowProtocol.serve(input: input.fileHandleForReading.fileDescriptor,
+                                     output: output.fileHandleForWriting.fileDescriptor) { samples in
+            XCTAssertEqual(samples, [0.25, -0.5])
+            return WhistleTranscript(text: "hello", language: "en",
+                                     words: [.init(word: "hello", start: 0, end: 0.0001, probability: 1)])
+        }
+        try output.fileHandleForWriting.close()
+        let lines = output.fileHandleForReading.readDataToEndOfFile().split(separator: 10)
+        XCTAssertEqual(lines.count, 3)
+        XCTAssertEqual(lines.first, Data(#"{"ready":true}"#.utf8))
+        let replies = try lines.dropFirst().map {
+            try JSONDecoder().decode(LiveWindowProtocol.Response.self, from: Data($0))
+        }
+        XCTAssertEqual(replies.map(\.id), [1, 2])
+        XCTAssertEqual(replies.map(\.failed), [true, false])
+        XCTAssertEqual(replies.last?.transcript?.words?.first?.end, 0.0001)
+        let largest = try LiveWindowProtocol.Request(id: 3, samples: Array(repeating: 0, count: LiveWindowProtocol.sampleLimit))
+        XCTAssertLessThan(try encoder.encode(largest).count, LiveWindowProtocol.lineLimit)
+    }
+}
