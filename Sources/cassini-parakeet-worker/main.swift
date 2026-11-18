@@ -36,10 +36,12 @@ do {
     watchdog.resume(); defer { watchdog.cancel() }
     SegmentedAudio.removeAbandonedScratch()
     var arguments = Array(CommandLine.arguments.dropFirst()), standaloneVAD: URL?
+    let live = arguments.first == "--live"
+    if live { arguments.removeFirst() }
     if arguments.count == 6, arguments[4] == "--vad" {
         standaloneVAD = URL(fileURLWithPath:arguments[5]); arguments.removeLast(2)
     }
-    if arguments.count == 3, ["--voice","--voice-guided"].contains(arguments[0]), arguments[1] == "--model" {
+    if !live, arguments.count == 3, ["--voice","--voice-guided"].contains(arguments[0]), arguments[1] == "--model" {
         let assets=try ParakeetAssets.voiceWorker(model:URL(fileURLWithPath:arguments[2]))
         // Raw little-endian float32 PCM from the parent, bounded to 45 seconds.
         var data=Data()
@@ -72,6 +74,11 @@ do {
         exit(0)
     }
     let assets = try ParakeetAssets.forWorker(arguments:arguments)
+    if live {
+        let engine = try ParakeetEngine(assets: assets)
+        try LiveWindowProtocol.serve(decode: engine.transcribe(samples:))
+        exit(0)
+    }
     let vad: VADAssets
     if let bundle = assets.signedBundle {
         guard standaloneVAD == nil else { throw ParakeetFailure.invalidRuntime }
