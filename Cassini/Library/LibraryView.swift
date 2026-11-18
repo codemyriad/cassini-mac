@@ -670,7 +670,7 @@ struct LibraryView: View {
                         recordButton(big:true).fixedSize()
                         FirstRunShortcut()
                     }
-                    FirstRunPrivacy(screenshot:store.context.screenshot)
+                    FirstRunPrivacy(root:store.context.root,screenshot:store.context.screenshot)
                 }.padding(.horizontal,FirstRunHeroMetrics.horizontalPadding)
                     .padding(.vertical,compact ? FirstRunHeroMetrics.compactPadding : FirstRunHeroMetrics.padding)
                     .frame(maxWidth:FirstRunHeroMetrics.maxWidth + 2 * FirstRunHeroMetrics.horizontalPadding,alignment:.leading)
@@ -993,15 +993,17 @@ private struct FirstRunShortcut: View {
 }
 
 private struct FirstRunPrivacy: View {
+    // The observed Library context republishes this after Move completes, so
+    // the displayed folder and the link target change together.
+    let root: URL
     let screenshot: Bool
-    private var location: LibraryLocationModel { .shared }
     private var move: LibraryMoveCoordinator { .shared }
     private static let folderLink = URL(string:"cassini-first-run://library")!
     private var line: AttributedString {
         // Build attributed text directly: folder names are literal, including
         // Markdown, braces, and punctuation. Only the catalog placeholder links.
         let parts = UXText.text("firstRun.privacy.computer").components(separatedBy:"{folder}")
-        let folder = (screenshot ? LibraryLocationModel.display(LibraryLocation.standardRoot) : location.displayPath)
+        let folder = LibraryLocationModel.display(screenshot ? LibraryLocation.standardRoot : root)
             .replacingOccurrences(of:" › ",with:"/")
         var result = AttributedString(parts[0])
         var link = AttributedString(folder)
@@ -1032,7 +1034,7 @@ private struct FirstRunPrivacy: View {
         }.font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
     }
     private func openFolder() {
-        let root = location.roots[0]
+        let root = root
         Task {
             do {
                 // A new default Library need not exist yet. Prepare it off the
