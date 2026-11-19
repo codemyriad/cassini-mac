@@ -6,19 +6,21 @@ import CassiniModels
 struct SavedVoicesSettingsRow: View {
     @State private var voices=SavedVoicesController.shared
     var body: some View {
-        VStack(alignment:.leading,spacing:12) {
-            Button { SettingsNavigation.shared.savedVoices=true } label: {
-                HStack {
-                    VStack(alignment:.leading,spacing:5) {
-                        Text(UXText.text("common.savedVoices")).fontWeight(.semibold)
-                        Text(UXText.text(voices.voices.isEmpty ? "settings.transcription.savedVoices.summary.none":"settings.transcription.savedVoices.summary",["n":String(voices.voices.count)]))
-                            .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
-                    }
-                    Spacer()
-                    Image(systemName:"chevron.right").accessibilityHidden(true)
-                }.contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityIdentifier("settings-saved-voices")
-        }
+        Button { SettingsNavigation.shared.savedVoices=true } label: {
+            HStack(alignment:.center,spacing:10) {
+                VStack(alignment:.leading,spacing:2) {
+                    Text(UXText.text("common.savedVoices"))
+                    Text(UXText.text(voices.voices.isEmpty ? "settings.transcription.savedVoices.summary.madeOn.none":"settings.transcription.savedVoices.summary.madeOn",["n":String(voices.voices.count)]))
+                        .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                        .fixedSize(horizontal:false,vertical:true)
+                }
+                Spacer()
+                Image(systemName:"chevron.right")
+                    .font(.system(size:12,weight:.semibold))
+                    .foregroundStyle(CassiniTheme.ink3)
+                    .accessibilityHidden(true)
+            }.contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityIdentifier("settings-saved-voices")
     }
 }
 struct SavedVoicesView: View {
@@ -240,18 +242,31 @@ struct VoiceEnrollmentView: View {
 struct SavedVoiceModelRow: View {
     @State private var voices = SavedVoicesController.shared
     var body: some View {
-        VStack(alignment:.leading,spacing:12) {
-            HStack {
-                SettingsDescription("models.recogniseVoices.name", "models.recogniseVoices.description.short")
+        VStack(alignment:.leading,spacing:8) {
+            HStack(alignment:.top,spacing:10) {
+                VStack(alignment:.leading,spacing:2) {
+                    Text(UXText.text("models.recogniseVoices.name"))
+                    Text(UXText.text("settings.phone.speakers.recognise.subtitle"))
+                        .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                        .fixedSize(horizontal:false,vertical:true)
+                    if voices.downloading {
+                        ProgressView(value:voices.progress).frame(maxWidth:160).padding(.top,2)
+                    } else if voices.modelReady {
+                        Text(UXText.text("models.statusWithSize",["status":UXText.text("models.status.on"),"size":LibraryFormat.size(bytes:voices.installedBytes)]))
+                            .font(.system(size:11,weight:.semibold))
+                            .foregroundStyle(CassiniTheme.success)
+                    } else if voices.downloadBytes > 0 {
+                        Text(UXText.text("format.size.download",["size":LibraryFormat.size(bytes:voices.downloadBytes)]))
+                            .font(.system(size:11))
+                            .foregroundStyle(CassiniTheme.ink2)
+                    }
+                }
                 Spacer()
                 if voices.downloading {
-                    ProgressView(value:voices.progress).frame(width:100)
                     Button(UXText.text("common.cancel")) { voices.cancelDownload() }
                 } else if voices.modelReady {
-                    Text(UXText.text("models.statusWithSize",["status":UXText.text("models.status.on"),"size":LibraryFormat.size(bytes:voices.installedBytes)])).foregroundStyle(CassiniTheme.ink2)
                     Button(UXText.text("models.remove")) { voices.removeModel() }.disabled(voices.busy)
                 } else {
-                    if voices.downloadBytes > 0 { Text(UXText.text("format.size.download",["size":LibraryFormat.size(bytes:voices.downloadBytes)])).foregroundStyle(CassiniTheme.ink2) }
                     Button(UXText.text("models.download")) { voices.download() }.disabled(voices.busy)
                 }
             }

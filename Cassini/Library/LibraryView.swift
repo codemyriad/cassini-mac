@@ -219,6 +219,10 @@ struct LibraryView: View {
                 TestRecordingController.shared.freezeForScreenshot(phase: .result, elapsedMs: 8_000, heard: [.me], levels: [:])
                 screenshotTestSheet = true
             }
+            if store.context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "test-recording-refused", !screenshotTestSheet {
+                TestRecordingController.shared.freezeRefusedForScreenshot()
+                screenshotTestSheet = true
+            }
             if store.context.screenshot, ["meeting","export","voices-question"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""), navigation.detail == nil,
                let meeting = store.visibleMeetings.first(where: { $0.title == (LibraryLaunchContext.argument("-CassiniScreenshot") == "export" ? "Budget review" : "Client call, Rossi & Partners") }) {
                 store.selectedKey = meeting.libraryKey
