@@ -4,7 +4,7 @@ import XCTest
 
 extension LibraryBoards {
     @MainActor func testIdleMenuPreferenceWindowlessSettingsAndDockReopen() async throws {
-        let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
+        let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString,"-CassiniBrowserCase","health-ready"])
         defer { app.terminate() }
         let library = app.windows["cassini-library-window"]
         XCTAssertTrue(waitForPresent(library,timeout:20),app.debugDescription)
@@ -66,7 +66,7 @@ extension LibraryBoards {
     }
 
     @MainActor func testWindowlessRecordingMenuQuitSavesEvenWithIdleItemHidden() throws {
-        let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
+        let app = try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString,"-CassiniBrowserCase","health-ready"])
         defer { app.terminate() }
         let library = app.windows["cassini-library-window"]
         XCTAssertTrue(waitForPresent(library,timeout:20))
@@ -139,7 +139,7 @@ extension LibraryBoards {
     }
 
     @MainActor func testColdWindowlessRelaunchOpensFromDockAndBothMenus() async throws {
-        let app=try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
+        let app=try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString,"-CassiniBrowserCase","health-ready"])
         defer { app.terminate() }
         let library=app.windows["cassini-library-window"]
         app.typeKey(",",modifierFlags:.command)
@@ -202,7 +202,7 @@ extension LibraryBoards {
     }
 
     @MainActor func testInsertedIdleMenuTracksRecordingStartAndStop() throws {
-        let app=try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString])
+        let app=try launch("first-run",fixture:"empty",extra:["--fixture-library-recording","-CassiniCaptureID",UUID().uuidString,"-CassiniBrowserCase","health-ready"])
         defer { app.terminate() }
         let library=app.windows["cassini-library-window"]
         app.typeKey(",",modifierFlags:.command)

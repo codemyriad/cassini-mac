@@ -29,7 +29,7 @@ struct CassiniSettingsView: View {
             SettingsLibraryView().tabItem { Label(SettingsTab.library.title,systemImage:SettingsTab.library.icon) }.tag(SettingsTab.library)
             SettingsBrowserView().tabItem { Label(SettingsTab.browser.title,systemImage:SettingsTab.browser.icon) }.tag(SettingsTab.browser)
             SettingsUpdatesView().tabItem { Label(SettingsTab.updates.title,systemImage:SettingsTab.updates.icon) }.tag(SettingsTab.updates)
-        }.frame(width:700,height:480)
+        }.frame(width:700,height:520)
             .preferredColorScheme(LibraryLaunchContext.screenshotDark ? .dark : (LibraryLaunchContext.current.screenshot ? .light : nil))
             .font(.system(size:13)).accessibilityLabel(UXText.text("settings.pages.a11y"))
             .background(WindowAccessor { window in
@@ -48,23 +48,28 @@ struct CassiniSettingsView: View {
 private struct SettingsUpdatesView: View {
     @State private var updates = ApplicationUpdates.shared
     var body: some View {
-        SettingsPage {
-            SettingsGroup("settings.updates.title", subtitle:"settings.updates.privacy") {
-                Toggle(UXText.text("settings.updates.automatic.phase2"),isOn:$updates.automaticChecks)
-                    .toggleStyle(.switch).disabled(!updates.available)
-                    .accessibilityIdentifier("settings-automatic-updates")
-                Divider()
-                HStack {
-                    VStack(alignment:.leading,spacing:4) {
+        SettingsPage(footnote: "settings.updates.privacy") {
+            SettingsGroup("settings.updates.title") {
+                HStack(alignment:.center,spacing:10) {
+                    Text(UXText.text("settings.updates.automatic.phase2"))
+                    Spacer()
+                    Toggle(UXText.text("settings.updates.automatic.phase2"),isOn:$updates.automaticChecks)
+                        .labelsHidden().toggleStyle(.switch).disabled(!updates.available)
+                        .accessibilityIdentifier("settings-automatic-updates")
+                }.padding(10).frame(minHeight:40)
+                Divider().padding(.horizontal,10)
+                HStack(alignment:.center,spacing:10) {
+                    HStack(alignment:.firstTextBaseline,spacing:8) {
                         Text(UXText.text("about.nameVersion",["version":AboutPanel.version]))
                         if updates.isUpToDate {
-                            Text(UXText.text("settings.updates.upToDate")).foregroundStyle(CassiniTheme.ink2)
+                            Text(UXText.text("settings.updates.upToDate"))
+                                .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
                         }
                     }
                     Spacer()
                     Button(UXText.text("settings.updates.checkNow")) { updates.checkForUpdates() }
                         .disabled(!updates.canCheckForUpdates).accessibilityIdentifier("settings-check-updates")
-                }
+                }.padding(10).frame(minHeight:40)
             }
         }
     }
@@ -75,44 +80,88 @@ private struct SettingsRecordingView: View {
     @State private var shortcut = RecordingRuntime.shared.shortcut
     @State private var navigation = SettingsNavigation.shared
     @State private var test = TestRecordingController.shared
+    @State private var captures = CaptureCollection.shared
+    @State private var setup = CompanionSetup.shared
+    private var autoRecordAvailable: Bool { captures.connected || captures.autoRecord }
     var body: some View {
         SettingsPage {
             SettingsGroup("settings.recording.group.starting") {
-                HStack {
+                HStack(alignment:.center,spacing:10) {
                     Text(UXText.text("settings.recording.shortcut.title"))
                     Spacer()
-                    Text(shortcut.choice.glyph).monospaced().fontWeight(.semibold).fixedSize().accessibilityIdentifier("settings-shortcut")
-                    Button(UXText.text("settings.recording.changeShortcut")) { navigation.capturingShortcut = true }.accessibilityIdentifier("settings-change-shortcut")
-                }
-                Divider()
-                HStack {
+                    Text(shortcut.choice.glyph)
+                        .font(.system(size:12,weight:.semibold,design:.monospaced))
+                        .padding(.horizontal,7).padding(.vertical,2)
+                        .background(CassiniTheme.ink.opacity(0.07),in:RoundedRectangle(cornerRadius:5))
+                        .fixedSize().accessibilityIdentifier("settings-shortcut")
+                    Button(UXText.text("settings.recording.changeShortcut")) { navigation.capturingShortcut = true }
+                        .accessibilityIdentifier("settings-change-shortcut")
+                }.padding(10).frame(minHeight:40)
+                Divider().padding(.horizontal,10)
+                HStack(alignment:.top,spacing:10) {
                     SettingsDescription("settings.recording.firstRecord.title", "settings.recording.firstRecord.subtitle").accessibilityHidden(true)
                     Spacer()
                     Toggle(UXText.text("settings.recording.firstRecord.title"),isOn:Binding(get:{ !skipFirst },set:{ skipFirst = !$0 }))
                         .labelsHidden().toggleStyle(.switch).accessibilityIdentifier("settings-explain-recording")
-                }
+                }.padding(10).frame(minHeight:40)
             }
-            SettingsGroup("settings.recording.group.browser", subtitle:"settings.recording.group.browser.subtitle") {
-                HStack(alignment:.top,spacing:18) {
-                    VStack(alignment:.leading,spacing:6) {
+            SettingsGroup("settings.recording.group.browser", headerTrailing: {
+                if captures.connected {
+                    HStack(spacing:6) {
+                        Circle().fill(CassiniTheme.success).frame(width:7,height:7).accessibilityHidden(true)
+                        Text(setup.connectedStatusText)
+                    }
+                    .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
+                    .accessibilityIdentifier("settings-recording-browser-status")
+                } else {
+                    HStack(spacing:4) {
+                        Text(UXText.text("settings.recording.group.browser.subtitle"))
+                            .foregroundStyle(CassiniTheme.ink2)
+                        Text("·").foregroundStyle(CassiniTheme.ink2).accessibilityHidden(true)
+                        Button(UXText.text("settings.recording.browser.setUp")) { navigation.tab = .browser }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(CassiniTheme.accentInk)
+                            .fontWeight(.medium)
+                            .underline()
+                            .accessibilityIdentifier("settings-browser-set-up")
+                    }
+                    .font(.system(size:12))
+                    .accessibilityIdentifier("settings-recording-browser-status")
+                }
+            }) {
+                HStack(alignment:.top,spacing:10) {
+                    VStack(alignment:.leading,spacing:2) {
                         Text(UXText.text("settings.recording.autoRecord.title"))
-                        Text(UXText.text("settings.recording.autoRecord.subtitleShort")).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
+                            .opacity(autoRecordAvailable ? 1 : 0.55)
+                        Text(UXText.text("settings.recording.autoRecord.subtitleShort"))
+                            .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                            .fixedSize(horizontal:false,vertical:true)
+                            .opacity(autoRecordAvailable ? 1 : 0.55)
+                        Toggle(UXText.text("settings.general.menuBar"),isOn:$showMenuBar)
+                            .toggleStyle(.checkbox)
+                            .disabled(!captures.autoRecord)
+                            .padding(.top,8)
+                            .accessibilityIdentifier("settings-show-menu-bar")
                     }
                     Spacer()
-                    Toggle(UXText.text("settings.recording.autoRecord.title"),isOn:Binding(get:{ CaptureCollection.shared.autoRecord },set:{ enabled in
-                        Task { do { try await CaptureCollection.shared.setAutoRecord(enabled) } catch { NSApp.presentError(error) } }
-                    })).labelsHidden().toggleStyle(.switch).accessibilityIdentifier("settings-auto-record")
+                    Toggle(UXText.text("settings.recording.autoRecord.title"),isOn:Binding(get:{ captures.autoRecord },set:{ enabled in
+                        Task { do { try await captures.setAutoRecord(enabled) } catch { NSApp.presentError(error) } }
+                    })).labelsHidden().toggleStyle(.switch)
+                        .disabled(!autoRecordAvailable)
+                        .accessibilityIdentifier("settings-auto-record")
+                }.padding(10).frame(minHeight:40)
+            }
+            HStack(alignment:.center,spacing:10) {
+                VStack(alignment:.leading,spacing:2) {
+                    Text(UXText.text("test.action")).fontWeight(.semibold)
+                    Text(UXText.text("settings.recording.test.descriptionShort"))
+                        .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
+                        .fixedSize(horizontal:false,vertical:true)
                 }
-                Divider()
-                Toggle(isOn:$showMenuBar) {
-                    SettingsDescription("settings.general.menuBar", "settings.general.menuBar.subtitle")
-                }.toggleStyle(.switch).disabled(!CaptureCollection.shared.autoRecord)
-                    .accessibilityIdentifier("settings-show-menu-bar")
-            }
-            SettingsGroup("test.action", subtitle:"settings.recording.test.description") {
-                HStack { Spacer(); Button(UXText.text("settings.recording.test.button")) { test.presented = true }
-                    .disabled(!test.canStart).accessibilityIdentifier("settings-test-recording") }
-            }
+                Spacer()
+                Button(UXText.text("settings.recording.test.button")) { test.presented = true }
+                    .disabled(!test.canStart).accessibilityIdentifier("settings-test-recording")
+            }.padding(.leading,4).padding(.trailing,11)
         }.sheet(isPresented:$test.presented) { TestRecordingView() }
         .sheet(isPresented:$navigation.capturingShortcut) {
             VStack(alignment:.leading,spacing:18) {
@@ -137,55 +186,71 @@ private struct SettingsLibraryView: View {
     @State private var bulkExporter = BulkZipExportCoordinator.shared
     var body: some View {
         SettingsPage {
-            VStack(alignment:.leading,spacing:14) {
-                Text(UXText.text("settings.library.folder.title")).fontWeight(.bold)
-                Text(UXText.text("settings.library.folder.descriptionShort")).foregroundStyle(CassiniTheme.ink2).lineSpacing(4)
-                Text(LibraryStore.shared.context.screenshot ? LibraryLocationModel.display(LibraryLocation.standardRoot) : location.displayPath).fontWeight(.semibold).textSelection(.enabled).accessibilityIdentifier("settings-library-path")
-                if let stats { Text(stats).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("settings-library-stats") }
-                HStack {
-                    Button(UXText.text("settings.library.show")) {
-                        let root = location.roots[0]
-                        Task {
-                            do {
-                                try await Task.detached(priority:.utility) {
-                                    if root == LibraryLocation.standardRoot {
-                                        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
-                                    } else {
-                                        guard try root.resourceValues(forKeys:[.isDirectoryKey]).isDirectory == true else { throw POSIXError(.ENOENT) }
-                                    }
-                                }.value
-                                NSWorkspace.shared.activateFileViewerSelecting([root])
-                            } catch { NSApp.presentError(error) }
+            SettingsGroup("settings.library.folder.title",
+                          subtitle:"settings.library.folder.descriptionShort",
+                          caption:"settings.library.deleted.caption") {
+                VStack(alignment:.leading,spacing:10) {
+                    HStack(alignment:.top,spacing:10) {
+                        VStack(alignment:.leading,spacing:2) {
+                            Text(LibraryStore.shared.context.screenshot ? LibraryLocationModel.display(LibraryLocation.standardRoot) : location.displayPath)
+                                .textSelection(.enabled).accessibilityIdentifier("settings-library-path")
+                            if let stats {
+                                Text(stats).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                                    .accessibilityIdentifier("settings-library-stats")
+                            }
+                        }
+                        Spacer()
+                        HStack(spacing:8) {
+                            Button(UXText.text("settings.library.show")) {
+                                let root = location.roots[0]
+                                Task {
+                                    do {
+                                        try await Task.detached(priority:.utility) {
+                                            if root == LibraryLocation.standardRoot {
+                                                try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
+                                            } else {
+                                                guard try root.resourceValues(forKeys:[.isDirectoryKey]).isDirectory == true else { throw POSIXError(.ENOENT) }
+                                            }
+                                        }.value
+                                        NSWorkspace.shared.activateFileViewerSelecting([root])
+                                    } catch { NSApp.presentError(error) }
+                                }
+                            }
+                            Button(UXText.text("settings.library.move")) { move.choose(parent:NSApp.keyWindow) }
+                                .disabled(!move.canChoose).accessibilityIdentifier("settings-move-library")
                         }
                     }
-                    Button(UXText.text("settings.library.move")) { move.choose(parent:NSApp.keyWindow) }
-                        .disabled(!move.canChoose).accessibilityIdentifier("settings-move-library")
-                    if move.busy { ProgressView().controlSize(.small); Text(UXText.text("settings.library.move.moving")) }
-                }
-                if let problem = location.problem { Text(problem).foregroundStyle(CassiniTheme.warnInk) }
-                if !move.busy, move.waitingCount > 0 {
-                    Text(UXText.text("settings.library.move.waiting",["n":String(move.waitingCount)])).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
-                }
-                ForEach(move.failures) { group in
-                    VStack(alignment:.leading,spacing:8) {
-                        Text(UXText.text("settings.library.move.failed",["n":String(group.names.count),"folder":LibraryLocationModel.display(group.root)])).foregroundStyle(CassiniTheme.warnInk).fixedSize(horizontal:false,vertical:true)
-                        Button(UXText.text("common.tryAgain")) { move.retry(root:group.root) }.disabled(move.busy).accessibilityIdentifier("settings-retry-move")
+                    if move.busy {
+                        HStack(spacing:6) {
+                            ProgressView().controlSize(.small)
+                            Text(UXText.text("settings.library.move.moving")).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                        }
                     }
-                }
-            }.padding(18).frame(maxWidth:.infinity,alignment:.leading)
-                .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
-            SettingsGroup("settings.library.group.keepingCopy") {
-                SettingsDescription("settings.library.backUp.title", "settings.library.backUp.subtitle")
-                Divider()
-                HStack {
-                    SettingsDescription("export.zip.all", "settings.library.zip.subtitle")
+                    if let problem = location.problem {
+                        Text(problem).font(.system(size:11.5)).foregroundStyle(CassiniTheme.warnInk).fixedSize(horizontal:false,vertical:true)
+                    }
+                    if !move.busy, move.waitingCount > 0 {
+                        Text(UXText.text("settings.library.move.waiting",["n":String(move.waitingCount)]))
+                            .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
+                    }
+                    ForEach(move.failures) { group in
+                        VStack(alignment:.leading,spacing:8) {
+                            Text(UXText.text("settings.library.move.failed",["n":String(group.names.count),"folder":LibraryLocationModel.display(group.root)]))
+                                .font(.system(size:11.5)).foregroundStyle(CassiniTheme.warnInk).fixedSize(horizontal:false,vertical:true)
+                            Button(UXText.text("common.tryAgain")) { move.retry(root:group.root) }
+                                .disabled(move.busy).accessibilityIdentifier("settings-retry-move")
+                        }
+                    }
+                }.padding(10).frame(minHeight:40,alignment:.leading)
+            }
+            SettingsGroup("settings.library.group.keepingCopy",
+                          caption:"settings.library.backUp.caption") {
+                HStack(alignment:.top,spacing:10) {
+                    SettingsDescription("settings.library.zip.title", "settings.library.zip.subtitle")
                     Spacer()
                     Button(UXText.text("common.exportEllipsis")) { bulkExporter.exportAll() }
                         .disabled(!bulkExporter.canExportAll).accessibilityIdentifier("settings-export-all-zip")
-                }
-            }
-            SettingsGroup("settings.library.group.deleted") {
-                SettingsDescription("settings.library.deleted.title", "settings.library.deleted.body")
+                }.padding(10).frame(minHeight:40)
             }
         }.task(id: LibraryStore.shared.revision) {
             let revision = LibraryStore.shared.revision
@@ -213,19 +278,86 @@ private struct SettingsLibraryView: View {
     }
 }
 private struct SettingsBrowserView: View {
+    @State private var setup = CompanionSetup.shared
+    @State private var captures = CaptureCollection.shared
+    @State private var showingRemoveHowTo = false
+    private var statusText: String {
+        if captures.connected { return setup.connectedStatusText }
+        if !captures.needsUpdate && !setup.working && !setup.failed && !setup.noBrowser {
+            return UXText.text("settings.browser.status.notSetUp")
+        }
+        return setup.stateLine
+    }
+    private var addButtonLabel: String {
+        if CompanionSetup.storeListingPublic, !setup.selectedBrowserName.isEmpty {
+            return UXText.text("companion.addTo",["browser":setup.selectedBrowserName])
+        }
+        return setup.addLabel
+    }
+    private var hasHealthNotices: Bool {
+        captures.companionHealth.peers.contains { peer in
+            let outdated = CompanionSetup.bundledCompanionVersion.map { peer.diagnostics.isOlder(than:$0) } ?? false
+            return peer.diagnostics.filesMissing || outdated || !peer.supportsMultiStream || !peer.reloadTabs.isEmpty || peer.automaticUnverified
+        }
+    }
     var body: some View {
-        SettingsPage {
-            VStack(alignment:.leading,spacing:16) {
-                Text(UXText.text("companion.title")).font(.headline)
-                Text(UXText.text("companion.bodyShort")).foregroundStyle(CassiniTheme.ink2).lineSpacing(4)
-                BrowserConnectionStateView(identifier:"settings-browser-status",phase2:true)
-                Text(UXText.text("companion.worksWith")).foregroundStyle(CassiniTheme.ink2)
-
-            }.padding(18).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
-            SettingsGroup("companion.without.heading") {
-                Text(UXText.text("companion.without.body")).foregroundStyle(CassiniTheme.ink2)
+        SettingsPage(footnote: "companion.privacy") {
+            SettingsGroup("settings.browser.heading", subtitle:"settings.browser.body") {
+                VStack(alignment:.leading,spacing:0) {
+                    HStack(alignment:.top,spacing:10) {
+                        VStack(alignment:.leading,spacing:2) {
+                            HStack(spacing:7) {
+                                Circle()
+                                    .fill(captures.connected ? CassiniTheme.success : CassiniTheme.error)
+                                    .frame(width:8,height:8)
+                                    .accessibilityHidden(true)
+                                Text(statusText)
+                                    .fixedSize(horizontal:false,vertical:true)
+                                    .accessibilityIdentifier("settings-browser-status")
+                            }
+                            Text(UXText.text("companion.worksWith"))
+                                .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                                .fixedSize(horizontal:false,vertical:true)
+                        }
+                        Spacer(minLength:8)
+                        if captures.connected {
+                            Button(UXText.text("settings.browser.remove")) {
+                                setup.openExtensionsPageForConnectedBrowser()
+                                showingRemoveHowTo = true
+                            }.accessibilityIdentifier("settings-remove-companion")
+                        } else if setup.failed {
+                            Button(UXText.text("common.tryAgain")) { setup.trigger() }
+                                .accessibilityIdentifier("browser-try-again")
+                        } else if !setup.working || setup.noBrowser {
+                            Button(addButtonLabel) { setup.add(from:.settings) }
+                                .disabled(!setup.canAdd)
+                                .accessibilityIdentifier("browser-add")
+                        }
+                    }
+                    if hasHealthNotices {
+                        BrowserCompanionHealthView(presenter:.settings).padding(.top,10)
+                    }
+                }.padding(10).frame(minHeight:40,alignment:.leading)
             }
-            Text(UXText.text("companion.privacy")).font(.caption).foregroundStyle(CassiniTheme.ink2)
+        }.sheet(isPresented:$showingRemoveHowTo) {
+            VStack(alignment:.leading,spacing:16) {
+                Text(UXText.text("settings.tab.browserCompanion")).font(.system(size:17,weight:.bold))
+                // Provisional draft string (D107): kept in one place so copy updates are trivial.
+                Text(UXText.text("settings.browser.remove.howTo"))
+                    .foregroundStyle(CassiniTheme.ink2)
+                    .fixedSize(horizontal:false,vertical:true)
+                    .accessibilityIdentifier("settings-remove-companion-howto")
+                if let copied = setup.copiedNotice {
+                    Text(copied).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                        .fixedSize(horizontal:false,vertical:true)
+                }
+                HStack {
+                    Spacer()
+                    Button(UXText.text("common.done")) { showingRemoveHowTo = false }
+                        .keyboardShortcut(.defaultAction)
+                        .accessibilityIdentifier("settings-remove-companion-done")
+                }
+            }.padding(24).frame(width:420)
         }
     }
 }
@@ -236,81 +368,96 @@ private struct SettingsTranscriptionView: View {
     @State private var weightSize = ""
     @State private var downloadBytes: Int64 = 0
     var body: some View {
-        SettingsPage {
-            HStack(alignment:.top,spacing:10) {
-                Image(systemName:"checkmark.shield").font(.system(size:19)).foregroundStyle(CassiniTheme.success).accessibilityHidden(true)
-                Text(UXText.text("settings.transcription.privacyLine")).foregroundStyle(CassiniTheme.ink2).lineSpacing(5).fixedSize(horizontal:false,vertical:true)
-            }
-            VStack(alignment:.leading,spacing:10) {
-                Text(UXText.text("settings.transcription.speech.heading")).fontWeight(.bold)
-                Text(UXText.text("models.keepTranscript")).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
+        SettingsPage(footnote: "settings.transcription.footnote") {
+            VStack(alignment:.leading,spacing:0) {
+                VStack(alignment:.leading,spacing:4) {
+                    Text(UXText.text("settings.transcription.speech.heading")).fontWeight(.semibold)
+                    Text(UXText.text("models.keepTranscript"))
+                        .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
+                        .fixedSize(horizontal:false,vertical:true)
+                }.padding(.horizontal,4).padding(.bottom,10)
                 ParakeetRecommendationView(afterFirst:false)
                 ParakeetDefaultNotice()
                 VStack(spacing:0) {
-                HStack(alignment:.top,spacing:12) {
-                    SpeechRadio(selected:!models.usesParakeet,label:UXText.text("models.whistle.name")) { models.chooseParakeet(false) }
-                        .frame(width:20,height:20).accessibilityIdentifier("settings-whistle-radio")
-                    VStack(alignment:.leading,spacing:4) {
-                        HStack(spacing:8) {
-                            Text(UXText.text("models.whistle.name")).fontWeight(.semibold)
-                            Text(weightSize).font(.system(size:11)).foregroundStyle(CassiniTheme.ink2)
-                        }
-                        Text(UXText.text("models.whistle.description.short")).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
-                        if !models.usesParakeet { Text(UXText.text("models.status.inUse")).font(.system(size:11,weight:.semibold)).foregroundStyle(CassiniTheme.success) }
-                    }
-                    Spacer(minLength:4)
-                    Text(UXText.text("models.builtIn")).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2).padding(.top,2)
-                }.padding(10).frame(maxWidth:.infinity,alignment:.leading)
-                    .accessibilityElement(children:.contain).accessibilityIdentifier("settings-whistle-row")
-                Divider().padding(.horizontal,10)
-                HStack(alignment:.top,spacing:12) {
-                    SpeechRadio(selected:models.usesParakeet,label:UXText.text("models.parakeetUltra.name")) { models.chooseParakeet(true) }
-                        .frame(width:20,height:20).disabled(!models.downloaded)
-                        .accessibilityIdentifier("settings-parakeet-radio")
-                    VStack(alignment:.leading,spacing:4) {
-                        HStack(spacing:8) {
-                            Text(UXText.text("models.parakeetUltra.name")).fontWeight(.semibold)
-                            if !models.downloaded {
-                                Text(UXText.text("format.size.download",["size":LibraryFormat.size(bytes:downloadBytes)]))
-                                    .font(.system(size:11)).foregroundStyle(CassiniTheme.ink2)
+                    HStack(alignment:.top,spacing:12) {
+                        SpeechRadio(selected:!models.usesParakeet,label:UXText.text("models.whistle.name")) { models.chooseParakeet(false) }
+                            .frame(width:15,height:15).padding(.top,1).accessibilityIdentifier("settings-whistle-radio")
+                        VStack(alignment:.leading,spacing:2) {
+                            HStack(alignment:.firstTextBaseline,spacing:6) {
+                                Text(UXText.text("models.whistle.name")).fontWeight(.semibold)
+                                Text(weightSize).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                            }
+                            Text(UXText.text("models.whistle.description.short"))
+                                .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                                .fixedSize(horizontal:false,vertical:true)
+                            if !models.usesParakeet {
+                                Text(UXText.text("models.status.inUse"))
+                                    .font(.system(size:11.5,weight:.medium)).foregroundStyle(CassiniTheme.success)
                             }
                         }
-                        Text(UXText.text("models.parakeetUltra.description.short")).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
-                        if let progress = models.progress {
-                            ProgressView(value:progress).accessibilityLabel(UXText.text("models.downloading.a11y",["model":UXText.text("models.parakeetUltra.name")]))
-                            Text(UXText.text("models.status.downloading",["percent":String(Int(progress * 100))])).font(.system(size:11)).foregroundStyle(CassiniTheme.ink2)
-                        } else if models.downloaded {
-                            Text(UXText.text(models.usesParakeet ? "models.status.inUse" : "models.status.downloaded"))
-                                .font(.system(size:11,weight:.semibold)).foregroundStyle(models.usesParakeet ? CassiniTheme.success : CassiniTheme.ink2)
+                        Spacer(minLength:4)
+                        Text(UXText.text("models.builtIn"))
+                            .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).padding(.top,2)
+                    }.padding(.horizontal,12).padding(.vertical,10).frame(maxWidth:.infinity,alignment:.leading)
+                        .background(!models.usesParakeet ? CassiniTheme.accentTint.opacity(0.6) : Color.clear)
+                        .accessibilityElement(children:.contain).accessibilityIdentifier("settings-whistle-row")
+                    Divider().padding(.horizontal,10)
+                    HStack(alignment:.top,spacing:12) {
+                        SpeechRadio(selected:models.usesParakeet,label:UXText.text("models.parakeetUltra.name")) { models.chooseParakeet(true) }
+                            .frame(width:15,height:15).padding(.top,1).disabled(!models.downloaded)
+                            .accessibilityIdentifier("settings-parakeet-radio")
+                        VStack(alignment:.leading,spacing:2) {
+                            HStack(alignment:.firstTextBaseline,spacing:6) {
+                                Text(UXText.text("models.parakeetUltra.name")).fontWeight(.semibold)
+                                if !models.downloaded {
+                                    Text(UXText.text("format.size.download",["size":LibraryFormat.size(bytes:downloadBytes)]))
+                                        .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                                }
+                            }
+                            Text(UXText.text("models.parakeetUltra.description.short"))
+                                .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                                .fixedSize(horizontal:false,vertical:true)
+                            if let progress = models.progress {
+                                ProgressView(value:progress).accessibilityLabel(UXText.text("models.downloading.a11y",["model":UXText.text("models.parakeetUltra.name")]))
+                                Text(UXText.text("models.status.downloading",["percent":String(Int(progress * 100))])).font(.system(size:11)).foregroundStyle(CassiniTheme.ink2)
+                            } else if models.downloaded {
+                                Text(UXText.text(models.usesParakeet ? "models.status.inUse" : "models.status.downloaded"))
+                                    .font(.system(size:11.5,weight:.medium)).foregroundStyle(models.usesParakeet ? CassiniTheme.success : CassiniTheme.ink2)
+                            }
                         }
-                    }
-                    Spacer(minLength:4)
-                    if models.progress != nil {
-                        Button(UXText.text("common.cancel")) { models.cancelDownload() }.accessibilityIdentifier("settings-cancel-model")
-                    } else if models.downloaded {
-                        Button(UXText.text("models.remove")) { models.remove() }.disabled(models.busy).accessibilityIdentifier("settings-remove-parakeet")
-                    } else {
-                        Button(UXText.text(models.failedDownload ? "common.retry" : "models.download")) { models.download() }
-                            .disabled(models.busy).accessibilityIdentifier("settings-download-parakeet")
-                    }
-                }.padding(10).frame(maxWidth:.infinity,alignment:.leading)
-                    .accessibilityElement(children:.contain).accessibilityIdentifier("settings-parakeet-row")
+                        Spacer(minLength:4)
+                        if models.progress != nil {
+                            Button(UXText.text("common.cancel")) { models.cancelDownload() }.accessibilityIdentifier("settings-cancel-model")
+                        } else if models.downloaded {
+                            Button(UXText.text("models.remove")) { models.remove() }.disabled(models.busy).accessibilityIdentifier("settings-remove-parakeet")
+                        } else {
+                            Button(UXText.text(models.failedDownload ? "common.retry" : "models.download")) { models.download() }
+                                .disabled(models.busy).accessibilityIdentifier("settings-download-parakeet")
+                        }
+                    }.padding(.horizontal,12).padding(.vertical,10).frame(maxWidth:.infinity,alignment:.leading)
+                        .background(models.usesParakeet ? CassiniTheme.accentTint.opacity(0.6) : Color.clear)
+                        .accessibilityElement(children:.contain).accessibilityIdentifier("settings-parakeet-row")
                 }.background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:10))
-                    .overlay(RoundedRectangle(cornerRadius:10).stroke(CassiniTheme.modelCardStroke))
+                    .clipShape(RoundedRectangle(cornerRadius:10))
+                    .overlay(RoundedRectangle(cornerRadius:10).stroke(CassiniTheme.lineSoft,lineWidth:1))
                 if let message = models.message {
                     Text(message).font(.system(size:12)).foregroundStyle(models.failedDownload ? CassiniTheme.warnInk : CassiniTheme.ink2)
-                        .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("settings-model-message")
+                        .fixedSize(horizontal:false,vertical:true).padding(.top,6).padding(.horizontal,4)
+                        .accessibilityIdentifier("settings-model-message")
                 }
             }.accessibilityElement(children:.contain).accessibilityLabel(UXText.text("settings.transcription.speech.a11y"))
                 .accessibilityIdentifier(models.recommendationReady ? "settings-speech-models-ready" : "settings-speech-models-loading")
             SettingsGroup("common.speakers", subtitle:"settings.transcription.speakers.description") {
-                SavedVoiceModelRow()
-                Divider()
-                Toggle(isOn:$voicePreferences.remember) {
-                    SettingsDescription("voices.rememberDefault.title", "voices.rememberDefault.subtitle")
-                }.toggleStyle(.switch).accessibilityIdentifier("settings-remember-voices")
-                Divider()
-                SavedVoicesSettingsRow()
+                SavedVoiceModelRow().padding(10).frame(minHeight:40)
+                Divider().padding(.horizontal,10)
+                HStack(alignment:.top,spacing:10) {
+                    SettingsDescription("voices.rememberDefault.title", "voices.rememberDefault.subtitle").accessibilityHidden(true)
+                    Spacer()
+                    Toggle(UXText.text("voices.rememberDefault.title"),isOn:$voicePreferences.remember)
+                        .labelsHidden().toggleStyle(.switch).accessibilityIdentifier("settings-remember-voices")
+                }.padding(10).frame(minHeight:40)
+                Divider().padding(.horizontal,10)
+                SavedVoicesSettingsRow().padding(10).frame(minHeight:40)
             }
         }.task {
             let url = Bundle.main.url(forResource:"whistle",withExtension:"cact",subdirectory:"Whistle")
@@ -328,8 +475,46 @@ private struct SettingsTranscriptionView: View {
     }
 }
 private struct SettingsPage<Content: View>: View {
+    let footnote: String?
     @ViewBuilder let content: Content
-    var body: some View { ScrollView { VStack(alignment:.leading,spacing:18) { content }.padding(.horizontal,28).padding(.vertical,20).frame(maxWidth:.infinity,alignment:.leading) }.background(CassiniTheme.windowGround) }
+    init(footnote: String? = nil, @ViewBuilder content: () -> Content) {
+        self.footnote = footnote
+        self.content = content()
+    }
+    var body: some View {
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment:.leading,spacing:24) {
+                    content
+                    if let footnote {
+                        Spacer(minLength:0)
+                        SettingsPrivacyFootnote(footnote)
+                    }
+                }
+                .padding(.horizontal,28).padding(.vertical,20)
+                .frame(maxWidth:.infinity,minHeight:proxy.size.height,alignment:.topLeading)
+            }
+        }.background(CassiniTheme.windowGround)
+    }
+}
+private struct SettingsPrivacyFootnote: View {
+    let key: String
+    init(_ key: String) { self.key = key }
+    var body: some View {
+        HStack(spacing:6) {
+            Image(systemName:"lock")
+                .font(.system(size:12,weight:.medium))
+                .foregroundStyle(CassiniTheme.accentInk)
+                .accessibilityHidden(true)
+            Text(UXText.text(key))
+                .font(.system(size:12))
+                .foregroundStyle(CassiniTheme.ink2)
+                .fixedSize(horizontal:false,vertical:true)
+        }
+        .frame(maxWidth:.infinity,alignment:.center)
+        .padding(.bottom,6)
+        .accessibilityIdentifier("settings-privacy-footnote")
+    }
 }
 private struct ShortcutCaptureView: NSViewRepresentable {
     let receive: (RecordingHotKey) -> Void
@@ -376,26 +561,62 @@ struct SettingsDescription: View {
     let title: String, subtitle: String
     init(_ title: String, _ subtitle: String) { self.title = title; self.subtitle = subtitle }
     var body: some View {
-        VStack(alignment:.leading,spacing:4) {
+        VStack(alignment:.leading,spacing:2) {
             Text(UXText.text(title))
             Text(UXText.text(subtitle)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
                 .fixedSize(horizontal:false,vertical:true)
         }
     }
 }
-struct SettingsGroup<Content: View>: View {
+struct SettingsGroup<HeaderTrailing: View, Content: View>: View {
     let title: String
     let subtitle: String?
+    let caption: String?
+    @ViewBuilder let headerTrailing: HeaderTrailing
     @ViewBuilder let content: Content
-    init(_ title: String, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
-        self.title = title; self.subtitle = subtitle; self.content = content()
+    init(_ title: String,
+         subtitle: String? = nil,
+         caption: String? = nil,
+         @ViewBuilder headerTrailing: () -> HeaderTrailing,
+         @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.subtitle = subtitle
+        self.caption = caption
+        self.headerTrailing = headerTrailing()
+        self.content = content()
     }
     var body: some View {
-        VStack(alignment:.leading,spacing:8) {
-            Text(UXText.text(title)).fontWeight(.semibold)
-            if let subtitle { Text(UXText.text(subtitle)).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true) }
-            VStack(alignment:.leading,spacing:12) { content }.padding(12).frame(maxWidth:.infinity,alignment:.leading)
+        VStack(alignment:.leading,spacing:0) {
+            VStack(alignment:.leading,spacing:4) {
+                HStack(alignment:.firstTextBaseline,spacing:12) {
+                    Text(UXText.text(title)).fontWeight(.semibold)
+                    Spacer()
+                    headerTrailing
+                }
+                if let subtitle {
+                    Text(UXText.text(subtitle))
+                        .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
+                        .fixedSize(horizontal:false,vertical:true)
+                }
+            }.padding(.horizontal,4).padding(.bottom,10)
+            VStack(alignment:.leading,spacing:0) { content }
+                .frame(maxWidth:.infinity,alignment:.leading)
                 .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:10))
+                .overlay(RoundedRectangle(cornerRadius:10).stroke(CassiniTheme.lineSoft,lineWidth:1))
+            if let caption {
+                Text(UXText.text(caption))
+                    .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                    .fixedSize(horizontal:false,vertical:true)
+                    .padding(.top,6).padding(.horizontal,4)
+            }
         }
+    }
+}
+extension SettingsGroup where HeaderTrailing == EmptyView {
+    init(_ title: String,
+         subtitle: String? = nil,
+         caption: String? = nil,
+         @ViewBuilder content: () -> Content) {
+        self.init(title, subtitle:subtitle, caption:caption, headerTrailing: { EmptyView() }, content:content)
     }
 }

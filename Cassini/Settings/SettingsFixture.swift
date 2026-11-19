@@ -35,7 +35,7 @@ enum SettingsFixture {
               ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               prepared.insert(ObjectIdentifier(window)).inserted else { return }
         window.appearance = NSAppearance(named:LibraryLaunchContext.screenshotDark ? .darkAqua : .aqua)
-        window.setContentSize(name == "about" ? NSSize(width:300,height:330) : NSSize(width:700,height:480)); window.center(); window.makeKeyAndOrderFront(nil)
+        window.setContentSize(name == "about" ? NSSize(width:300,height:330) : NSSize(width:700,height:520)); window.center(); window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps:true)
         guard ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1" else { return }
         Task { @MainActor in

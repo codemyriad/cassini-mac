@@ -52,11 +52,14 @@ import CassiniBrowserControl
     var playAutomatically = true
     private(set) var isFrozen = false
     private var frozenElapsedMs: Int64?
-    func freezeForScreenshot(phase: Phase, elapsedMs: Int64 = 3_000, heard: Set<CaptureSide>, levels: [CaptureSide: Float]) {
+    func freezeForScreenshot(phase: Phase, elapsedMs: Int64 = 3_000, heard: Set<CaptureSide>, levels: [CaptureSide: Float], refused: [CaptureSide: String] = [:]) {
         isFrozen = true; frozenElapsedMs = elapsedMs
         self.phase = phase; self.heard = heard; self.levels = levels
-        self.refused = [:]; self.problem = nil; self.playing = false
+        self.refused = refused; self.problem = nil; self.playing = false
         self.presented = true
+    }
+    func freezeRefusedForScreenshot() {
+        freezeForScreenshot(phase: .result, elapsedMs: 8_000, heard: [.others], levels: [:], refused: [.me: CaptureRefusal.permissionDenied])
     }
     #else
     var isFrozen: Bool { false }
@@ -214,6 +217,11 @@ import CassiniBrowserControl
 }
 struct TestRecordingView: View {
     @State private var test = TestRecordingController.shared
+    private var refusedSides: [(CaptureSide, String)] {
+        [CaptureSide.me, .others].compactMap { side in
+            test.refused[side].map { (side, $0) }
+        }
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 8) {
@@ -222,9 +230,35 @@ struct TestRecordingView: View {
                     .accessibilityAddTraits(.isHeader)
                 Group {
                     if test.phase == .result {
-                        Text(UXText.text("test.note"))
-                            .foregroundStyle(CassiniTheme.secondaryInk)
-                            .fixedSize(horizontal: false, vertical: true)
+                        if !refusedSides.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(refusedSides, id: \.0) { side, code in
+                                    if code == CaptureRefusal.permissionDenied {
+                                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                            Text(UXText.text(side == .me ? "test.refused.mic" : "test.refused.sound"))
+                                                .foregroundStyle(CassiniTheme.secondaryInk)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                            Button(UXText.text("test.refused.action")) {
+                                                CaptureSettings.open(side)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .foregroundStyle(CassiniTheme.accentInk)
+                                            .fontWeight(.semibold)
+                                            .accessibilityIdentifier(side == .me ? "test-recording-open-mic-settings" : "test-recording-open-sound-settings")
+                                        }
+                                    } else {
+                                        let source = UXText.text(side == .me ? "common.yourMicrophone" : "recordFirst.sound.title")
+                                        Text(UXText.text("details.sources.refused.deviceUnavailable", ["source": source]))
+                                            .foregroundStyle(CassiniTheme.secondaryInk)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                            }
+                        } else {
+                            Text(UXText.text("test.note"))
+                                .foregroundStyle(CassiniTheme.secondaryInk)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     } else {
                         TimelineView(.periodic(from: .now, by: 1)) { context in
                             MeetingStatusBadge(
@@ -301,38 +335,30 @@ private struct TestRecordingSourceRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 14) {
-                Image(systemName: iconName)
-                    .frame(width: 36, height: 36)
-                    .background(CassiniTheme.subtleWash, in: Circle())
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(UXText.text(promptKey)).fontWeight(.semibold)
-                    Text(UXText.text(sourceKey))
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(CassiniTheme.secondaryInk)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                if phase == .result {
-                    TestRecordingStatusPill(working: heard)
-                } else {
-                    HStack(spacing: 8) {
-                        TestRecordingLevelMeter(level: level)
-                        Text(UXText.text(liveKey))
-                            .font(.system(size: 12))
-                            .foregroundStyle(heard ? CassiniTheme.ink : CassiniTheme.secondaryInk)
-                            .fixedSize()
-                    }
-                }
-            }
-            if phase == .result, let refusal {
-                let source = UXText.text(sourceKey)
-                Text(UXText.text(refusal == CaptureRefusal.permissionDenied ? "details.sources.refused.permissionDenied" : "details.sources.refused.deviceUnavailable", ["source": source]))
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: iconName)
+                .frame(width: 36, height: 36)
+                .background(CassiniTheme.subtleWash, in: Circle())
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(UXText.text(promptKey)).fontWeight(.semibold)
+                Text(UXText.text(sourceKey))
                     .font(.system(size: 11.5))
-                    .foregroundStyle(CassiniTheme.warnInk)
-                    .padding(.leading, 50)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .foregroundStyle(CassiniTheme.secondaryInk)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if let refusal {
+                TestRecordingStatusPill(kind: refusal == CaptureRefusal.permissionDenied ? .notAllowed : .couldNotStart)
+            } else if phase == .result {
+                TestRecordingStatusPill(kind: heard ? .working : .silent)
+            } else {
+                HStack(spacing: 8) {
+                    TestRecordingLevelMeter(level: level)
+                    Text(UXText.text(liveKey))
+                        .font(.system(size: 12))
+                        .foregroundStyle(heard ? CassiniTheme.ink : CassiniTheme.secondaryInk)
+                        .fixedSize()
+                }
             }
         }
     }
@@ -358,24 +384,35 @@ private struct TestRecordingLevelMeter: View {
 }
 
 private struct TestRecordingStatusPill: View {
-    let working: Bool
+    enum Kind { case working, silent, notAllowed, couldNotStart }
+    let kind: Kind
+
+    private var isSuccess: Bool { kind == .working }
+    private var labelKey: String {
+        switch kind {
+        case .working: "test.pill.working"
+        case .silent: "test.pill.silent"
+        case .notAllowed: "test.pill.notAllowed"
+        case .couldNotStart: "test.pill.couldNotStart"
+        }
+    }
 
     var body: some View {
         HStack(spacing: MeetingStatusBadge.Metrics.gap) {
-            Image(systemName: working ? "checkmark" : "exclamationmark.circle")
+            Image(systemName: isSuccess ? "checkmark" : "exclamationmark.circle")
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(working ? CassiniTheme.success : CassiniTheme.error)
+                .foregroundStyle(isSuccess ? CassiniTheme.success : CassiniTheme.error)
                 .accessibilityHidden(true)
-            Text(UXText.text(working ? "test.pill.working" : "test.pill.silent"))
+            Text(UXText.text(labelKey))
                 .font(.system(size: MeetingStatusBadge.Metrics.font, weight: .semibold))
                 .fixedSize(horizontal: true, vertical: true)
-                .foregroundStyle(working ? CassiniTheme.success : CassiniTheme.error)
+                .foregroundStyle(isSuccess ? CassiniTheme.success : CassiniTheme.error)
         }
         .padding(.horizontal, MeetingStatusBadge.Metrics.horizontalPadding)
         .frame(height: MeetingStatusBadge.Metrics.height)
         .fixedSize(horizontal: true, vertical: true)
-        .background(Capsule().fill(working ? CassiniTheme.successTint : CassiniTheme.errorTint))
+        .background(Capsule().fill(isSuccess ? CassiniTheme.successTint : CassiniTheme.errorTint))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(UXText.text(working ? "test.pill.working" : "test.pill.silent"))
+        .accessibilityLabel(UXText.text(labelKey))
     }
 }

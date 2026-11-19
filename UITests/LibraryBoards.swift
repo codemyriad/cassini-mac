@@ -862,15 +862,14 @@ final class LibraryBoards: XCTestCase {
             XCTAssertTrue(waitForPresent(settings,timeout:10))
             settings.toolbars.buttons["Browser companion"].click()
             if kind == "health-ready" {
-                // SwiftUI's link-style Button is exposed as an AXLink on macOS.
-                let local = settings.descendants(matching:.any).matching(identifier:"settings-add-local-companion").firstMatch
-                XCTAssertTrue(waitForPresent(local,timeout:10),"A healthy connection still permits adding another browser: " + app.debugDescription)
-                XCTAssertTrue(local.isEnabled)
-                local.click()
-                XCTAssertTrue(waitForPresent(settings.sheets.buttons["companion-local-done"],timeout:10),app.debugDescription)
-                app.typeKey(.escape,modifierFlags:[])
-                let guideClosed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:settings.sheets.firstMatch)
-                XCTAssertEqual(XCTWaiter.wait(for:[guideClosed],timeout:5),.completed,app.debugDescription)
+                let remove = settings.buttons["settings-remove-companion"]
+                XCTAssertTrue(waitForPresent(remove,timeout:10),"A connected companion offers Remove…: " + app.debugDescription)
+                XCTAssertTrue(remove.isEnabled)
+                remove.click()
+                XCTAssertTrue(waitForPresent(settings.sheets.staticTexts["settings-remove-companion-howto"],timeout:10),app.debugDescription)
+                settings.sheets.buttons["settings-remove-companion-done"].click()
+                let howToClosed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:settings.sheets.firstMatch)
+                XCTAssertEqual(XCTWaiter.wait(for:[howToClosed],timeout:5),.completed,app.debugDescription)
             }
             let message = settings.staticTexts["companion-reload-message"]
             if kind == "health-reload" {

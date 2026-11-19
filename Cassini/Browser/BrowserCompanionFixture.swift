@@ -7,7 +7,8 @@ import CassiniBrowserControl
 /// Uses the production decoder, with English synthetic evidence and no IPC.
 @MainActor enum BrowserCompanionFixture {
     static var kind: String? {
-        guard MeetingRenameFixture.enabled, let kind = LibraryLaunchContext.argument("-CassiniBrowserCase"),
+        guard (MeetingRenameFixture.enabled || RecordingFixture.enabled || LibraryLaunchContext.current.screenshot),
+              let kind = LibraryLaunchContext.argument("-CassiniBrowserCase"),
               ["health-ready","health-idle","health-reload","health-reload-no-action","health-reload-no-capability","health-reload-active","health-files","health-outdated","health-legacy"].contains(kind) else { return nil }
         return kind
     }
