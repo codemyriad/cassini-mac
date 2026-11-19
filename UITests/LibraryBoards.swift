@@ -174,7 +174,7 @@ final class LibraryBoards: XCTestCase {
         relaunched.typeKey(.escape,modifierFlags:[])
         let row = window.outlines.staticTexts.matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout:5)); row.rightClick()
-        let unstar = relaunched.menuItems["Unstar"]
+        let unstar = window.menuItems["library-star"]
         XCTAssertTrue(unstar.waitForExistence(timeout:5),relaunched.debugDescription); unstar.click()
         XCTAssertTrue(window.staticTexts["library-starred-empty"].waitForExistence(timeout:5),relaunched.debugDescription)
         relaunched.terminate()
