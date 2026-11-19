@@ -34,11 +34,13 @@ public enum MeetingTranscriber {
         case missing
     }
     public static func setStatus(directory: URL, id: UUID, status: String) throws {
+        var clearCache = false
         try MeetingMetadataWriter(directory: directory, id: id).transaction { metadata in
             var transcript = metadata["transcript"] as! [String:Any]
             if status == "queued", (transcript["status"] as? String) == "failed" {
                 // Retry is a fresh recognition, not a resume of failed output.
                 transcript["reference"] = NSNull()
+                clearCache = true
             }
             // D67.2: a failed write-down references no words. Its partial transcript.json stays in the
             // folder, unreferenced, so no reader (or a published copy) shows partial words as stored.
@@ -48,10 +50,12 @@ public enum MeetingTranscriber {
             metadata["etaMinutes"] = NSNull()
             metadata["error"] = status == "failed" ? ["id":"transcribe-failed", "action":"Try again"] : NSNull()
         }
+        if clearCache { SegmentRecognitionCache.Store.remove(in: directory) }
     }
     /// Prepares a pending queue entry without clobbering a transcript completed or paused elsewhere.
     public static func queueIfEligible(directory: URL, id: UUID, automatic: Bool, explicitRetry: Bool) throws -> Bool {
         var eligible = false
+        var clearCache = false
         try MeetingMetadataWriter(directory: directory, id: id).transaction(skippingUnchanged: true) { metadata in
             guard var transcript = metadata["transcript"] as? [String:Any],
                   let status = transcript["status"] as? String else { return }
@@ -62,9 +66,11 @@ public enum MeetingTranscriber {
             }
             if status == "done" {
                 guard explicitRetry, !automatic else { return }
+                clearCache = true
             } else if status == "failed" {
                 guard explicitRetry, !automatic else { return }
                 transcript["reference"] = NSNull()
+                clearCache = true
             } else if status == "none" {
                 if automatic && isPaused { return }
             } else {
@@ -77,6 +83,7 @@ public enum MeetingTranscriber {
             metadata["error"] = NSNull()
             eligible = true
         }
+        if clearCache { SegmentRecognitionCache.Store.remove(in: directory) }
         return eligible
     }
     /// Revalidates eligibility under `.transcription.lock` before spawning a worker.
