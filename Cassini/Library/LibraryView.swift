@@ -1076,6 +1076,7 @@ private struct MeetingWindowTitleView: View {
                 .padding(.horizontal, canRename ? 4 : 0)
                 .accessibilityIdentifier("meeting-window-subtitle")
         }
+        .frame(minWidth: 60, maxWidth: 260, alignment: .leading)
         .onChange(of: title) { _, _ in editing = false }
         .onChange(of: canRename) { _, allowed in if !allowed { editing = false } }
     }

@@ -356,7 +356,7 @@ final class LibraryBoards: XCTestCase {
         let app = try launch("library",fixture:"main",extra:["--fixture-library-rename","--fixture-library-many-sources","-CassiniRenameID",UUID().uuidString])
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
-        let budget = window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
+        let budget = window.outlines.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
         XCTAssertTrue(budget.waitForExistence(timeout:20),app.debugDescription); budget.click()
         let read = window.buttons["meeting-find-button"].firstMatch
         XCTAssertTrue(read.waitForExistence(timeout:10),app.debugDescription); XCTAssertTrue(window.descendants(matching:.any)["meeting-page"].exists)
@@ -432,7 +432,7 @@ final class LibraryBoards: XCTestCase {
         let window=app.windows["cassini-library-window"]
         let read=window.buttons["meeting-find-button"].firstMatch
         app.typeKey(.escape,modifierFlags:[])
-        let budget=window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
+        let budget=window.outlines.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
         XCTAssertTrue(budget.waitForExistence(timeout:20),app.debugDescription);budget.click()
         let readable=NSPredicate {_,_ in read.exists && read.isEnabled}
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:readable,object:nil)],timeout:10),.completed,app.debugDescription)
@@ -517,7 +517,7 @@ final class LibraryBoards: XCTestCase {
         let app=try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString,"-CassiniScreenshotSize","760x480"])
         defer {app.terminate()}
         let window=app.windows["cassini-library-window"]
-        let budget=window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
+        let budget=window.outlines.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
         XCTAssertTrue(budget.waitForExistence(timeout:20));budget.click()
         let read=window.buttons["meeting-find-button"].firstMatch
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate {_,_ in read.exists && read.isEnabled},object:nil)],timeout:10),.completed)
@@ -545,7 +545,7 @@ final class LibraryBoards: XCTestCase {
         let app = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",renameID])
         defer { if app.state != .notRunning { app.terminate() } }
         let window = app.windows["cassini-library-window"]
-        let budget = window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
+        let budget = window.outlines.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
         XCTAssertTrue(budget.waitForExistence(timeout:20),app.debugDescription); budget.click()
         // 1. File → Rename… sheet
         app.menuBars.menuBarItems["File"].click(); app.menuItems["Rename…"].click()
@@ -702,7 +702,7 @@ final class LibraryBoards: XCTestCase {
                 XCTAssertTrue(text("Browser meetings need Chrome, Edge, Brave or Chromium.",in:settings))
                 XCTAssertFalse(settings.buttons["browser-try-again"].exists)
                 app.typeKey("w",modifierFlags:.command)
-                let budget = window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
+                let budget = window.outlines.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
                 budget.click()
                 XCTAssertTrue(window.buttons["meeting-find-button"].firstMatch.isEnabled)
                 XCTAssertTrue(window.descendants(matching:.any)["meeting-page"].exists)
