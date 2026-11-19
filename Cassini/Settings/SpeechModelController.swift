@@ -167,6 +167,7 @@ import CassiniTranscription
     func chooseParakeet(_ value: Bool) {
         guard !value || downloaded else { return }
         adoption.choose(value ? .parakeet : .whistle); persistChoice()
+        TranscriptionQueue.shared.preemptFollowerForModelChange()
     }
     func download() {
         guard !busy else { return }
@@ -205,6 +206,7 @@ import CassiniTranscription
         invalidateInventory()
         let previousAdoption = adoption
         generation = UUID(); busy = true; adoption.unavailable(); persistChoice(); dismissSuggestion()
+        TranscriptionQueue.shared.preemptFollowerForModelChange()
         operation = Task {
             defer { busy = false; operation = nil }
             do {
@@ -252,6 +254,7 @@ import CassiniTranscription
         invalidateInventory()
         let wasSelected = usesParakeet, previousAdoption = adoption
         generation = UUID(); adoption.unavailable(); persistChoice()
+        TranscriptionQueue.shared.preemptFollowerForModelChange()
         let cleanupGeneration = generation
         busy = true
         defer { if cleanupGeneration == generation { busy = false } }

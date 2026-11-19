@@ -61,7 +61,12 @@ struct SileroInputHighPass {
         }
     }
 }
-public final class SpeechDetector {
+public protocol SpeechProbabilityProvider: AnyObject {
+    func reset()
+    func probability(_ frame: [Float]) throws -> Float
+}
+
+public final class SpeechDetector: SpeechProbabilityProvider {
     public static let inputFilterVersion = "silero-input-hpf-butter2-100hz-v1"
     private let detector: OpaquePointer
     private var inputFilter = SileroInputHighPass()
