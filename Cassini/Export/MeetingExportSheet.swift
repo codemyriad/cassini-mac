@@ -176,11 +176,8 @@ struct MeetingExportSheet: View {
     let meeting: LibraryMeeting
     @State private var moreFormats = false
     var body: some View {
-        VStack(alignment:.leading,spacing:20) {
-            VStack(alignment:.leading,spacing:6) {
-                Text(UXText.text("export.title",["title":meeting.title ?? UXText.text("library.untitled")])).font(.system(size:20,weight:.bold))
-                Text(UXText.text("export.subtitle")).foregroundStyle(CassiniTheme.ink2)
-            }
+        VStack(alignment:.leading,spacing:16) {
+            Text(UXText.text("export.title",["title":meeting.title ?? UXText.text("library.untitled")])).font(.system(size:17,weight:.bold))
             VStack(spacing:0) {
                 ForEach(MeetingExportKind.primary(for: meeting), id: \.self) { kind in
                     option(kind)
@@ -210,17 +207,12 @@ struct MeetingExportSheet: View {
                         }
                     }
                 }
-            }.background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:8))
-                .clipShape(RoundedRectangle(cornerRadius:8)).overlay { RoundedRectangle(cornerRadius:8).stroke(CassiniTheme.cardStroke) }
+            }.background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:10))
+                .clipShape(RoundedRectangle(cornerRadius:10)).overlay { RoundedRectangle(cornerRadius:10).stroke(CassiniTheme.cardStroke) }
                 .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("export.formatGroup.a11y"))
             if meeting.state.transcript != .done {
                 Text(UXText.text("export.audioOnly.note")).foregroundStyle(CassiniTheme.ink2)
                     .accessibilityIdentifier("export-audio-only-note")
-            }
-            VStack(alignment:.leading,spacing:6) {
-                Text(UXText.text("export.speakerNames.heading")).font(.system(size:11.5,weight:.bold)).foregroundStyle(CassiniTheme.ink2)
-                ScrollView { speakerNames.lineSpacing(5).fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,alignment:.leading) }
-                    .frame(maxHeight:130).fixedSize(horizontal:false,vertical:true)
             }
             HStack(spacing:12) {
                 Image(systemName:"folder").accessibilityHidden(true)
@@ -230,7 +222,9 @@ struct MeetingExportSheet: View {
                     .fontWeight(.semibold).padding(.horizontal,14).frame(height:30).background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:6))
                     .accessibilityIdentifier("export-choose-folder")
                     .disabled(coordinator.working)
-            }.padding(14).background(CassiniTheme.chipFill.opacity(0.65),in:RoundedRectangle(cornerRadius:7))
+            }.padding(.horizontal,12).padding(.vertical,10)
+                .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:10))
+                .overlay { RoundedRectangle(cornerRadius:10).stroke(CassiniTheme.cardStroke) }
             if let failure = coordinator.failure {
                 HStack(alignment:.firstTextBaseline,spacing:10) {
                     Image(systemName:"exclamationmark.triangle.fill").accessibilityHidden(true)
@@ -257,14 +251,18 @@ struct MeetingExportSheet: View {
             .accessibilityElement(children:.contain).accessibilityIdentifier("meeting-export-sheet")
     }
     private func option(_ kind: MeetingExportKind) -> some View {
-        let title = "export.\(kind.catalogName).label"
-        let description = "export.\(kind.catalogName).description"
-        return
-        HStack(spacing:14) {
-            ExportRadio(selected:coordinator.kind == kind,label:UXText.text(title)) { coordinator.kind = kind }.frame(width:20,height:20)
+        let titleKey = (kind == .srt || kind == .vtt) ? "export.subtitles.label" : "export.\(kind.catalogName).label"
+        let titleText = UXText.text(titleKey)
+        let suffix = ".\(kind.suffix(for: meeting))"
+        let descriptionKey = kind == .originalAudio ? "export.originalAudio.description" : "export.\(kind.catalogName).description.short"
+        return HStack(spacing:14) {
+            ExportRadio(selected:coordinator.kind == kind,label:"\(titleText) \(suffix)") { coordinator.kind = kind }.frame(width:20,height:20)
             VStack(alignment:.leading,spacing:3) {
-                Text(UXText.text(title)).fontWeight(.semibold)
-                Text(UXText.text(description)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
+                HStack(spacing:5) {
+                    Text(titleText).fontWeight(.semibold)
+                    Text(suffix).foregroundStyle(CassiniTheme.ink2)
+                }
+                Text(UXText.text(descriptionKey)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
             }.frame(maxWidth:.infinity,alignment:.leading)
             if kind == .cassini, let bytes = coordinator.estimatedBytes {
                 Text(LibraryFormat.size(bytes:bytes,approximate:true)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
@@ -274,20 +272,6 @@ struct MeetingExportSheet: View {
             .contentShape(Rectangle()).onTapGesture { if !coordinator.working && (kind != .cassini || !meeting.audioFiles.isEmpty) { coordinator.kind = kind } }
             .disabled(coordinator.working || (kind == .cassini && meeting.audioFiles.isEmpty))
             .accessibilityElement(children:.contain).accessibilityIdentifier("export-\(kind.rawValue)")
-    }
-    private var speakerNames: Text {
-        let names = meeting.speakers.filter { $0.provenance == .recognised }.map(\.displayName)
-        if names.isEmpty { return Text(UXText.text("export.speakerNames.body.none")) }
-        if names.count == 1 { return template("export.speakerNames.body",token:"name",value:Text(names[0]).fontWeight(.semibold)) }
-        let tokens = names.indices.map { "\u{F0000}\($0)\u{F0001}" }
-        var remaining = LibraryFormat(locale:UXText.locale,language:UXText.language).list(tokens), result = Text("")
-        for (index,token) in tokens.enumerated() {
-            if let range = remaining.range(of:token) {
-                result = result + Text(String(remaining[..<range.lowerBound])) + Text(names[index]).fontWeight(.semibold)
-                remaining = String(remaining[range.upperBound...])
-            }
-        }
-        return template("export.speakerNames.body.several",token:"names",value:result + Text(remaining))
     }
     private func template(_ id: String, token: String, value: Text) -> Text {
         let text = UXText.text(id)

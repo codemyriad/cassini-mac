@@ -60,8 +60,9 @@ final class LibraryBoards: XCTestCase {
         let options = window.descendants(matching:.any).matching(NSPredicate(format:"label == %@","Options for Marta")).firstMatch
         XCTAssertTrue(window.descendants(matching:.any)["saved-voices-ready"].waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(options.waitForExistence(timeout:20),app.debugDescription)
-        XCTAssertTrue(window.staticTexts["Name them again in a meeting to keep recognising them."].exists)
-        XCTAssertFalse(window.buttons["saved-voices-add"].exists)
+        XCTAssertTrue(window.staticTexts["1 voice needs naming again"].exists)
+        XCTAssertTrue(window.staticTexts["Needs naming again"].exists)
+        XCTAssertTrue(window.buttons["saved-voices-add"].exists)
         capture(window,name:"settings-voices")
         options.click()
         XCTAssertTrue(options.menuItems["Play a sample"].waitForExistence(timeout:5),app.debugDescription)
@@ -81,7 +82,7 @@ final class LibraryBoards: XCTestCase {
         let renamed = window.descendants(matching:.any).matching(NSPredicate(format:"label == %@","Options for Marta renamed")).firstMatch
         XCTAssertTrue(renamed.waitForExistence(timeout:10),app.debugDescription)
         renamed.click();renamed.menuItems["Forget…"].click()
-        let confirm = window.sheets.buttons["Delete"].firstMatch
+        let confirm = window.sheets.buttons["Forget"].firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout:5),app.debugDescription);confirm.click()
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:renamed)],timeout:10),.completed)
         let everyone = window.buttons["saved-voices-forget-everyone"]
@@ -90,7 +91,9 @@ final class LibraryBoards: XCTestCase {
         let confirmAll = window.sheets.buttons["Forget everyone"].firstMatch
         XCTAssertTrue(confirmAll.waitForExistence(timeout:5),app.debugDescription);confirmAll.click()
         XCTAssertTrue(window.staticTexts["saved-voices-empty"].waitForExistence(timeout:10),app.debugDescription)
-        XCTAssertTrue(window.staticTexts["saved-voices-how-to-add"].exists)
+        XCTAssertTrue(window.buttons["saved-voices-add"].exists)
+        XCTAssertTrue(window.descendants(matching:.any)["saved-voices-footnote"].exists)
+        capture(window,name:"settings-voices-empty")
     }
     @MainActor func testPhase2BrowserReadyState() throws {
         let app = try launch("settings-browser",fixture:"empty",extra:["-CassiniSettingsID",UUID().uuidString])
@@ -632,8 +635,8 @@ final class LibraryBoards: XCTestCase {
         app.menuItems["Saved Voices…"].click()
         let settingsWindow = app.windows["cassini-settings-window"]
         XCTAssertTrue(settingsWindow.waitForExistence(timeout:10),app.debugDescription)
-        XCTAssertTrue(settingsWindow.staticTexts["saved-voices-how-to-add"].waitForExistence(timeout:10),app.debugDescription)
-        XCTAssertTrue(settingsWindow.buttons["saved-voices-back"].exists)
+        XCTAssertTrue(settingsWindow.buttons["saved-voices-back"].waitForExistence(timeout:10),app.debugDescription)
+        XCTAssertTrue(settingsWindow.descendants(matching:.any)["saved-voices-footnote"].exists)
         settingsWindow.buttons[XCUIIdentifierCloseWindow].click()
     }
     @MainActor func testBrowserStatesBeforeFirstConnectionAndAfterFailure() throws {
@@ -1269,27 +1272,27 @@ final class LibraryBoards: XCTestCase {
         let window = app.windows["cassini-library-window"], sheet = window.sheets.firstMatch
         XCTAssertTrue(sheet.buttons["export-confirm"].waitForExistence(timeout:20),app.debugDescription)
         XCTAssertEqual(sheet.frame.width,540,accuracy:2)
-        XCTAssertEqual(selected(sheet.radioButtons["Cassini file"]),true)
-        XCTAssertFalse(sheet.radioButtons["Markdown"].isSelected)
+        XCTAssertEqual(selected(sheet.radioButtons["Cassini file .opus"]),true)
+        XCTAssertFalse(sheet.radioButtons["Markdown .md"].isSelected)
         capture(window,name:"export")
-        XCTAssertFalse(sheet.radioButtons["Plain text"].exists)
+        XCTAssertFalse(sheet.radioButtons["Plain text .txt"].exists)
         XCTAssertTrue(sheet.buttons["export-more-formats"].waitForExistence(timeout: 5), app.debugDescription)
         sheet.buttons["export-more-formats"].click()
         capture(window, name: "qa-export-more-formats")
-        for label in ["Plain text", "Subtitles (SRT)", "Subtitles (WebVTT)"] {
+        for label in ["Plain text .txt", "Subtitles .srt", "Subtitles .vtt"] {
             XCTAssertTrue(sheet.radioButtons[label].waitForExistence(timeout: 5), app.debugDescription)
             sheet.radioButtons[label].click()
             XCTAssertEqual(selected(sheet.radioButtons[label]), true)
-            XCTAssertEqual(selected(sheet.radioButtons["Cassini file"]), false)
+            XCTAssertEqual(selected(sheet.radioButtons["Cassini file .opus"]), false)
         }
-        sheet.radioButtons["Markdown"].click()
-        XCTAssertEqual(selected(sheet.radioButtons["Markdown"]),true)
+        sheet.radioButtons["Markdown .md"].click()
+        XCTAssertEqual(selected(sheet.radioButtons["Markdown .md"]),true)
         app.typeKey(.escape,modifierFlags:[])
         let dismissed = NSPredicate { _,_ in !sheet.exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:dismissed,object:nil)],timeout:5),.completed,app.debugDescription)
         app.typeKey("e",modifierFlags:[.command,.shift])
         XCTAssertTrue(sheet.buttons["export-confirm"].waitForExistence(timeout:5))
-        XCTAssertEqual(selected(sheet.radioButtons["Cassini file"]),true)
+        XCTAssertEqual(selected(sheet.radioButtons["Cassini file .opus"]),true)
         sheet.buttons["export-confirm"].click()
         // NSSavePanel is exposed as a sheet on some supported macOS versions.
         XCTAssertTrue(nativeSaveButton(in:app).waitForExistence(timeout:10),app.debugDescription)

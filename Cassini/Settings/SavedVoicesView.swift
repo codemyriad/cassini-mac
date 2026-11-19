@@ -28,33 +28,109 @@ struct SavedVoicesView: View {
     @State private var renaming: SavedVoice?
     @State private var name=""
     var body: some View {
-        ScrollView {
-            VStack(alignment:.leading,spacing:20) {
-                Button { SettingsNavigation.shared.savedVoices=false } label: {
-                    Label(UXText.text("savedVoices.back"),systemImage:"chevron.left")
-                }.buttonStyle(.plain).foregroundStyle(CassiniTheme.accent)
-                    .accessibilityIdentifier("saved-voices-back")
-                Text(UXText.text("savedVoices.privacy.mac")).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
-                if voices.readOnly { Text(UXText.text("savedVoices.newerVersion")).foregroundStyle(CassiniTheme.warnInk) }
-                if voices.voices.isEmpty {
-                    Text(UXText.text("savedVoices.empty")).foregroundStyle(CassiniTheme.ink2).padding(.vertical,16)
-                        .accessibilityIdentifier("saved-voices-empty")
-                } else {
-                    VStack(spacing:0) {
-                        ForEach(voices.voices) { voice in
-                            voiceRow(voice)
-                            if voice.id != voices.voices.last?.id { Divider() }
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment:.leading,spacing:12) {
+                    HStack(spacing:8) {
+                        Button { SettingsNavigation.shared.savedVoices=false } label: {
+                            Image(systemName:"chevron.left")
+                                .font(.system(size:12,weight:.semibold))
+                                .frame(width:26,height:24)
+                                .background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:6))
+                        }.buttonStyle(.plain).foregroundStyle(CassiniTheme.ink)
+                            .accessibilityLabel(UXText.text("savedVoices.back"))
+                            .accessibilityIdentifier("saved-voices-back")
+                        Text(UXText.text("common.savedVoices"))
+                            .font(.system(size:15,weight:.semibold))
+                    }
+                    if voices.readOnly { Text(UXText.text("savedVoices.newerVersion")).foregroundStyle(CassiniTheme.warnInk) }
+                    let staleVoices=voices.voices.filter(\.stale)
+                    if !staleVoices.isEmpty {
+                        let names=LibraryFormat(locale:UXText.locale,language:UXText.language).list(staleVoices.map(\.name))
+                        VStack(alignment:.leading,spacing:3) {
+                            Text(UXText.text("savedVoices.stale.title",["n":String(staleVoices.count)]))
+                                .font(.system(size:13,weight:.semibold)).foregroundStyle(CassiniTheme.warnInk)
+                            Text(UXText.text("savedVoices.stale.body",["name":names]))
+                                .font(.system(size:12)).foregroundStyle(CassiniTheme.ink).fixedSize(horizontal:false,vertical:true)
                         }
-                    }.background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
-                }
-                if !voices.voices.isEmpty {
-                    Button(UXText.text("savedVoices.forgetEveryone"),role:.destructive) { forgetAll=true }
-                        .disabled(voices.readOnly || voices.busy).accessibilityIdentifier("saved-voices-forget-everyone")
-                }
-                Text(UXText.text("savedVoices.howToAdd.short")).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
-                    .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("saved-voices-how-to-add")
-                if let message=voices.message { Text(message).foregroundStyle(CassiniTheme.warnInk).fixedSize(horizontal:false,vertical:true) }
-            }.padding(24).frame(maxWidth:.infinity,alignment:.leading)
+                        .padding(.horizontal,14).padding(.vertical,12)
+                        .frame(maxWidth:.infinity,alignment:.leading)
+                        .background(CassiniTheme.warnTint,in:RoundedRectangle(cornerRadius:10))
+                        .accessibilityElement(children:.contain)
+                        .accessibilityIdentifier("saved-voices-stale-notice")
+                    }
+                    if voices.voices.isEmpty {
+                        Spacer(minLength:16)
+                        VStack(spacing:8) {
+                            Text(UXText.text("savedVoices.empty"))
+                                .font(.system(size:19,weight:.bold))
+                                .accessibilityIdentifier("saved-voices-empty")
+                            Text(UXText.text("savedVoices.empty.body"))
+                                .font(.system(size:13)).foregroundStyle(CassiniTheme.ink2)
+                                .multilineTextAlignment(.center).fixedSize(horizontal:false,vertical:true)
+                            Button { voices.beginEnrollment() } label: {
+                                Text(UXText.text("voices.enroll.addAction"))
+                                    .font(.system(size:13,weight:.medium))
+                                    .padding(.horizontal,14).frame(height:28)
+                                    .foregroundStyle(CassiniTheme.onAccent)
+                                    .background(CassiniTheme.accentStrong,in:RoundedRectangle(cornerRadius:6))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(voices.readOnly || voices.busy)
+                            .accessibilityIdentifier("saved-voices-add")
+                            .padding(.top,10)
+                        }
+                        .frame(maxWidth:380)
+                        .frame(maxWidth:.infinity)
+                        Spacer(minLength:16)
+                    } else {
+                        VStack(alignment:.leading,spacing:8) {
+                            HStack {
+                                Text(UXText.text("savedVoices.peopleCount",["n":String(voices.voices.count)]))
+                                    .font(.system(size:13,weight:.semibold))
+                                Spacer()
+                                Button { voices.beginEnrollment() } label: {
+                                    HStack(spacing:4) {
+                                        Image(systemName:"plus").font(.system(size:11,weight:.semibold)).accessibilityHidden(true)
+                                        Text(UXText.text("voices.enroll.addAction"))
+                                    }
+                                    .font(.system(size:13))
+                                    .foregroundStyle(CassiniTheme.accentInk)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(voices.readOnly || voices.busy)
+                                .accessibilityIdentifier("saved-voices-add")
+                            }
+                            .padding(.horizontal,2)
+                            VStack(spacing:0) {
+                                ForEach(voices.voices) { voice in
+                                    voiceRow(voice)
+                                    if voice.id != voices.voices.last?.id { Divider().padding(.leading,56) }
+                                }
+                            }
+                            .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:10))
+                            .overlay { RoundedRectangle(cornerRadius:10).stroke(CassiniTheme.lineSoft) }
+                            Text(UXText.text("savedVoices.caption")).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
+                                .fixedSize(horizontal:false,vertical:true).padding(.horizontal,2).padding(.top,4)
+                                .accessibilityIdentifier("saved-voices-how-to-add")
+                            Button(UXText.text("savedVoices.forgetEveryone"),role:.destructive) { forgetAll=true }
+                                .disabled(voices.readOnly || voices.busy).padding(.top,2)
+                                .accessibilityIdentifier("saved-voices-forget-everyone")
+                        }
+                        .padding(.top,8)
+                        Spacer(minLength:16)
+                    }
+                    if let message=voices.message { Text(message).foregroundStyle(CassiniTheme.warnInk).fixedSize(horizontal:false,vertical:true) }
+                    HStack(spacing:6) {
+                        Image(systemName:"lock").font(.system(size:11,weight:.medium)).foregroundStyle(CassiniTheme.accentInk).accessibilityHidden(true)
+                        Text(UXText.text("savedVoices.footnote.mac")).font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
+                    }
+                    .frame(maxWidth:.infinity,alignment:.center)
+                    .accessibilityElement(children:.combine)
+                    .accessibilityIdentifier("saved-voices-footnote")
+                }.padding(.horizontal,24).padding(.top,16).padding(.bottom,18)
+                    .frame(maxWidth:.infinity,minHeight:proxy.size.height,alignment:.topLeading)
+            }
         }.background(CassiniTheme.windowGround)
             .navigationTitle(UXText.text("common.savedVoices"))
             .navigationBarBackButtonHidden(true)
@@ -88,31 +164,37 @@ struct SavedVoicesView: View {
                 .foregroundStyle(CassiniTheme.savedVoiceInk(saveOrder:voice.colourSlot))
                 .frame(width:30,height:30).background(CassiniTheme.savedVoiceWash(saveOrder:voice.colourSlot),in:Circle())
                 .accessibilityHidden(true)
-            VStack(alignment:.leading,spacing:5) {
-                Text(voice.name).fontWeight(.semibold)
+            VStack(alignment:.leading,spacing:2) {
+                Text(voice.name).font(.system(size:13,weight:.semibold))
                 Text(UXText.text("savedVoices.row.meta",[
                     "meetingCount":UXText.text("savedVoices.row.meetingCount",["n":String(voices.meetingCounts[voice.id] ?? 0)]),
-                    "confirmedSpeech":LibraryFormat.confirmedSpeech(Int64(voice.seconds*1000),locale:UXText.locale,language:UXText.language)]))
+                    "confirmedSpeech":LibraryFormat.meetingDuration(Int64(voice.seconds*1000),locale:UXText.locale,language:UXText.language)]))
                     .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
                 if voice.stale {
-                    Text(UXText.text("savedVoices.row.stale")).font(.system(size:12)).foregroundStyle(CassiniTheme.warnInk)
-                        .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("saved-voice-stale-" + voice.id)
+                    Text(UXText.text("savedVoices.row.needsNaming"))
+                        .font(.system(size:11,weight:.semibold)).foregroundStyle(CassiniTheme.warnInk)
+                        .padding(.horizontal,7).padding(.vertical,2)
+                        .background(CassiniTheme.warnTint,in:Capsule())
+                        .padding(.top,3)
+                        .accessibilityIdentifier("saved-voice-stale-" + voice.id)
                 }
             }
             Spacer()
-            Button { voices.play(voice) } label: { Image(systemName:voices.playing == voice.id ? "stop.fill":"play.fill") }
-                .accessibilityLabel(UXText.text(voices.playing == voice.id ? "savedVoices.row.stopSample":"savedVoices.row.play",["name":voice.name]))
-                .disabled(voices.playable(voice) == nil).accessibilityIdentifier("saved-voice-play-" + voice.id)
-            Menu {
-                Button(UXText.text("savedVoices.row.playSampleMenu")) { voices.play(voice) }
-                    .disabled(voices.playable(voice) == nil)
-                Button(UXText.text("savedVoices.row.rename")) { name=voice.name; renaming=voice }.disabled(voices.busy || voices.readOnly)
-                Button(UXText.text("savedVoices.row.forgetEllipsis"),role:.destructive) { deleting=voice }.disabled(voices.busy || voices.readOnly)
-            } label: { Image(systemName:"ellipsis").frame(width:24,height:24) }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                .accessibilityLabel(UXText.text("savedVoices.row.options.a11y",["name":voice.name]))
-                .accessibilityIdentifier("saved-voice-options-" + voice.id)
-        }.padding(.horizontal,14).padding(.vertical,10).accessibilityElement(children:.contain)
+            HStack(spacing:12) {
+                Button { voices.play(voice) } label: { Image(systemName:voices.playing == voice.id ? "stop.fill":"play.fill") }
+                    .accessibilityLabel(UXText.text(voices.playing == voice.id ? "savedVoices.row.stopSample":"savedVoices.row.play",["name":voice.name]))
+                    .disabled(voices.playable(voice) == nil).accessibilityIdentifier("saved-voice-play-" + voice.id)
+                Menu {
+                    Button(UXText.text("savedVoices.row.playSampleMenu")) { voices.play(voice) }
+                        .disabled(voices.playable(voice) == nil)
+                    Button(UXText.text("savedVoices.row.rename")) { name=voice.name; renaming=voice }.disabled(voices.busy || voices.readOnly)
+                    Button(UXText.text("savedVoices.row.forgetEllipsis"),role:.destructive) { deleting=voice }.disabled(voices.busy || voices.readOnly)
+                } label: { Image(systemName:"ellipsis").frame(width:24,height:24) }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .accessibilityLabel(UXText.text("savedVoices.row.options.a11y",["name":voice.name]))
+                    .accessibilityIdentifier("saved-voice-options-" + voice.id)
+            }.frame(height:30)
+        }.padding(.horizontal,14).padding(.vertical,8).accessibilityElement(children:.contain)
     }
 }
 struct VoiceEnrollmentView: View {
