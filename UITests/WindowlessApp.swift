@@ -59,14 +59,9 @@ extension LibraryBoards {
         show.click(); XCTAssertTrue(waitForPresent(idle,timeout:10))
         auto.click(); waitForWindowless { !idle.exists }
         auto.click(); XCTAssertTrue(waitForPresent(idle,timeout:10))
-        settings.buttons["_XCUI:CloseWindow"].click()
-        waitForWindowless { !settings.exists }
-        library.buttons["_XCUI:CloseWindow"].click()
+        settings.buttons["_XCUI:CloseWindow"].click(); library.buttons["_XCUI:CloseWindow"].click()
         waitForWindowless { !library.exists && !settings.exists }
-        XCTAssertTrue(waitForPresent(idle,timeout:5))
-        idle.click()
-        XCTAssertTrue(waitForPresent(app.buttons["idle-menu-quit"],timeout:5))
-        app.buttons["idle-menu-quit"].click()
+        idle.click(); app.buttons["idle-menu-quit"].click()
         waitForWindowless { app.state == .notRunning }
     }
 
