@@ -83,6 +83,12 @@ struct LibraryView: View {
                 search.open()
             }
         }
+        .onChange(of: sidebarSearchPresented) { _, presented in
+            if presented && !search.visible {
+                sidebarSearchPresented = false
+                search.open()
+            }
+        }
         .frame(minWidth: showsFirstRun ? 560 : nil, minHeight: 480)
         .modifier(LibraryWindowTitleModifier(
             savedDetail: navigation.savedDetail,
