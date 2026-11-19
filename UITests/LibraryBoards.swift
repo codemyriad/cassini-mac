@@ -1039,7 +1039,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"settings-whistle-row").firstMatch.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(window.descendants(matching:.any).matching(identifier:"settings-speech-models-ready").firstMatch.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(text("Transcription",in:window))
-        XCTAssertTrue(text("Transcribed on this computer. Cassini goes online only to download a model you ask for, and each file is checked first.",in:window))
+        XCTAssertTrue(text("Transcribed on this computer. Your meetings never leave it.",in:window))
         XCTAssertTrue(window.buttons["settings-download-parakeet"].waitForExistence(timeout:5))
         XCTAssertTrue(text("Parakeet Ultra",in:window)); XCTAssertFalse(text("Tell speakers apart",in:window))
         let parakeet = window.radioButtons["settings-parakeet-radio"]
