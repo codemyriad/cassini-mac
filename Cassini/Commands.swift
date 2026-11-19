@@ -89,8 +89,8 @@ struct AppCommands: Commands {
                 .keyboardShortcut("[", modifiers: .command).disabled(speakerDialog || !LibrarySearchModel.shared.visible && MeetingNavigation.shared.detail?.fileURL == nil)
         }
         CommandGroup(replacing:.textEditing) {
-            Button(UXText.text(detail?.meeting.state.lifecycle == .saved ? "meeting.find.placeholder" : "search.field.a11y")) {
-                if let detail, detail.meeting.state.lifecycle == .saved { detail.focusFind() }
+            Button(UXText.text(!LibrarySearchModel.shared.visible && detail?.meeting.state.lifecycle == .saved ? "meeting.find.placeholder" : "search.field.a11y")) {
+                if !LibrarySearchModel.shared.visible, let detail, detail.meeting.state.lifecycle == .saved { detail.focusFind() }
                 else { LibrarySearchModel.shared.requestSidebarFocus() }
             }.keyboardShortcut("f",modifiers:.command).disabled(speakerDialog)
             Button(UXText.text("mac.legacy.nextMatch")) {

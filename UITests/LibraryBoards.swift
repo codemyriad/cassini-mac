@@ -237,7 +237,7 @@ final class LibraryBoards: XCTestCase {
             XCTAssertTrue(control.isHittable,app.debugDescription)
             XCTAssertTrue(window.frame.contains(control.frame),"French action remains inside the window")
         }
-        XCTAssertTrue(window.title.contains("Budget review") || text("Budget review", in: window),"Stored meeting names remain verbatim")
+        XCTAssertTrue(hasWindowTitle("Budget review", in: window), "Stored meeting names remain verbatim")
         capture(window,name:"library-fr");app.terminate()
         let first=try launch("first-run",fixture:"empty",language:"fr",locale:"fr_FR")
         defer {first.terminate()}
@@ -528,11 +528,13 @@ final class LibraryBoards: XCTestCase {
     }
 
     @MainActor func testRenameFromFileAndWindowTitle() throws {
-        let app = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString])
-        defer { app.terminate() }
+        let renameID = UUID().uuidString
+        let app = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",renameID])
+        defer { if app.state != .notRunning { app.terminate() } }
         let window = app.windows["cassini-library-window"]
         let budget = window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
         XCTAssertTrue(budget.waitForExistence(timeout:20),app.debugDescription); budget.click()
+        // 1. File → Rename… sheet
         app.menuBars.menuBarItems["File"].click(); app.menuItems["Rename…"].click()
         let field = app.textFields["rename-name"]
         XCTAssertTrue(field.waitForExistence(timeout:10),app.debugDescription)
@@ -542,25 +544,64 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(field.value as? String,"Project review")
         capture(window,name:"rename")
         app.typeKey(.return,modifierFlags:[])
-        let updated = NSPredicate { _,_ in !field.exists && (window.title == "Project review" || window.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Project review","Project review")).count >= 1) }
+        let updated = NSPredicate { _,_ in
+            !field.exists && self.hasWindowTitle("Project review", in: window) && self.sidebarHasTitle("Project review", in: window)
+        }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:updated,object:nil)],timeout:10),.completed,app.debugDescription)
         XCTAssertTrue(window.descendants(matching:.any)["meeting-page"].exists)
-        app.menuBars.menuBarItems["File"].click(); app.menuItems["Rename…"].click()
-        XCTAssertTrue(field.waitForExistence(timeout:10),app.debugDescription)
+
+        // 2. Native editable window title (.navigationTitle($binding) -> renameInline):
+        //    commit with surrounding whitespace trimming.
+        let editor = openNativeTitleEditor(currentTitle: "Project review", in: window, app: app)
+        XCTAssertFalse(app.textFields["rename-name"].exists, "Native window-title editing must not open the Rename sheet")
         // Avoid macOS's double-space-to-period substitution while still
         // proving the UI trims both ends. Core cases cover repeated whitespace.
-        field.typeText(" Board notes "); app.typeKey(.return,modifierFlags:[])
-        let renamed = NSPredicate { _,_ in !field.exists && (window.title == "Board notes" || self.text("Board notes", in: window)) }
+        app.typeKey("a", modifierFlags: .command)
+        app.typeText(" Board notes ")
+        app.typeKey(.return, modifierFlags: [])
+        let renamed = NSPredicate { _,_ in
+            !editor.exists && self.hasWindowTitle("Board notes", in: window) && self.sidebarHasTitle("Board notes", in: window)
+        }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:renamed,object:nil)],timeout:10),.completed,app.debugDescription)
-        app.menuBars.menuBarItems["File"].click(); app.menuItems["Rename…"].click(); XCTAssertTrue(field.waitForExistence(timeout:10))
-        field.typeText(" "); app.typeKey(.return,modifierFlags:[])
-        let blank = NSPredicate { _,_ in !field.exists && (window.title == "Budget review" || self.text("Budget review", in: window)) }
+
+        // 3. Escape cancellation leaves title unchanged.
+        let cancelEditor = openNativeTitleEditor(currentTitle: "Board notes", in: window, app: app)
+        app.typeKey("a", modifierFlags: .command)
+        app.typeText("Cancelled name")
+        app.typeKey(.escape, modifierFlags: [])
+        let cancelled = NSPredicate { _,_ in
+            !cancelEditor.exists && self.hasWindowTitle("Board notes", in: window) && self.sidebarHasTitle("Board notes", in: window)
+        }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:cancelled,object:nil)],timeout:10),.completed,app.debugDescription)
+
+        // 4. Whitespace-only input restores the automatic title.
+        let blankEditor = openNativeTitleEditor(currentTitle: "Board notes", in: window, app: app)
+        app.typeKey("a", modifierFlags: .command)
+        app.typeText(" ")
+        app.typeKey(.return, modifierFlags: [])
+        let blank = NSPredicate { _,_ in
+            !blankEditor.exists && self.hasWindowTitle("Budget review", in: window) && self.sidebarHasTitle("Budget review", in: window)
+        }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:blank,object:nil)],timeout:10),.completed,app.debugDescription)
-        app.menuBars.menuBarItems["File"].click(); app.menuItems["Rename…"].click(); XCTAssertTrue(field.waitForExistence(timeout:10))
-        XCTAssertFalse(app.buttons["rename-confirm"].isEnabled)
-        field.typeText("Cancelled name"); app.typeKey(.escape,modifierFlags:[])
-        let cancelled = NSPredicate { _,_ in !field.exists && (window.title == "Budget review" || self.text("Budget review", in: window)) }
-        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:cancelled,object:nil)],timeout:10),.completed)
+
+        // 5. Commit a new native title and verify persistence after reopening.
+        let persistEditor = openNativeTitleEditor(currentTitle: "Budget review", in: window, app: app)
+        app.typeKey("a", modifierFlags: .command)
+        app.typeText("Quarterly planning")
+        app.typeKey(.return, modifierFlags: [])
+        let persisted = NSPredicate { _,_ in
+            !persistEditor.exists && self.hasWindowTitle("Quarterly planning", in: window) && self.sidebarHasTitle("Quarterly planning", in: window)
+        }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:persisted,object:nil)],timeout:10),.completed,app.debugDescription)
+        app.terminate()
+
+        let reopened = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",renameID])
+        defer { reopened.terminate() }
+        let reopenedWindow = reopened.windows["cassini-library-window"]
+        let persistedAfterReopen = NSPredicate { _,_ in
+            self.hasWindowTitle("Quarterly planning", in: reopenedWindow) && self.sidebarHasTitle("Quarterly planning", in: reopenedWindow)
+        }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:persistedAfterReopen,object:nil)],timeout:20),.completed,reopened.debugDescription)
     }
     @MainActor func testRenameReceivedFromRowMenus() throws {
         let app = try launch("received",fixture:"received-only",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString])
@@ -944,7 +985,8 @@ final class LibraryBoards: XCTestCase {
         let budget = window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000001").firstMatch
         budget.click(); app.typeKey(.return,modifierFlags:[])
         XCTAssertTrue(window.buttons["meeting-export"].waitForExistence(timeout:10),app.debugDescription)
-        XCTAssertTrue(window.title == "Budget review" || text("Budget review", in: window))
+        let budgetOpen = NSPredicate { _,_ in self.hasWindowTitle("Budget review", in: window) }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:budgetOpen,object:nil)],timeout:10),.completed,app.debugDescription)
     }
     @MainActor func testMeetingFindIsLocalAndKeepsTransportAndSidebar() throws {
         let app = try launch("library", fixture: "main"); defer { app.terminate() }
@@ -1163,8 +1205,29 @@ final class LibraryBoards: XCTestCase {
         app.typeText("budget")
         let count = window.staticTexts["search-count"]
         XCTAssertTrue(count.waitForExistence(timeout:5),app.debugDescription)
-        let value = NSPredicate { _,_ in window.searchFields.firstMatch.value as? String == "budget" }
+        let searchField = window.searchFields["library-search-field"]
+        XCTAssertTrue(searchField.waitForExistence(timeout:5),app.debugDescription)
+        let value = NSPredicate { _,_ in searchField.value as? String == "budget" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:value,object:nil)],timeout:5),.completed,app.debugDescription)
+        // Move focus away from the active global search field, then verify both
+        // ⌘F and ⌥⌘F refocus library-search-field while LibrarySearchView is visible.
+        let hit = window.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@","search-hit-")).firstMatch
+        XCTAssertTrue(hit.waitForExistence(timeout:10),app.debugDescription)
+        hit.click()
+        window.descendants(matching:.any).matching(identifier:"search-date").firstMatch.click()
+        XCTAssertTrue(app.menuItems["Any date"].waitForExistence(timeout:5),app.debugDescription)
+        app.menuItems["Any date"].click()
+        app.typeKey("f",modifierFlags:.command)
+        app.typeText("s")
+        let refocusedCmdF = NSPredicate { _,_ in searchField.value as? String == "budgets" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:refocusedCmdF,object:nil)],timeout:5),.completed,"Cmd-F must refocus active global search: " + app.debugDescription)
+        window.descendants(matching:.any).matching(identifier:"search-speaker").firstMatch.click()
+        XCTAssertTrue(app.menuItems["Any speaker"].waitForExistence(timeout:5),app.debugDescription)
+        app.menuItems["Any speaker"].click()
+        app.typeKey("f",modifierFlags:[.option,.command])
+        app.typeKey(.delete,modifierFlags:[])
+        let refocusedOptCmdF = NSPredicate { _,_ in searchField.value as? String == "budget" }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:refocusedOptCmdF,object:nil)],timeout:5),.completed,"Opt-Cmd-F must refocus active global search: " + app.debugDescription)
         app.typeKey(.escape,modifierFlags:[])
         XCTAssertTrue(window.buttons["meeting-find-button"].waitForExistence(timeout:5))
         window.searchFields.firstMatch.click(); app.typeText("Daniel")
@@ -1642,12 +1705,12 @@ final class LibraryBoards: XCTestCase {
                 let fragments = window.outlines.staticTexts.matching(identifier: identifier).allElementsBoundByIndex
                 let nativeRow = window.outlines.outlineRows.containing(.staticText, identifier: identifier).firstMatch
                 return nativeRow.exists && nativeRow.isSelected
-                    && (window.title == expectedTitle || self.text(expectedTitle, in: window))
+                    && self.hasWindowTitle(expectedTitle, in: window)
                     && window.buttons["meeting-play"].exists
                     && !fragments.isEmpty && fragments.allSatisfy { self.sidebarVisible($0, in: window) }
             }
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: imported, object: nil)], timeout: 20), .completed, app.debugDescription)
-            XCTAssertTrue(window.title == expectedTitle || text(expectedTitle, in: window))
+            XCTAssertTrue(hasWindowTitle(expectedTitle, in: window))
             XCTAssertTrue(text("Imported", in: window), window.debugDescription)
             capture(window, name: "qa-imported-\(name)")
         }
@@ -1934,8 +1997,11 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.buttons["meeting-star"].exists)
         XCTAssertTrue(window.buttons["meeting-trash"].exists)
         XCTAssertFalse(window.descendants(matching: .any)["meeting-tabs"].exists)
-        XCTAssertTrue(window.title == "Client call, Rossi & Partners" || text("Client call, Rossi & Partners", in: window))
-        XCTAssertTrue(text("Today, 11:30 · 47 min", in: window))
+        let meetingReady = NSPredicate { _, _ in
+            self.hasWindowTitle("Client call, Rossi & Partners", in: window)
+                && self.hasWindowSubtitle("Today, 11:30 · 47 min", in: window)
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: meetingReady, object: nil)], timeout: 10), .completed, window.debugDescription)
         let nameSpeakers = window.buttons["speaker-name-guest"]
         XCTAssertFalse(nameSpeakers.exists,"Read-only inline speakers stay plain text")
         capture(window, name: "meeting")
@@ -1966,7 +2032,8 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(client.waitForExistence(timeout:20))
         client.click()
         let selected = NSPredicate { _, _ in
-            window.title == "Client call, Rossi & Partners" || self.text("Client call, Rossi & Partners", in: window)
+            self.hasWindowTitle("Client call, Rossi & Partners", in: window)
+                && window.descendants(matching: .any)["speaker-row-giulia"].exists
         }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:selected,object:nil)],timeout:10),.completed)
         app.menuBars.menuBarItems["File"].click()
@@ -1992,11 +2059,17 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(budget.waitForExistence(timeout:20))
         for _ in 0..<3 {
             client.click()
-            let clientOpen = NSPredicate { _,_ in window.title == "Client call, Rossi & Partners" || self.text("Client call, Rossi & Partners", in: window) }
-            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:clientOpen,object:nil)],timeout:10),.completed)
+            let clientOpen = NSPredicate { _,_ in
+                self.hasWindowTitle("Client call, Rossi & Partners", in: window)
+                    && window.descendants(matching: .any)["speaker-row-giulia"].exists
+            }
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:clientOpen,object:nil)],timeout:10),.completed,app.debugDescription)
             budget.click()
-            let budgetOpen = NSPredicate { _,_ in window.title == "Budget review" || self.text("Budget review", in: window) }
-            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:budgetOpen,object:nil)],timeout:10),.completed)
+            let budgetOpen = NSPredicate { _,_ in
+                self.hasWindowTitle("Budget review", in: window)
+                    && window.descendants(matching: .any)["speaker-row-dario"].exists
+            }
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:budgetOpen,object:nil)],timeout:10),.completed,app.debugDescription)
             XCTAssertTrue(window.buttons["meeting-find-button"].exists)
             XCTAssertEqual(app.windows.count,1)
             XCTAssertFalse(window.buttons["preview-read-transcript"].exists)
@@ -2045,7 +2118,7 @@ final class LibraryBoards: XCTestCase {
         let received = library.descendants(matching: .any).matching(identifier: "meeting-Received-a0000000-0000-4000-8000-000000000006").firstMatch
         XCTAssertTrue(received.waitForExistence(timeout: 20), app.debugDescription)
         received.click()
-        let selectedReceived = NSPredicate { _,_ in self.text("Onboarding walkthrough",in:library) && library.staticTexts.matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","Imported · Transcribed on another device","Imported · Transcribed on another device")).firstMatch.exists }
+        let selectedReceived = NSPredicate { _,_ in self.hasWindowTitle("Onboarding walkthrough", in: library) && library.staticTexts.matching(NSPredicate(format:"label CONTAINS %@ OR value CONTAINS %@","Imported · Transcribed on another device","Imported · Transcribed on another device")).firstMatch.exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:selectedReceived,object:nil)],timeout:5),.completed,library.debugDescription)
         XCTAssertTrue(library.descendants(matching:.any)["meeting-page"].exists)
         XCTAssertTrue(library.buttons["meeting-export"].waitForExistence(timeout: 15))
@@ -2063,11 +2136,17 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.buttons["Not now"].waitForExistence(timeout:10))
         window.buttons["Not now"].click()
         window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch.click()
-        let client = NSPredicate { _,_ in window.title == "Client call, Rossi & Partners" || self.text("Client call, Rossi & Partners", in: window) }
-        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:client,object:nil)],timeout:10),.completed)
+        let client = NSPredicate { _,_ in
+            self.hasWindowTitle("Client call, Rossi & Partners", in: window)
+                && window.descendants(matching: .any)["speaker-row-giulia"].exists
+        }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:client,object:nil)],timeout:10),.completed,app.debugDescription)
         window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000001").firstMatch.click()
-        let budget = NSPredicate { _,_ in window.title == "Budget review" || self.text("Budget review", in: window) }
-        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:budget,object:nil)],timeout:10),.completed)
+        let budget = NSPredicate { _,_ in
+            self.hasWindowTitle("Budget review", in: window)
+                && window.descendants(matching: .any)["speaker-row-dario"].exists
+        }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:budget,object:nil)],timeout:10),.completed,app.debugDescription)
         XCTAssertFalse(window.buttons["Not now"].exists)
     }
     @MainActor func testCloseAndQuitConfirmationKeyboardRoles() throws {
@@ -2161,11 +2240,13 @@ final class LibraryBoards: XCTestCase {
         let app = try launch(name, fixture: fixture); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.waitForExistence(timeout: 20), app.debugDescription)
-        // The custom toolbar hides the window title, so its AX label is empty.
-        // Window's own menu still exposes the actual NSWindow title.
-        app.menuBars.menuBarItems["Window"].click()
-        XCTAssertTrue(app.menuItems["Cassini talk"].exists, app.debugDescription)
-        app.typeKey(.escape, modifierFlags: [])
+        if name != "library" {
+            // First-run hides the window title, so its AX label is empty.
+            // Window's own menu still exposes the actual NSWindow title.
+            app.menuBars.menuBarItems["Window"].click()
+            XCTAssertTrue(app.menuItems["Cassini talk"].exists, app.debugDescription)
+            app.typeKey(.escape, modifierFlags: [])
+        }
         let productMenu = app.menuBars.menuBarItems["Cassini talk"]
         XCTAssertTrue(productMenu.exists, app.debugDescription)
         productMenu.click()
@@ -2178,7 +2259,12 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: exactFrame, object: nil)], timeout: 10), .completed, window.debugDescription)
         if name == "library" {
             let findButton = window.buttons["meeting-find-button"]
-            XCTAssertTrue(findButton.waitForExistence(timeout: 20), window.debugDescription)
+            let ready = NSPredicate { _, _ in
+                findButton.exists && findButton.isHittable
+                    && self.hasWindowTitle("Budget review", in: window)
+                    && self.hasWindowSubtitle("Today, 09:00 · 52 min", in: window)
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: ready, object: nil)], timeout: 20), .completed, window.debugDescription)
             capture(window, name: name)
             XCTAssertTrue(text("52 min", in: window), window.debugDescription)
             XCTAssertTrue(text("Marta, Dario, Speaker 3", in: window), window.debugDescription)
@@ -2241,6 +2327,47 @@ final class LibraryBoards: XCTestCase {
     }
     private func text(_ value: String, in window: XCUIElement) -> Bool {
         window.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", value, value)).firstMatch.exists
+    }
+    /// Native window titlebar text element for `expected`, excluding sidebar and
+    /// transcript descendants (which live inside the split view).
+    private func nativeTitleElement(_ expected: String, in window: XCUIElement) -> XCUIElement {
+        let match = NSPredicate(format: "value == %@ OR label == %@", expected, expected)
+        let directStatic = window.children(matching: .staticText).matching(match).firstMatch
+        if directStatic.exists { return directStatic }
+        let toolbarStatic = window.toolbars.staticTexts.matching(match).firstMatch
+        if toolbarStatic.exists { return toolbarStatic }
+        let directField = window.children(matching: .textField).matching(match).firstMatch
+        if directField.exists { return directField }
+        return window.toolbars.textFields.matching(match).firstMatch
+    }
+    /// True only when the native window titlebar displays `expected` — never
+    /// satisfied by a matching sidebar row.
+    private func hasWindowTitle(_ expected: String, in window: XCUIElement) -> Bool {
+        if nativeTitleElement(expected, in: window).exists { return true }
+        let title = window.title
+        return title == expected || title.hasPrefix(expected + " – ") || title.hasPrefix(expected + " - ")
+    }
+    /// True only when the native window titlebar subtitle displays `expected`.
+    private func hasWindowSubtitle(_ expected: String, in window: XCUIElement) -> Bool {
+        let match = NSPredicate(format: "value == %@ OR label == %@", expected, expected)
+        if window.children(matching: .staticText).matching(match).firstMatch.exists { return true }
+        if window.toolbars.staticTexts.matching(match).firstMatch.exists { return true }
+        let title = window.title
+        return title.hasSuffix(" – " + expected) || title.hasSuffix(" - " + expected)
+    }
+    /// True when a sidebar row in the outline displays `expected`.
+    private func sidebarHasTitle(_ expected: String, in window: XCUIElement) -> Bool {
+        window.outlines.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", expected, expected)).firstMatch.exists
+    }
+    /// Clicks the native editable `.navigationTitle($binding)` in the window
+    /// titlebar and returns the active native text field (inline or popover).
+    @MainActor private func openNativeTitleEditor(currentTitle: String, in window: XCUIElement, app: XCUIApplication) -> XCUIElement {
+        let titleElement = nativeTitleElement(currentTitle, in: window)
+        XCTAssertTrue(titleElement.waitForExistence(timeout: 10), "Expected native window title '\(currentTitle)': " + window.debugDescription)
+        titleElement.click()
+        let editor = app.textFields.matching(NSPredicate(format: "identifier != %@ AND identifier != %@", "meeting-find", "rename-name")).firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 5), "Clicking native window title should open inline title editor: " + app.debugDescription)
+        return editor
     }
     private func fixtureDirectory() throws -> URL {
         var ancestor = Bundle(for: Self.self).bundleURL

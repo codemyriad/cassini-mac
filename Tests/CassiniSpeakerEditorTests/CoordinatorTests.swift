@@ -145,4 +145,25 @@ import CassiniRecording
         try await checkVoiceChoice(enabled:!choice,existingAfter:true,userChoice:choice)
     }
 
+    @Test func renameInlineNormalizesWhitespaceAndResetsOnBlank() async throws {
+        let (root,_)=try await fixture()
+        defer {try? FileManager.default.removeItem(at:root)}
+        let meeting=try #require(LibraryScanner(root:root).scan().meetings.first)
+        let coordinator=MeetingRenameCoordinator()
+        // Surrounding whitespace normalizes on commit.
+        coordinator.renameInline(meeting,to:"  Board notes  ")
+        await coordinator.waitForShutdown()
+        let renamed=try #require(LibraryScanner(root:root).scan().meetings.first)
+        #expect(renamed.title == "Board notes")
+        // Equivalent whitespace-padded title is a no-op.
+        coordinator.renameInline(renamed,to:"  Board notes ")
+        await coordinator.waitForShutdown()
+        #expect(try LibraryScanner(root:root).scan().meetings.first?.title == "Board notes")
+        // Blank / whitespace-only restores the automatic title.
+        coordinator.renameInline(renamed,to:"   ")
+        await coordinator.waitForShutdown()
+        let restored=try #require(LibraryScanner(root:root).scan().meetings.first)
+        #expect(restored.title == "Call")
+    }
+
 }

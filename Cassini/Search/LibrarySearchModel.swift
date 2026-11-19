@@ -39,7 +39,7 @@ import CassiniSearch
     }
     func requestSidebarFocus() {
         guard !LibraryMoveCoordinator.shared.busy else { return }
-        sidebarFocusRequest &+= 1
+        if visible { focusRequest &+= 1 } else { sidebarFocusRequest &+= 1 }
         MeetingNavigation.shared.openLibrary?()
     }
     func open() {
