@@ -179,7 +179,7 @@ import zlib
         let pin = try #require(JSONSerialization.jsonObject(with: pinData) as? [String: String])
         #expect(pin["repository"] == "cassini-ux")
         #expect(pin["path"] == "contract/import-types.json")
-        #expect(pin["commit"] == "160fb923944422c5c4ff01aa777bb572e2a6e96e")
+        #expect(pin["commit"] == "8b3c65dac514ee0fcfa56a9d77c7a54109d44e5b")
         #expect(pin["sha256"] == "a6934fd26f12697b35e7754ba3c15dab4f122a28d027a7ed17b9a25ef44aaf68")
 
         let appBytes = try Data(contentsOf: appUX.appendingPathComponent("import-types.json"))

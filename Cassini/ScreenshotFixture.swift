@@ -36,7 +36,7 @@ enum ScreenshotFixture {
         let scheme = value("-CassiniScreenshotScheme", in: arguments) ?? "light"
         guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
               let name = value("-CassiniScreenshot", in: arguments),
-              ["window", "sheet", "library", "first-run", "meeting", "voices-question", "record-first", "test-recording-testing", "test-recording-result", "recording", "received", "export", "search", "settings-recording", "settings-transcription", "settings-voices", "settings-library", "settings-browser", "settings-updates", "about"].contains(name),
+              ["window", "sheet", "library", "first-run", "meeting", "voices-question", "record-first", "test-recording-testing", "test-recording-result", "test-recording-refused", "recording", "received", "export", "search", "settings-recording", "settings-transcription", "settings-voices", "settings-library", "settings-browser", "settings-updates", "about"].contains(name),
               ["light", "dark"].contains(scheme),
               let directory = value("-CassiniFixture", in: arguments),
               let clock = value("-CassiniNow", in: arguments),
@@ -83,7 +83,7 @@ enum ScreenshotFixture {
 
     private static var prepared = Set<ObjectIdentifier>()
     static func prepareLibrary(_ window: NSWindow) {
-        guard ["library", "first-run", "meeting", "voices-question", "record-first", "test-recording-testing", "test-recording-result", "recording", "received", "export", "search"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""),
+        guard ["library", "first-run", "meeting", "voices-question", "record-first", "test-recording-testing", "test-recording-result", "test-recording-refused", "recording", "received", "export", "search"].contains(LibraryLaunchContext.argument("-CassiniScreenshot") ?? ""),
               ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" else { return }
         guard prepared.insert(ObjectIdentifier(window)).inserted else { return }
         prepare(window, sheet: false, boardSize: true)
@@ -94,7 +94,7 @@ enum ScreenshotFixture {
     /// automation. Renders only this app's fixture view, never the desktop.
     private static func localBoardRender(_ window: NSWindow) {
         guard ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1",
-              let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["first-run","record-first","test-recording-testing","test-recording-result","voices-question","meeting","recording","received","export","search"].contains(name),
+              let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["first-run","record-first","test-recording-testing","test-recording-result","test-recording-refused","voices-question","meeting","recording","received","export","search"].contains(name),
               !RecordingFixture.enabled else { return }
         Task { @MainActor in
             @MainActor func ready() -> Bool {

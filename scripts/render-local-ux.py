@@ -16,9 +16,10 @@ import uuid
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('app',type=Path)
-parser.add_argument('board',choices=['first-run','voices-question','meeting','recording','received','export','search','settings-recording','settings-transcription','settings-voices','settings-library','settings-browser','settings-updates','about','record-first'])
+parser.add_argument('board',choices=['first-run','voices-question','meeting','recording','received','export','search','settings-recording','settings-transcription','settings-voices','settings-library','settings-browser','settings-updates','about','record-first','test-recording-testing','test-recording-result','test-recording-refused'])
 parser.add_argument('--output',type=Path,required=True)
 parser.add_argument('--direct',action='store_true',help='Run the opted-in fixture executable directly when LaunchServices is unavailable')
+parser.add_argument('--browser-case',default='',help='Optional -CassiniBrowserCase fixture (e.g. health-ready)')
 parser.add_argument('--listening',choices=['playing','finished'])
 parser.add_argument('--speaker')
 parser.add_argument('--speaker-editor',action='store_true',help='Render the read-only Name a speaker fixture')
@@ -33,7 +34,7 @@ assert not args.speaker_editor or args.board == 'meeting', 'Speaker editor requi
 assert not args.transcribing or args.board == 'meeting', 'Transcribing preview requires the meeting fixture'
 assert os.environ.get('CASSINI_LOCAL_WORKFLOW_TESTS') == '1', 'Explicit local workflow opt-in required'
 app = args.app.resolve()
-fixture = app/'Contents/Resources/Fixtures/Library'/('received-only' if args.board == 'received' else 'empty' if args.board in ('first-run','record-first') else 'main')
+fixture = app/'Contents/Resources/Fixtures/Library'/('received-only' if args.board == 'received' else 'empty' if args.board in ('first-run','record-first','test-recording-testing','test-recording-result','test-recording-refused') else 'main')
 assert fixture.is_dir(),fixture
 with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
     output,stderr = Path(temporary)/'stdout.json',Path(temporary)/'stderr.txt'
@@ -53,6 +54,7 @@ with tempfile.TemporaryDirectory(prefix='cassini-own-view-') as temporary:
     if args.board == 'voices-question': command += ['-CassiniAskVoices','YES']
     if args.board == 'settings-voices': command += ['-CassiniSavedVoicesFixture','YES']
     if args.board.startswith('settings-'): command += ['-CassiniSettingsID',str(uuid.uuid4())]
+    if args.browser_case: command += ['-CassiniBrowserCase',args.browser_case]
     try:
         # The fixture writes its report and exits. -W waits for that completion,
         # including a new instance (-n), before reading the final output once.

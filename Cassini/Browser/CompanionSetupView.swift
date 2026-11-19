@@ -27,6 +27,12 @@ import CassiniLibrary
         return value["version"] as? String
     }()
     static var storeListingPublic: Bool {
+        #if DEBUG
+        if (MeetingRenameFixture.enabled || RecordingFixture.enabled || LibraryLaunchContext.current.screenshot),
+           let override = LibraryLaunchContext.argument("-CassiniStoreListingPublic") {
+            return override == "YES"
+        }
+        #endif
         let flag = Bundle.main.object(forInfoDictionaryKey:"CassiniStoreListingPublic")
         return flag as? Bool == true || flag as? String == "YES"
     }
@@ -35,11 +41,14 @@ import CassiniLibrary
     var selectedBrowserName: String { selectedBrowser?.name ?? suggestedBrowser ?? "" }
     private static var fixtureKind: String? {
         #if DEBUG
+        if let kind = LibraryLaunchContext.argument("-CassiniBrowserCase"),
+           (MeetingRenameFixture.enabled || RecordingFixture.enabled || LibraryLaunchContext.current.screenshot),
+           ["absent","first","lost","health-ready","health-idle","health-reload","health-reload-no-action","health-reload-no-capability","health-reload-active","health-files","health-outdated","health-legacy"].contains(kind) {
+            return kind
+        }
         if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
            LibraryLaunchContext.argument("-CassiniScreenshot") == "settings-browser" { return "first" }
-        guard MeetingRenameFixture.enabled, let kind = LibraryLaunchContext.argument("-CassiniBrowserCase"),
-              ["absent","first","lost","health-ready","health-idle","health-reload","health-files","health-outdated","health-legacy"].contains(kind) else { return nil }
-        return kind
+        return nil
         #else
         return nil
         #endif
@@ -133,9 +142,43 @@ import CassiniLibrary
             return UXText.text("browser.state.failed",["reason":UXText.text(key)])
         }
     }
+    var connectedStatusText: String {
+        let names = Set(CaptureCollection.shared.peers.filter { $0.reconciled && $0.supportsMultiStream }.compactMap(\.browser))
+        if names.count == 1, let browser = names.first {
+            return UXText.text("settings.browser.status.connected", ["browser": browser])
+        }
+        return UXText.text("settings.browser.status.connectedGeneric")
+    }
     var addLabel: String {
         if !Self.storeListingPublic { return UXText.text("companion.local.add") }
         return suggestedBrowser.map { UXText.text("browser.state.add",["browser":$0]) } ?? UXText.text("browser.state.addGeneric")
+    }
+    func openExtensionsPageForConnectedBrowser() {
+        guard !LibraryLaunchContext.current.screenshot, Self.fixtureKind == nil else { return }
+        let connectedName = CaptureCollection.shared.peers
+            .first(where: { $0.reconciled && $0.supportsMultiStream && $0.browser != nil })?.browser
+        let browser = connectedName.flatMap { name in
+            BrowserSetupInstallation.supportedBrowsers.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+        } ?? selectedBrowser
+        guard let browser else { return }
+        openExtensionsPage(for: browser)
+    }
+    private func openExtensionsPage(for browser: BrowserSetupInstallation.Browser) {
+        let address = browser.bundleID == "com.microsoft.edgemac" ? "edge://extensions/" : browser.bundleID == "com.brave.Browser" ? "brave://extensions/" : "chrome://extensions/"
+        let pasteboard = NSPasteboard.general; pasteboard.clearContents()
+        guard pasteboard.setString(address,forType:.string) else { return }
+        copiedNotice = UXText.text("companion.local.extensionsCopied"); copyRevision = UUID(); launchFailed = false
+        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier:browser.bundleID),
+              let blank = Bundle.main.url(forResource:"Cassini",withExtension:"html") else { launchFailed = true; return }
+        // Sandboxed callers cannot send the undeclared "about" scheme to Chrome
+        // (kLSAppDoesNotClaimTypeErr). A bundled empty HTML document opens a new
+        // tab without a network request. The person pastes the address (D39.1).
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.promptsUserIfNeeded = false // Approved inline failure, no second OS alert.
+        NSWorkspace.shared.open([blank],withApplicationAt:app,configuration:configuration) { running,error in
+            let failed = running == nil || error != nil
+            Task { @MainActor in self.launchFailed = failed }
+        }
     }
     func add(from owner: Presenter = .library) {
         guard !LibraryLaunchContext.current.screenshot, Self.fixtureKind == nil, canAdd else { return }
@@ -159,21 +202,7 @@ import CassiniLibrary
     }
     func copyAddressAndOpen() {
         guard let browser = selectedBrowser else { return }
-        let address = browser.bundleID == "com.microsoft.edgemac" ? "edge://extensions/" : browser.bundleID == "com.brave.Browser" ? "brave://extensions/" : "chrome://extensions/"
-        let pasteboard = NSPasteboard.general; pasteboard.clearContents()
-        guard pasteboard.setString(address,forType:.string) else { return }
-        copiedNotice = UXText.text("companion.local.extensionsCopied"); copyRevision = UUID(); launchFailed = false
-        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier:browser.bundleID),
-              let blank = Bundle.main.url(forResource:"Cassini",withExtension:"html") else { launchFailed = true; return }
-        // Sandboxed callers cannot send the undeclared "about" scheme to Chrome
-        // (kLSAppDoesNotClaimTypeErr). A bundled empty HTML document opens a new
-        // tab without a network request. The person pastes the address (D39.1).
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.promptsUserIfNeeded = false // Approved inline failure, no second OS alert.
-        NSWorkspace.shared.open([blank],withApplicationAt:app,configuration:configuration) { running,error in
-            let failed = running == nil || error != nil
-            Task { @MainActor in self.launchFailed = failed }
-        }
+        openExtensionsPage(for: browser)
     }
     func copyFolder() {
         guard prepared, let path = preparedFolder.path else { return }
