@@ -151,6 +151,7 @@ struct MeetingView: View {
                 ListeningBar(model:model,presentation:presentation,colour:colour(model.listen.speaker.flatMap { meeting.speaker(for:$0) }))
             }
             playerBar
+                .animation(nil, value: model.listen.active)
         }
         .padding(.horizontal, 28)
         .padding(.bottom, 10)

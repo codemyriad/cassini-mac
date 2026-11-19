@@ -611,10 +611,13 @@ final class LibraryBoards: XCTestCase {
         let reopened = try launch("library",fixture:"main",extra:["--fixture-library-rename","-CassiniRenameID",renameID])
         defer { reopened.terminate() }
         let reopenedWindow = reopened.windows["cassini-library-window"]
+        let persistedRow = reopenedWindow.outlines.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Quarterly planning","Quarterly planning")).firstMatch
+        XCTAssertTrue(persistedRow.waitForExistence(timeout:20),reopened.debugDescription)
+        persistedRow.click()
         let persistedAfterReopen = NSPredicate { _,_ in
             self.hasWindowTitle("Quarterly planning", in: reopenedWindow) && self.sidebarHasTitle("Quarterly planning", in: reopenedWindow)
         }
-        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:persistedAfterReopen,object:nil)],timeout:20),.completed,reopened.debugDescription)
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:persistedAfterReopen,object:nil)],timeout:10),.completed,reopened.debugDescription)
     }
     @MainActor func testRenameReceivedFromRowMenus() throws {
         let app = try launch("received",fixture:"received-only",extra:["--fixture-library-rename","-CassiniRenameID",UUID().uuidString])
