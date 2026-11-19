@@ -300,6 +300,11 @@ struct LibraryView: View {
         )
     }
 
+    private var showsLiveToolbarPill: Bool {
+        RecordingOverview.active || RecordingOverview.saving
+            || store.meetings.contains(where: { $0.state.lifecycle == .recording })
+    }
+
     @ToolbarContentBuilder
     private var sidebarToolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
@@ -313,27 +318,29 @@ struct LibraryView: View {
             .accessibilityLabel(UXText.text("import.action"))
             .accessibilityIdentifier("toolbar-import")
         }
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
-            ToolbarSpacer(.fixed, placement: .primaryAction)
-            ToolbarItem(placement: .primaryAction) {
-                sidebarRecordControl
+        if !showsLiveToolbarPill {
+            #if compiler(>=6.2)
+            if #available(macOS 26.0, *) {
+                ToolbarSpacer(.fixed, placement: .primaryAction)
+                ToolbarItem(placement: .primaryAction) {
+                    sidebarRecordButton
+                }
+                .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .primaryAction) {
+                    sidebarRecordButton
+                }
             }
-            .sharedBackgroundVisibility(.hidden)
-        } else {
+            #else
             ToolbarItem(placement: .primaryAction) {
-                sidebarRecordControl
+                sidebarRecordButton
             }
+            #endif
         }
-        #else
-        ToolbarItem(placement: .primaryAction) {
-            sidebarRecordControl
-        }
-        #endif
     }
 
     @ViewBuilder
-    private var sidebarRecordControl: some View {
+    private var liveRecordingToolbarControl: some View {
         if RecordingOverview.active, let started = RecordingOverview.startedAt {
             LiveRecordingPill(started: started, microphone: RecordingOverview.levels["microphone", default: 0], output: RecordingOverview.levels["output", default: 0])
         } else if RecordingOverview.saving {
@@ -357,37 +364,57 @@ struct LibraryView: View {
                 Text(UXText.text("common.stop")).font(.system(size: 12, weight: .semibold)).foregroundStyle(CassiniTheme.onRecord)
                     .padding(.horizontal, 12).frame(height: 24).background(CassiniTheme.record, in: Capsule())
             }.fixedSize().padding(.leading, 12).padding(.trailing, 4).frame(height: 30).background(CassiniTheme.recordTint, in: Capsule())
-        } else {
-            let enabled = RecordingOverview.canStart
-            let title = UXText.text("common.record")
-            Button {
-                sessionPlayback.stop()
-                RecordCoordinator.shared.request(parent: store.context.root)
-            } label: {
-                HStack(spacing: 7) {
-                    Circle()
-                        .fill(enabled ? CassiniTheme.onRecord : CassiniTheme.ink3)
-                        .frame(width: 8, height: 8)
-                    Text(title)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(enabled ? CassiniTheme.onRecord : CassiniTheme.ink3)
-                }
-                .padding(.leading, 12)
-                .padding(.trailing, 14)
-                .frame(height: 30)
-                .background(enabled ? CassiniTheme.record : CassiniTheme.chipFill, in: Capsule())
-                .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .disabled(!enabled)
-            .help(title)
-            .accessibilityLabel(title)
-            .accessibilityIdentifier("toolbar-record")
         }
+    }
+
+    private var sidebarRecordButton: some View {
+        let enabled = RecordingOverview.canStart
+        let title = UXText.text("common.record")
+        return Button {
+            sessionPlayback.stop()
+            RecordCoordinator.shared.request(parent: store.context.root)
+        } label: {
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(enabled ? CassiniTheme.onRecord : CassiniTheme.ink3)
+                    .frame(width: 8, height: 8)
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(enabled ? CassiniTheme.onRecord : CassiniTheme.ink3)
+            }
+            .padding(.leading, 12)
+            .padding(.trailing, 14)
+            .frame(height: 30)
+            .background(enabled ? CassiniTheme.record : CassiniTheme.chipFill, in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .help(title)
+        .accessibilityLabel(title)
+        .accessibilityIdentifier("toolbar-record")
     }
 
     @ToolbarContentBuilder
     private var detailToolbar: some ToolbarContent {
+        if showsLiveToolbarPill {
+            #if compiler(>=6.2)
+            if #available(macOS 26.0, *) {
+                ToolbarItem(placement: .primaryAction) {
+                    liveRecordingToolbarControl
+                }
+                .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .primaryAction) {
+                    liveRecordingToolbarControl
+                }
+            }
+            #else
+            ToolbarItem(placement: .primaryAction) {
+                liveRecordingToolbarControl
+            }
+            #endif
+        }
         if let detail = navigation.savedDetail {
             if let spec = meetingTranscriptionToolbarSpec(detail) {
                 ToolbarItem(placement: .primaryAction) {
