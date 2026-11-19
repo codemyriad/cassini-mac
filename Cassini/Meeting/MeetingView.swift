@@ -145,9 +145,19 @@ struct MeetingView: View {
             ForEach(visibleTurns) { turn in turnRow(turn) }
         }
     }
+    private var bottomPlayerBar: some View {
+        VStack(spacing: 8) {
+            if !isTranscribing, let presentation = model.listeningPresentation {
+                ListeningBar(model:model,presentation:presentation,colour:colour(model.listen.speaker.flatMap { meeting.speaker(for:$0) }))
+            }
+            playerBar
+        }
+        .padding(.horizontal, 28)
+        .padding(.bottom, 10)
+    }
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView {
+            let scroll = ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     MeetingPaneHeader(model: model, format: format)
                     meetingNotices
@@ -163,16 +173,6 @@ struct MeetingView: View {
                 if model.find.visible {
                     MeetingFindBar(model: model.find) { model.tab = .transcript }
                 }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                VStack(spacing: 8) {
-                    if !isTranscribing, let presentation = model.listeningPresentation {
-                        ListeningBar(model:model,presentation:presentation,colour:colour(model.listen.speaker.flatMap { meeting.speaker(for:$0) }))
-                    }
-                    playerBar
-                }
-                .padding(.horizontal, 28)
-                .padding(.bottom, 10)
             }
             .onScrollPhaseChange { _,phase in
                 handScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
@@ -209,6 +209,25 @@ struct MeetingView: View {
                     if reduceMotion { proxy.scrollTo(turn,anchor:.center) }
                     else { withAnimation { proxy.scrollTo(turn,anchor:.center) } }
                 }
+            }
+            Group {
+                #if compiler(>=6.2)
+                if #available(macOS 26.0, *) {
+                    scroll.safeAreaInset(edge: .bottom, spacing: 0) {
+                        bottomPlayerBar
+                    }
+                } else {
+                    VStack(spacing: 0) {
+                        scroll
+                        bottomPlayerBar.padding(.top, 6)
+                    }
+                }
+                #else
+                VStack(spacing: 0) {
+                    scroll
+                    bottomPlayerBar.padding(.top, 6)
+                }
+                #endif
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration:0.16),value:model.listen.active)

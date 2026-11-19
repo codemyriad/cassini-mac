@@ -280,20 +280,23 @@ struct LibraryView: View {
                 .frame(minWidth: 260, idealWidth: 340, maxWidth: 400)
                 .navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 400)
         } detail: {
-            detailColumn
-                .frame(minWidth: 300)
+            VStack(spacing: 0) {
+                detailColumn
                 #if DEBUG
-                .overlay(alignment: .bottomTrailing) {
-                    if RecordingFinalizationFixture.shared.waiting {
+                if RecordingFinalizationFixture.shared.waiting {
+                    HStack {
+                        Spacer()
                         Button("Finish fixture recording") { RecordingFinalizationFixture.shared.release() }
-                            .padding(12)
                             .accessibilityIdentifier("recording-fixture-finish")
                     }
+                    .padding(8)
                 }
                 #endif
-                .toolbar {
-                    detailToolbar
-                }
+            }
+            .frame(minWidth: 300)
+            .toolbar {
+                detailToolbar
+            }
         }
         .searchable(
             text: $search.query,
