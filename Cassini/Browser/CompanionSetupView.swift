@@ -27,6 +27,12 @@ import CassiniLibrary
         return value["version"] as? String
     }()
     static var storeListingPublic: Bool {
+        #if DEBUG
+        if (MeetingRenameFixture.enabled || RecordingFixture.enabled || LibraryLaunchContext.current.screenshot),
+           let override = LibraryLaunchContext.argument("-CassiniStoreListingPublic") {
+            return override == "YES"
+        }
+        #endif
         let flag = Bundle.main.object(forInfoDictionaryKey:"CassiniStoreListingPublic")
         return flag as? Bool == true || flag as? String == "YES"
     }

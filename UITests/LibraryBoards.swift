@@ -102,9 +102,19 @@ final class LibraryBoards: XCTestCase {
         let add = window.buttons["browser-add"]
         XCTAssertTrue(add.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(add.isEnabled)
-        XCTAssertEqual(add.label,"Add to Chrome")
+        XCTAssertEqual(add.label,"Add from Cassini")
         XCTAssertTrue(text("Not set up",in:window))
         capture(window,name:"settings-browser")
+    }
+    @MainActor func testPhase2BrowserPublicStoreListingState() throws {
+        let app = try launch("settings-browser",fixture:"empty",extra:["-CassiniSettingsID",UUID().uuidString,"-CassiniStoreListingPublic","YES"])
+        defer { app.terminate() }
+        let window = app.windows["cassini-settings-window"]
+        let add = window.buttons["browser-add"]
+        XCTAssertTrue(add.waitForExistence(timeout:20),app.debugDescription)
+        XCTAssertTrue(add.isEnabled)
+        XCTAssertEqual(add.label,"Add to Chrome")
+        XCTAssertTrue(text("Not set up",in:window))
     }
     @MainActor func testPhase2AboutAndLocalLicences() throws {
         let app = try launch("about",fixture:"empty",extra:["-CassiniSettingsID",UUID().uuidString])
