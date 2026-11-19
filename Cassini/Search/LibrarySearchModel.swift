@@ -16,6 +16,7 @@ import CassiniSearch
     private(set) var hits: [SearchHit] = []
     private(set) var meetings: [LibraryMeeting] = []
     private(set) var focusRequest = 0
+    private(set) var sidebarFocusRequest = 0
     private(set) var searching = false
     @ObservationIgnored private var task: Task<Void,Never>?
     @ObservationIgnored private var indexTask: Task<SearchIndex,Error>?
@@ -35,6 +36,11 @@ import CassiniSearch
     func reindexAfterMove(_ meetings: [LibraryMeeting]) async {
         self.meetings = meetings; hits = []; selectedID = nil
         if let ready = indexTask, let index = try? await ready.value { try? await index.replace(meetings) }
+    }
+    func requestSidebarFocus() {
+        guard !LibraryMoveCoordinator.shared.busy else { return }
+        sidebarFocusRequest &+= 1
+        MeetingNavigation.shared.openLibrary?()
     }
     func open() {
         guard !LibraryMoveCoordinator.shared.busy else { return }

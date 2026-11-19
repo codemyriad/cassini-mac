@@ -48,6 +48,12 @@ struct AppCommands: Commands {
             }.keyboardShortcut("r", modifiers: .command).disabled(speakerDialog || !RecordingConfirmation.active && !RecordingOverview.canStart)
         }
         CommandGroup(after: .newItem) {
+            if let meeting = exportMeeting {
+                let starred = LibraryStore.shared.isStarred(meeting)
+                Button(UXText.text(starred ? "meeting.unstar" : "meeting.star")) {
+                    LibraryStore.shared.toggleStar(meeting)
+                }.disabled(speakerDialog)
+            }
             Button(UXText.text("meeting.renameEllipsis")) {
                 if let meeting = MeetingRenameCoordinator.shared.commandMeeting { MeetingRenameCoordinator.shared.show(meeting) }
             }.disabled(speakerDialog || !MeetingRenameCoordinator.shared.commandEnabled)
@@ -60,7 +66,15 @@ struct AppCommands: Commands {
             }
             Button(UXText.text("export.zip.all")) { BulkZipExportCoordinator.shared.exportAll() }
                 .disabled(speakerDialog || !BulkZipExportCoordinator.shared.canExportAll)
-            Button(UXText.text("common.moveToTrash")) {
+            if let meeting = exportMeeting {
+                Button(UXText.text("details.menu")) { RecordingDetailsCoordinator.shared.show(meeting) }
+                    .disabled(speakerDialog)
+            }
+            if let detail, detail.meeting.speakerMergeCount > 0 {
+                Button(UXText.text("meeting.undoMerge")) { MeetingRenameCoordinator.shared.undoSpeakerMerge(detail.meeting) }
+                    .disabled(speakerDialog || !MeetingRenameCoordinator.shared.canEditSpeakers(detail.meeting))
+            }
+            Button(UXText.text("meeting.moveToRecentlyDeleted")) {
                 let trash = MeetingTrashCoordinator.shared
                 if trash.commandEnabled, let meeting = trash.commandMeeting { trash.move(meeting,undoManager:NSApp.keyWindow?.undoManager) }
             }.keyboardShortcut(.delete,modifiers:.command).disabled(speakerDialog || !MeetingTrashCoordinator.shared.commandEnabled)
@@ -77,8 +91,20 @@ struct AppCommands: Commands {
         CommandGroup(replacing:.textEditing) {
             Button(UXText.text(detail?.meeting.state.lifecycle == .saved ? "meeting.find.placeholder" : "search.field.a11y")) {
                 if let detail, detail.meeting.state.lifecycle == .saved { detail.focusFind() }
-                else { LibrarySearchModel.shared.open() }
+                else { LibrarySearchModel.shared.requestSidebarFocus() }
             }.keyboardShortcut("f",modifiers:.command).disabled(speakerDialog)
+            Button(UXText.text("mac.legacy.nextMatch")) {
+                detail?.find.step(.next)
+            }.keyboardShortcut("g",modifiers:.command)
+                .disabled(speakerDialog || detail?.find.visible != true || detail?.find.matches.isEmpty != false)
+            Button(UXText.text("mac.legacy.previousMatch")) {
+                detail?.find.step(.previous)
+            }.keyboardShortcut("g",modifiers:[.command,.shift])
+                .disabled(speakerDialog || detail?.find.visible != true || detail?.find.matches.isEmpty != false)
+            Divider()
+            Button(UXText.text("search.field.placeholder")) {
+                LibrarySearchModel.shared.requestSidebarFocus()
+            }.keyboardShortcut("f",modifiers:[.option,.command]).disabled(speakerDialog)
         }
         CommandMenu(UXText.mac("menu.playback")) {
             Button(UXText.text(detail?.isPlaying == true ? "player.pause" : "common.play")) { detail?.toggle() }
