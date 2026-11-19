@@ -1307,7 +1307,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(hit.exists); hit.click()
         window.buttons["search-open-meeting"].click()
         XCTAssertTrue(window.buttons["meeting-export"].firstMatch.waitForExistence(timeout:5))
-        let revealed = NSPredicate { _,_ in self.text("00:14:32", in: window) }
+        let revealed = NSPredicate { _,_ in self.visibleText(window.staticTexts["meeting-elapsed"]) == "14:32" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:revealed,object:nil)],timeout:5),.completed,window.debugDescription)
         app.typeKey("f",modifierFlags:.command)
         let localFind = window.textFields["meeting-find"]
@@ -2376,22 +2376,14 @@ final class LibraryBoards: XCTestCase {
     private func sidebarHasTitle(_ expected: String, in window: XCUIElement) -> Bool {
         window.outlines.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", expected, expected)).firstMatch.exists
     }
-    /// Clicks the native editable `.navigationTitle($binding)` in the window
-    /// titlebar and returns the active native text field (inline or popover).
+    /// Clicks the inline-editable meeting title in the detail toolbar and
+    /// returns the active `meeting-window-title-editor` text field.
     @MainActor private func openNativeTitleEditor(currentTitle: String, in window: XCUIElement, app: XCUIApplication) -> XCUIElement {
         let titleElement = nativeTitleElement(currentTitle, in: window)
         XCTAssertTrue(titleElement.waitForExistence(timeout: 10), "Expected native window title '\(currentTitle)': " + window.debugDescription)
-        let editor = app.textFields.matching(NSPredicate(format: "identifier != %@ AND identifier != %@", "meeting-find", "rename-name")).firstMatch
-        // The title StaticText spans the full 52 pt toolbar height (title in upper half,
-        // subtitle below). Hover and click the title text itself; fall back to double-click
-        // on macOS versions where single-click only reveals the title hover bezel.
-        let titlePoint = titleElement.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.30))
-        titlePoint.hover()
-        titlePoint.click()
-        if !editor.waitForExistence(timeout: 2) {
-            titlePoint.doubleClick()
-        }
-        XCTAssertTrue(editor.waitForExistence(timeout: 5), "Clicking native window title should open inline title editor: " + app.debugDescription)
+        titleElement.click()
+        let editor = window.toolbars.textFields["meeting-window-title-editor"].firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 5), "Clicking window title should open inline title editor: " + app.debugDescription)
         return editor
     }
     private func fixtureDirectory() throws -> URL {

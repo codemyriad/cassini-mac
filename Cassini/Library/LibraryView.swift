@@ -119,7 +119,7 @@ struct LibraryView: View {
             window.setAccessibilityIdentifier("cassini-library-window")
             window.backgroundColor = showsFirstRun ? NSColor(CassiniTheme.surface) : .windowBackgroundColor
             ScrollEdgeChrome.configureUnifiedWindow(window)
-            window.titleVisibility = (showsFirstRun || search.visible || navigation.savedDetail == nil) ? .hidden : .visible
+            window.titleVisibility = .hidden
             RecordingConfirmation.attach(to: window)
             SpeakerEditorChrome.update(window,visible:rename.presentation == .speakers)
             #if DEBUG
@@ -409,6 +409,46 @@ struct LibraryView: View {
 
     @ToolbarContentBuilder
     private var detailToolbar: some ToolbarContent {
+        if let detail = navigation.savedDetail {
+            let title = detail.meeting.title ?? UXText.text("library.untitled")
+            let subtitle = store.format.previewSubtitle(
+                detail.meeting.meetingTime,
+                durationMs: detail.meeting.durationMs,
+                received: detail.meeting.state.origin == .received,
+                transcribedOnAnotherDevice: detail.meeting.transcribedOnAnotherDevice
+            )
+            #if compiler(>=6.2)
+            if #available(macOS 26.0, *) {
+                ToolbarItem(placement: .navigation) {
+                    MeetingWindowTitleView(
+                        title: title,
+                        subtitle: subtitle,
+                        canRename: rename.canRename(detail.meeting),
+                        onCommit: { newTitle in rename.renameInline(detail.meeting, to: newTitle) }
+                    )
+                }
+                .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .navigation) {
+                    MeetingWindowTitleView(
+                        title: title,
+                        subtitle: subtitle,
+                        canRename: rename.canRename(detail.meeting),
+                        onCommit: { newTitle in rename.renameInline(detail.meeting, to: newTitle) }
+                    )
+                }
+            }
+            #else
+            ToolbarItem(placement: .navigation) {
+                MeetingWindowTitleView(
+                    title: title,
+                    subtitle: subtitle,
+                    canRename: rename.canRename(detail.meeting),
+                    onCommit: { newTitle in rename.renameInline(detail.meeting, to: newTitle) }
+                )
+            }
+            #endif
+        }
         if navigation.savedDetail == nil {
             ToolbarItem(placement: .automatic) { Spacer() }
         }
@@ -973,22 +1013,142 @@ private struct LibraryWindowTitleModifier: ViewModifier {
                 received: detail.meeting.state.origin == .received,
                 transcribedOnAnotherDevice: detail.meeting.transcribedOnAnotherDevice
             )
-            if canRename {
-                content
-                    .navigationTitle(Binding(
-                        get: { detail.meeting.title ?? UXText.text("library.untitled") },
-                        set: { onRename(detail, $0) }
-                    ))
-                    .navigationSubtitle(subtitle)
-            } else {
-                content
-                    .navigationTitle(detail.meeting.title ?? UXText.text("library.untitled"))
-                    .navigationSubtitle(subtitle)
-            }
+            content
+                .navigationTitle(detail.meeting.title ?? UXText.text("library.untitled"))
+                .navigationSubtitle(subtitle)
+                .toolbar(removing: .title)
         } else {
             content
                 .navigationTitle(UXText.text("app.name"))
                 .toolbar(removing: .title)
+        }
+    }
+}
+
+/// Inline-editable meeting title and subtitle hosted in the detail toolbar's
+/// leading `.navigation` placement. Clicking the title edits in place and routes
+/// commits through `MeetingRenameCoordinator.renameInline` on both macOS 15 and 26.
+private struct MeetingWindowTitleView: View {
+    let title: String
+    let subtitle: String
+    let canRename: Bool
+    let onCommit: (String) -> Void
+    @State private var editing = false
+    @State private var hovering = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            if editing && canRename {
+                InlineToolbarTitleField(
+                    initialText: title,
+                    onCommit: { newValue in
+                        editing = false
+                        onCommit(newValue)
+                    },
+                    onCancel: {
+                        editing = false
+                    }
+                )
+                .frame(minWidth: 160, idealWidth: 240, maxWidth: 360, minHeight: 20, maxHeight: 20)
+            } else if canRename {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(CassiniTheme.ink)
+                    .lineLimit(1)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(hovering ? CassiniTheme.ink.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+                    .contentShape(Rectangle())
+                    .onHover { hovering = $0 }
+                    .onTapGesture { editing = true }
+                    .accessibilityIdentifier("meeting-window-title")
+            } else {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(CassiniTheme.ink)
+                    .lineLimit(1)
+                    .accessibilityIdentifier("meeting-window-title")
+            }
+            Text(subtitle)
+                .font(.system(size: 11))
+                .foregroundStyle(CassiniTheme.secondaryInk)
+                .lineLimit(1)
+                .padding(.horizontal, canRename ? 4 : 0)
+                .accessibilityIdentifier("meeting-window-subtitle")
+        }
+        .onChange(of: title) { _, _ in editing = false }
+        .onChange(of: canRename) { _, allowed in if !allowed { editing = false } }
+    }
+}
+
+private struct InlineToolbarTitleField: NSViewRepresentable {
+    let initialText: String
+    let onCommit: (String) -> Void
+    let onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onCommit: onCommit, onCancel: onCancel) }
+
+    func makeNSView(context: Context) -> FocusableTitleField {
+        let field = FocusableTitleField()
+        field.stringValue = initialText
+        field.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        field.isBezeled = true
+        field.bezelStyle = .roundedBezel
+        field.isEditable = true
+        field.isSelectable = true
+        field.lineBreakMode = .byTruncatingTail
+        field.delegate = context.coordinator
+        field.setAccessibilityIdentifier("meeting-window-title-editor")
+        return field
+    }
+
+    func updateNSView(_ view: FocusableTitleField, context: Context) {
+        context.coordinator.onCommit = onCommit
+        context.coordinator.onCancel = onCancel
+    }
+
+    final class FocusableTitleField: NSTextField {
+        private var didFocus = false
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard !didFocus, let window else { return }
+            didFocus = true
+            DispatchQueue.main.async { [weak self, weak window] in
+                guard let self, let window else { return }
+                if window.makeFirstResponder(self) {
+                    self.currentEditor()?.selectAll(nil)
+                }
+            }
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var onCommit: (String) -> Void
+        var onCancel: () -> Void
+        private var finished = false
+        init(onCommit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+            self.onCommit = onCommit
+            self.onCancel = onCancel
+        }
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+                guard !finished else { return true }
+                finished = true
+                onCommit(control.stringValue)
+                return true
+            }
+            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+                guard !finished else { return true }
+                finished = true
+                onCancel()
+                return true
+            }
+            return false
+        }
+        func controlTextDidEndEditing(_ obj: Notification) {
+            guard !finished, let field = obj.object as? NSTextField else { return }
+            finished = true
+            onCommit(field.stringValue)
         }
     }
 }
