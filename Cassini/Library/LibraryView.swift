@@ -81,13 +81,6 @@ struct LibraryView: View {
         .onChange(of: search.query) { _, query in
             if !query.isEmpty && !search.visible {
                 search.open()
-            } else if query.isEmpty && !sidebarSearchPresented && search.visible {
-                search.close()
-            }
-        }
-        .onChange(of: sidebarSearchPresented) { _, presented in
-            if !presented && search.visible && search.query.isEmpty {
-                search.close()
             }
         }
         .frame(minWidth: showsFirstRun ? 560 : nil, minHeight: 480)
@@ -286,11 +279,12 @@ struct LibraryView: View {
     private var split: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebarColumn
-                .navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 400)
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { sidebarWidth = $0 }
                 .toolbar {
                     sidebarToolbar
                 }
+                .frame(minWidth: 260, idealWidth: 340, maxWidth: 400)
+                .navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 400)
         } detail: {
             detailColumn
                 .frame(minWidth: 300)
