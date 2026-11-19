@@ -22,7 +22,9 @@ decision_approved={'errors.diskStopped.line'}
 # still tags that older common entry GNOME-only; keep its published bytes.
 # D58.1 (coordinator, #140 review): Mac shows the shared GNOME line when the system tap could
 # not be started (not a permission denial), with no settings action.
-platform_decision_approved={'common.close','errors.deviceUnavailable.others'}
+# D106 §5 (L-63): Mac uses the shared people-count heading on Saved voices ("4 people",
+# drawn on P2SavedVoices-Desktop) while the catalog entry still lists ios/android.
+platform_decision_approved={'common.close','errors.deviceUnavailable.others','savedVoices.peopleCount'}
 for file in (root/'Cassini').rglob('*.swift'):
     for key in re.findall(r'UXText\.text\("([^"]+)"',file.read_text()):
         assert key in entries and (entries[key]['status']!='pending' or key in decision_approved), (file,key)
