@@ -144,12 +144,6 @@ struct LibraryView: View {
         .overlay(alignment:.bottom) { MeetingExportNotice() }
         .overlay(alignment:.bottom) { SpeakerEditFailureNotice() }
         #if DEBUG
-        .overlay(alignment:.bottomTrailing) {
-            if RecordingFinalizationFixture.shared.waiting {
-                Button("Finish fixture recording") { RecordingFinalizationFixture.shared.release() }
-                    .accessibilityIdentifier("recording-fixture-finish")
-            }
-        }
         .overlay(alignment:.topLeading) {
             if RecordingFixture.enabled {
                 Text(CaptureNotifications.savedFixtureTitles.joined(separator:"\n")).font(.system(size:1))
@@ -288,6 +282,15 @@ struct LibraryView: View {
         } detail: {
             detailColumn
                 .frame(minWidth: 300)
+                #if DEBUG
+                .overlay(alignment: .bottomTrailing) {
+                    if RecordingFinalizationFixture.shared.waiting {
+                        Button("Finish fixture recording") { RecordingFinalizationFixture.shared.release() }
+                            .padding(12)
+                            .accessibilityIdentifier("recording-fixture-finish")
+                    }
+                }
+                #endif
                 .toolbar {
                     detailToolbar
                 }
@@ -397,6 +400,9 @@ struct LibraryView: View {
 
     @ToolbarContentBuilder
     private var detailToolbar: some ToolbarContent {
+        if navigation.savedDetail == nil {
+            ToolbarItem(placement: .automatic) { Spacer() }
+        }
         if showsLiveToolbarPill {
             #if compiler(>=6.2)
             if #available(macOS 26.0, *) {
@@ -556,6 +562,7 @@ struct LibraryView: View {
                                                 store.selectedKey = meeting.libraryKey
                                                 openSelection(userInitiated: true)
                                                 LibraryKeyboardMenu.focusList()
+                                                DispatchQueue.main.async { LibraryKeyboardMenu.focusList() }
                                             }
                                         })
                                         .contextMenu {

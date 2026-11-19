@@ -367,13 +367,13 @@ private struct FloatingGlassCapsuleModifier: ViewModifier {
         } else {
             content
                 .background(CassiniTokens.raised, in: Capsule())
-                .overlay(Capsule().stroke(CassiniTokens.lineSoft, lineWidth: 1))
+                .overlay(Capsule().stroke(CassiniTokens.lineSoft, lineWidth: 1).allowsHitTesting(false))
                 .shadow(color: CassiniTokens.shadow, radius: 10, y: 5)
         }
         #else
         content
             .background(CassiniTokens.raised, in: Capsule())
-            .overlay(Capsule().stroke(CassiniTokens.lineSoft, lineWidth: 1))
+            .overlay(Capsule().stroke(CassiniTokens.lineSoft, lineWidth: 1).allowsHitTesting(false))
             .shadow(color: CassiniTokens.shadow, radius: 10, y: 5)
         #endif
     }

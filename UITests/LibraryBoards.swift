@@ -2042,7 +2042,7 @@ final class LibraryBoards: XCTestCase {
         client.click()
         let selected = NSPredicate { _, _ in
             self.hasWindowTitle("Client call, Rossi & Partners", in: window)
-                && window.descendants(matching: .any)["speaker-row-giulia"].exists
+                && self.hasWindowSubtitle("Today, 11:30 · 47 min", in: window)
         }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:selected,object:nil)],timeout:10),.completed)
         app.menuBars.menuBarItems["File"].click()
@@ -2070,13 +2070,13 @@ final class LibraryBoards: XCTestCase {
             client.click()
             let clientOpen = NSPredicate { _,_ in
                 self.hasWindowTitle("Client call, Rossi & Partners", in: window)
-                    && window.descendants(matching: .any)["speaker-row-giulia"].exists
+                    && self.hasWindowSubtitle("Today, 11:30 · 47 min", in: window)
             }
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:clientOpen,object:nil)],timeout:10),.completed,app.debugDescription)
             budget.click()
             let budgetOpen = NSPredicate { _,_ in
                 self.hasWindowTitle("Budget review", in: window)
-                    && window.descendants(matching: .any)["speaker-row-dario"].exists
+                    && self.hasWindowSubtitle("Today, 09:00 · 52 min", in: window)
             }
             XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:budgetOpen,object:nil)],timeout:10),.completed,app.debugDescription)
             XCTAssertTrue(window.buttons["meeting-find-button"].firstMatch.exists)
@@ -2147,13 +2147,13 @@ final class LibraryBoards: XCTestCase {
         window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000002").firstMatch.click()
         let client = NSPredicate { _,_ in
             self.hasWindowTitle("Client call, Rossi & Partners", in: window)
-                && window.descendants(matching: .any)["speaker-row-giulia"].exists
+                && self.hasWindowSubtitle("Today, 11:30 · 47 min", in: window)
         }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:client,object:nil)],timeout:10),.completed,app.debugDescription)
         window.outlines.staticTexts.matching(identifier:"meeting-Recording-a0000000-0000-4000-8000-000000000001").firstMatch.click()
         let budget = NSPredicate { _,_ in
             self.hasWindowTitle("Budget review", in: window)
-                && window.descendants(matching: .any)["speaker-row-dario"].exists
+                && self.hasWindowSubtitle("Today, 09:00 · 52 min", in: window)
         }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:budget,object:nil)],timeout:10),.completed,app.debugDescription)
         XCTAssertFalse(window.buttons["Not now"].exists)
