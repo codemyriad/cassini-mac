@@ -417,6 +417,7 @@ struct LibraryView: View {
                 received: detail.meeting.state.origin == .received,
                 transcribedOnAnotherDevice: detail.meeting.transcribedOnAnotherDevice
             )
+            let titleMaxWidth: CGFloat = toolbarWidth < 860 ? 140 : 280
             #if compiler(>=6.2)
             if #available(macOS 26.0, *) {
                 ToolbarItem(placement: .navigation) {
@@ -424,6 +425,7 @@ struct LibraryView: View {
                         title: title,
                         subtitle: subtitle,
                         canRename: rename.canRename(detail.meeting),
+                        maxWidth: titleMaxWidth,
                         onCommit: { newTitle in rename.renameInline(detail.meeting, to: newTitle) }
                     )
                 }
@@ -434,6 +436,7 @@ struct LibraryView: View {
                         title: title,
                         subtitle: subtitle,
                         canRename: rename.canRename(detail.meeting),
+                        maxWidth: titleMaxWidth,
                         onCommit: { newTitle in rename.renameInline(detail.meeting, to: newTitle) }
                     )
                 }
@@ -444,6 +447,7 @@ struct LibraryView: View {
                     title: title,
                     subtitle: subtitle,
                     canRename: rename.canRename(detail.meeting),
+                    maxWidth: titleMaxWidth,
                     onCommit: { newTitle in rename.renameInline(detail.meeting, to: newTitle) }
                 )
             }
@@ -1032,6 +1036,7 @@ private struct MeetingWindowTitleView: View {
     let title: String
     let subtitle: String
     let canRename: Bool
+    var maxWidth: CGFloat = 280
     let onCommit: (String) -> Void
     @State private var editing = false
     @State private var hovering = false
@@ -1049,7 +1054,7 @@ private struct MeetingWindowTitleView: View {
                         editing = false
                     }
                 )
-                .frame(minWidth: 160, idealWidth: 240, maxWidth: 360, minHeight: 20, maxHeight: 20)
+                .frame(minWidth: 120, idealWidth: min(220, maxWidth), maxWidth: maxWidth, minHeight: 20, maxHeight: 20)
             } else if canRename {
                 Text(title)
                     .font(.system(size: 13, weight: .semibold))
@@ -1076,7 +1081,7 @@ private struct MeetingWindowTitleView: View {
                 .padding(.horizontal, canRename ? 4 : 0)
                 .accessibilityIdentifier("meeting-window-subtitle")
         }
-        .frame(minWidth: 60, maxWidth: 260, alignment: .leading)
+        .frame(minWidth: 60, maxWidth: maxWidth, alignment: .leading)
         .onChange(of: title) { _, _ in editing = false }
         .onChange(of: canRename) { _, allowed in if !allowed { editing = false } }
     }
