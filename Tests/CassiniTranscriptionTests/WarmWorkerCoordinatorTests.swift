@@ -148,7 +148,7 @@ private final class GatedWorker: WarmWorkerManaging, @unchecked Sendable {
             start1Entered.open()
             // Simulate a blocked follow handshake cancelled by preemption.
             await start1CleanupRelease.waitAsync()
-            await Task.detached { w1.terminateImmediately() }.value
+            await w1.terminateImmediatelyAsync()
             return nil
         }
 
@@ -358,5 +358,48 @@ private final class GatedWorker: WarmWorkerManaging, @unchecked Sendable {
         let exitW1 = snap.events.firstIndex(of: "exit:shutdown-w1")
         let shutdownDone = snap.events.firstIndex(of: "shutdown-barrier-done")
         #expect(exitW1 != nil && shutdownDone != nil && exitW1! < shutdownDone!)
+    }
+
+    @Test @MainActor func concurrentBlockedTeardownsDoNotStarveCooperativePool() async {
+        let count = max(16, ProcessInfo.processInfo.activeProcessorCount * 2)
+        let tracker = ConcurrencyTracker()
+        var coordinators: [WarmWorkerCoordinator<GatedWorker, Int>] = []
+        var workers: [GatedWorker] = []
+
+        for index in 0..<count {
+            let coordinator = WarmWorkerCoordinator<GatedWorker, Int>()
+            let folder = URL(fileURLWithPath: "/tmp/meeting-pool-\(index)")
+            let ready = Gate()
+            coordinator.ensureFollowing(folder: folder, canContinue: { true }) { _ in
+                let worker = GatedWorker(id: "pool-w\(index)", tracker: tracker)
+                defer { ready.open() }
+                return .init(worker: worker, engine: "whistle", token: index, followingFolder: folder)
+            }
+            await ready.waitAsync()
+            let worker = try! #require(coordinator.activeLease?.worker)
+            coordinators.append(coordinator)
+            workers.append(worker)
+        }
+
+        for coordinator in coordinators {
+            coordinator.preempt()
+        }
+        for worker in workers {
+            await worker.teardownEntered.waitAsync()
+        }
+
+        // All `count` workers (> activeProcessorCount) are simultaneously blocked in
+        // `Gate.waitBlocking()`. Verify the Swift Concurrency cooperative thread pool
+        // still makes forward progress.
+        let probe = await Task.detached(priority: .userInitiated) { 42 }.value
+        #expect(probe == 42)
+
+        for worker in workers {
+            worker.teardownRelease.open()
+        }
+        for coordinator in coordinators {
+            await coordinator.waitForTeardown()
+        }
+        #expect(tracker.snapshot.live == 0)
     }
 }

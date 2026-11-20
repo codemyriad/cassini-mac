@@ -9,6 +9,31 @@ public protocol WarmWorkerManaging: AnyObject, Sendable {
     func terminateImmediately()
 }
 
+extension WarmWorkerManaging {
+    /// Runs `shutdown()` on a dedicated non-cooperative OS thread so blocking
+    /// waits (`waitUntilExit`, pipe drains, or test gates) cannot starve the
+    /// Swift Concurrency cooperative thread pool.
+    public func shutdownAsync() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            Thread.detachNewThread {
+                self.shutdown()
+                continuation.resume()
+            }
+        }
+    }
+
+    /// Runs `terminateImmediately()` on a dedicated non-cooperative OS thread so
+    /// blocking waits cannot starve the Swift Concurrency cooperative thread pool.
+    public func terminateImmediatelyAsync() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            Thread.detachNewThread {
+                self.terminateImmediately()
+                continuation.resume()
+            }
+        }
+    }
+}
+
 extension WarmSpeechWorker: WarmWorkerManaging {}
 
 /// Serializes warm-worker startup, preemption, handoff release, and lifecycle
@@ -177,13 +202,16 @@ public final class WarmWorkerCoordinator<Worker: WarmWorkerManaging, Token: Send
     }
 
     private static func tearDownOffMain(_ lease: Lease, graceful: Bool) async {
-        await Task.detached(priority: .userInitiated) {
-            if graceful {
-                lease.worker.shutdown()
-            } else {
-                lease.worker.terminateImmediately()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            Thread.detachNewThread {
+                if graceful {
+                    lease.worker.shutdown()
+                } else {
+                    lease.worker.terminateImmediately()
+                }
+                withExtendedLifetime(lease.token) {}
+                continuation.resume()
             }
-            withExtendedLifetime(lease.token) {}
-        }.value
+        }
     }
 }

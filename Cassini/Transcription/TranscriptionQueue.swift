@@ -92,29 +92,23 @@ import Darwin
                     try WarmSpeechWorker(executable: executable, arguments: arguments, environment: WhistleEnvironment.worker())
                 }.value
                 if Task.isCancelled || !canContinue() {
-                    await Task.detached(priority: .userInitiated) {
-                        worker.terminateImmediately()
-                        withExtendedLifetime(model) {}
-                    }.value
+                    await worker.terminateImmediatelyAsync()
+                    withExtendedLifetime(model) {}
                     return nil
                 }
                 let reply: WarmSpeechWorker.Reply
                 do {
                     reply = try await worker.send(requestData, timeout: 60)
                 } catch {
-                    await Task.detached(priority: .userInitiated) {
-                        worker.terminateImmediately()
-                        withExtendedLifetime(model) {}
-                    }.value
+                    await worker.terminateImmediatelyAsync()
+                    withExtendedLifetime(model) {}
                     return nil
                 }
                 struct FollowResponse: Decodable { let error: String?; let code: String? }
                 let decoded = try? JSONDecoder().decode(FollowResponse.self, from: reply.line)
                 if let model, reply.exited, decoded?.code == "invalid-model" {
-                    await Task.detached(priority: .userInitiated) {
-                        worker.terminateImmediately()
-                        withExtendedLifetime(model) {}
-                    }.value
+                    await worker.terminateImmediatelyAsync()
+                    withExtendedLifetime(model) {}
                     await SpeechModelController.shared.invalidModel(generation: model.generation)
                     guard !Task.isCancelled, canContinue() else { return nil }
                     let whistleExe = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cassini-whistle-worker")
@@ -122,30 +116,28 @@ import Darwin
                         try WarmSpeechWorker(executable: whistleExe, arguments: [], environment: WhistleEnvironment.worker())
                     }.value
                     if Task.isCancelled || !canContinue() {
-                        await Task.detached(priority: .userInitiated) { whistleWorker.terminateImmediately() }.value
+                        await whistleWorker.terminateImmediatelyAsync()
                         return nil
                     }
                     let whistleReply: WarmSpeechWorker.Reply
                     do {
                         whistleReply = try await whistleWorker.send(requestData, timeout: 60)
                     } catch {
-                        await Task.detached(priority: .userInitiated) { whistleWorker.terminateImmediately() }.value
+                        await whistleWorker.terminateImmediatelyAsync()
                         return nil
                     }
                     let whistleDecoded = try? JSONDecoder().decode(FollowResponse.self, from: whistleReply.line)
                     guard !whistleReply.exited, whistleDecoded?.error == nil,
                           !Task.isCancelled, canContinue() else {
-                        await Task.detached(priority: .userInitiated) { whistleWorker.terminateImmediately() }.value
+                        await whistleWorker.terminateImmediatelyAsync()
                         return nil
                     }
                     return WarmWorkerLease(worker: whistleWorker, engine: "whistle", token: nil, followingFolder: folder)
                 }
                 guard !reply.exited, decoded?.error == nil,
                       !Task.isCancelled, canContinue() else {
-                    await Task.detached(priority: .userInitiated) {
-                        worker.terminateImmediately()
-                        withExtendedLifetime(model) {}
-                    }.value
+                    await worker.terminateImmediatelyAsync()
+                    withExtendedLifetime(model) {}
                     return nil
                 }
                 return WarmWorkerLease(worker: worker, engine: engine, token: model, followingFolder: folder)
