@@ -14,6 +14,11 @@ import CassiniExport
 import Darwin
 #endif
 
+private final class OffMainModelBox: @unchecked Sendable {
+    var value: SpeechModelController.JobModel?
+    init(_ value: SpeechModelController.JobModel?) { self.value = value }
+}
+
 /// One bounded worker, FIFO by arrival. A capture and playback may continue while
 /// this child writes only app-owned sidecars. Failed jobs require an explicit retry.
 @MainActor @Observable final class TranscriptionQueue {
@@ -77,10 +82,25 @@ import Darwin
         }
         warmCoordinator.ensureFollowing(folder: folder, canContinue: canContinue) { [weak self] _ in
             guard let self else { return nil }
+            var model: SpeechModelController.JobModel?
+            func takeModel() -> SpeechModelController.JobModel? {
+                defer { model = nil }
+                return model
+            }
+            func releaseModelOffMain(_ released: consuming SpeechModelController.JobModel?) async {
+                let box = OffMainModelBox(consume released)
+                guard box.value != nil else { return }
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    Thread.detachNewThread {
+                        box.value = nil
+                        continuation.resume()
+                    }
+                }
+            }
             do {
-                let model = try await SpeechModelController.shared.modelForNewJob()
+                model = try await SpeechModelController.shared.modelForNewJob()
                 guard !Task.isCancelled, canContinue() else {
-                    withExtendedLifetime(model) {}
+                    await releaseModelOffMain(takeModel())
                     return nil
                 }
                 let engine = model == nil ? "whistle" : "parakeet"
@@ -92,24 +112,21 @@ import Darwin
                     try WarmSpeechWorker(executable: executable, arguments: arguments, environment: WhistleEnvironment.worker())
                 }.value
                 if Task.isCancelled || !canContinue() {
-                    await worker.terminateImmediatelyAsync()
-                    withExtendedLifetime(model) {}
+                    await worker.terminateImmediatelyAsync(releasing: takeModel())
                     return nil
                 }
                 let reply: WarmSpeechWorker.Reply
                 do {
                     reply = try await worker.send(requestData, timeout: 60)
                 } catch {
-                    await worker.terminateImmediatelyAsync()
-                    withExtendedLifetime(model) {}
+                    await worker.terminateImmediatelyAsync(releasing: takeModel())
                     return nil
                 }
                 struct FollowResponse: Decodable { let error: String?; let code: String? }
                 let decoded = try? JSONDecoder().decode(FollowResponse.self, from: reply.line)
-                if let model, reply.exited, decoded?.code == "invalid-model" {
-                    await worker.terminateImmediatelyAsync()
-                    withExtendedLifetime(model) {}
-                    await SpeechModelController.shared.invalidModel(generation: model.generation)
+                if let generation = model?.generation, reply.exited, decoded?.code == "invalid-model" {
+                    await worker.terminateImmediatelyAsync(releasing: takeModel())
+                    await SpeechModelController.shared.invalidModel(generation: generation)
                     guard !Task.isCancelled, canContinue() else { return nil }
                     let whistleExe = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cassini-whistle-worker")
                     let whistleWorker = try await Task.detached(priority: .utility) {
@@ -136,12 +153,12 @@ import Darwin
                 }
                 guard !reply.exited, decoded?.error == nil,
                       !Task.isCancelled, canContinue() else {
-                    await worker.terminateImmediatelyAsync()
-                    withExtendedLifetime(model) {}
+                    await worker.terminateImmediatelyAsync(releasing: takeModel())
                     return nil
                 }
-                return WarmWorkerLease(worker: worker, engine: engine, token: model, followingFolder: folder)
+                return WarmWorkerLease(worker: worker, engine: engine, token: takeModel(), followingFolder: folder)
             } catch {
+                await releaseModelOffMain(takeModel())
                 return nil
             }
         }
