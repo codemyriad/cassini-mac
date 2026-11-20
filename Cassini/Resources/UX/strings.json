@@ -37098,8 +37098,8 @@
     "P2About-Phones"
    ],
    "milestone": "Report a problem (L-65, D107 §2)",
-   "note": "D107 §2 (L-65): approved by Alex, 18 Nov; WAITING ON SILVIO for the cassini.talk page and its URL (D-1113). Do not build until the URL is decided; no URL is defined here. Opens that page in the browser; the app attaches nothing (no recordings, no logs). iOS and Android: a row after Help with about.reportProblem.subtitle. Mac: a link after Help, links on two lines (“Help · Report a problem · Privacy” / “Licences · Source code”). GNOME has no id: libadwaita’s built-in “Report an Issue” keeps its label and opens the same page.",
-   "status": "pending",
+   "note": "D107 §2 (L-65): approved by Alex, 18 Nov; address settled by D110 (Silvio, D-1113, 20 Nov): opens https://cassini.talk/report in the browser (the address lives in each app beside the Help address, not in the catalog); the app attaches nothing (no recordings, no logs). iOS and Android: a row after Help with about.reportProblem.subtitle. Mac: a link after Help, links on two lines (“Help · Report a problem · Privacy” / “Licences · Source code”). GNOME has no id: libadwaita’s built-in “Report an Issue” keeps its label and, for now, its GitHub issues address (D110 §4).",
+   "status": "drawn",
    "l10n": {
     "it": {
      "text": "Segnala un problema"
@@ -37130,8 +37130,8 @@
     "P2About-Phones"
    ],
    "milestone": "Report a problem (L-65, D107 §2)",
-   "note": "D107 §2 (L-65): subtitle of the about.reportProblem row on phones, no full stop (as about.help.subtitle). Waiting on Silvio for the page and URL (D-1113); do not build until it is decided.",
-   "status": "pending",
+   "note": "D107 §2 (L-65): subtitle of the about.reportProblem row on phones, no full stop (as about.help.subtitle). Address settled by D110 (D-1113, 20 Nov).",
+   "status": "drawn",
    "l10n": {
     "it": {
      "text": "Raccontaci cosa non ha funzionato"

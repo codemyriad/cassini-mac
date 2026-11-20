@@ -3,12 +3,16 @@ import SwiftUI
 import AppKit
 
 @MainActor enum AboutPanel {
+    static let helpURL = URL(string:"https://cassini.talk/help")!
+    static let reportProblemURL = URL(string:"https://cassini.talk/report")!
+    static let privacyURL = URL(string:"https://cassini.talk/privacy")!
+    static let sourceCodeURL = URL(string:"https://github.com/codemyriad/cassini-mac")!
     static var version: String { Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "" }
     static var copyrightYear: String { String((Bundle.main.object(forInfoDictionaryKey:"NSHumanReadableCopyright") as? String ?? "").filter(\.isNumber).prefix(4)) }
     private static var panel: NSPanel?
     static func show() {
         if let panel { panel.makeKeyAndOrderFront(nil); return }
-        let panel = NSPanel(contentRect:NSRect(x:0,y:0,width:300,height:330),styleMask:[.titled,.closable],backing:.buffered,defer:false)
+        let panel = NSPanel(contentRect:NSRect(x:0,y:0,width:300,height:350),styleMask:[.titled,.closable],backing:.buffered,defer:false)
         panel.title = UXText.text("app.name")
         panel.setAccessibilityIdentifier("cassini-about-window")
         panel.contentView = NSHostingView(rootView:AboutView())
@@ -28,14 +32,19 @@ struct AboutView: View {
             Text(UXText.text("app.name")).font(.title2).fontWeight(.bold)
             Text(UXText.text("about.version",["version":AboutPanel.version])).font(.caption).foregroundStyle(CassiniTheme.ink2)
             Text(UXText.text("about.tagline.mac")).multilineTextAlignment(.center).fixedSize(horizontal:false,vertical:true)
-            HStack(spacing:7) {
-                Link(UXText.text("about.help"),destination:URL(string:"https://cassini.talk/help")!).accessibilityIdentifier("about-help")
-                Text("·").accessibilityHidden(true)
-                Link(UXText.text("about.privacy"),destination:URL(string:"https://cassini.talk/privacy")!).accessibilityIdentifier("about-privacy")
-                Text("·").accessibilityHidden(true)
-                Button(UXText.text("about.licences")) { licences = true }.buttonStyle(.link).accessibilityIdentifier("about-licences")
-                Text("·").accessibilityHidden(true)
-                Link(UXText.text("about.sourceCode"),destination:URL(string:"https://github.com/codemyriad/cassini-mac")!)
+            VStack(spacing:6) {
+                HStack(spacing:7) {
+                    Link(UXText.text("about.help"),destination:AboutPanel.helpURL).accessibilityIdentifier("about-help")
+                    Text("·").accessibilityHidden(true)
+                    Link(UXText.text("about.reportProblem"),destination:AboutPanel.reportProblemURL).accessibilityIdentifier("about-report-problem")
+                    Text("·").accessibilityHidden(true)
+                    Link(UXText.text("about.privacy"),destination:AboutPanel.privacyURL).accessibilityIdentifier("about-privacy")
+                }
+                HStack(spacing:7) {
+                    Button(UXText.text("about.licences")) { licences = true }.buttonStyle(.link).accessibilityIdentifier("about-licences")
+                    Text("·").accessibilityHidden(true)
+                    Link(UXText.text("about.sourceCode"),destination:AboutPanel.sourceCodeURL).accessibilityIdentifier("about-source-code")
+                }
             }.font(.system(size:11.5))
             Text(UXText.text("about.licenceLine.mac",["year":AboutPanel.copyrightYear])).font(.system(size:10)).foregroundStyle(CassiniTheme.ink2)
                 .multilineTextAlignment(.center).fixedSize(horizontal:false,vertical:true)
