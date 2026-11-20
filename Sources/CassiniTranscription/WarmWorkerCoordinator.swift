@@ -155,8 +155,7 @@ public final class WarmWorkerCoordinator<Worker: WarmWorkerManaging, Token: Send
                 }
                 return
             }
-            let lease = await start(generation)
-            guard let lease else {
+            guard let lease = await start(generation) else {
                 if self.followGeneration == generation {
                     self.following = nil
                     self.followStartTask = nil
@@ -164,14 +163,14 @@ public final class WarmWorkerCoordinator<Worker: WarmWorkerManaging, Token: Send
                 return
             }
             guard !Task.isCancelled, self.followGeneration == generation, canContinue() else {
-                await Self.tearDownOffMain(lease, graceful: false)
+                await Self.tearDownOffMain(OffMainBox(consume lease), graceful: false)
                 if self.followGeneration == generation {
                     self.following = nil
                     self.followStartTask = nil
                 }
                 return
             }
-            self.activeLease = lease
+            self.activeLease = consume lease
             self.followStartTask = nil
         }
     }
@@ -220,10 +219,6 @@ public final class WarmWorkerCoordinator<Worker: WarmWorkerManaging, Token: Send
         }
         teardownTask = task
         return task
-    }
-
-    private static func tearDownOffMain(_ lease: consuming Lease, graceful: Bool) async {
-        await tearDownOffMain(OffMainBox(consume lease), graceful: graceful)
     }
 
     private static func tearDownOffMain(_ leaseBox: OffMainBox<Lease>, graceful: Bool) async {

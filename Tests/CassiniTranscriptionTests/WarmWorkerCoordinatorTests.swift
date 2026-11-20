@@ -470,4 +470,46 @@ private final class GatedWorker: WarmWorkerManaging, @unchecked Sendable {
             #expect(deinitCtx.inCooperativeTask == false)
         }
     }
+
+    @Test @MainActor func rejectedStartupLeaseReleasesTokenOffMain() async {
+        let tracker = ConcurrencyTracker()
+        let coordinator = WarmWorkerCoordinator<GatedWorker, TrackedToken>()
+        let folder = URL(fileURLWithPath: "/tmp/meeting-rejected-startup")
+        let tokenProbe = DeinitProbe()
+        let startEntered = Gate()
+        var allowContinue = true
+        var startedWorker: GatedWorker?
+
+        coordinator.ensureFollowing(folder: folder, canContinue: { allowContinue }) { _ in
+            let worker = GatedWorker(id: "rejected-w1", tracker: tracker)
+            startedWorker = worker
+            startEntered.open()
+            allowContinue = false
+            return .init(
+                worker: worker,
+                engine: "parakeet",
+                token: TrackedToken(probe: tokenProbe),
+                followingFolder: folder
+            )
+        }
+
+        await startEntered.waitAsync()
+        let worker = try! #require(startedWorker)
+        await worker.teardownEntered.waitAsync()
+
+        #expect(tokenProbe.deinitContext == nil)
+        worker.teardownRelease.open()
+        await coordinator.terminateAndWait()
+
+        #expect(coordinator.activeLease == nil)
+        #expect(coordinator.following == nil)
+        #expect(tracker.snapshot.live == 0)
+
+        let teardownCtx = try! #require(worker.teardownContext)
+        #expect(teardownCtx.isMainThread == false)
+        #expect(teardownCtx.inCooperativeTask == false)
+        let deinitCtx = try! #require(tokenProbe.deinitContext)
+        #expect(deinitCtx.isMainThread == false)
+        #expect(deinitCtx.inCooperativeTask == false)
+    }
 }
