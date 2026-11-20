@@ -19,11 +19,11 @@ import Darwin
 @MainActor @Observable final class TranscriptionQueue {
     static let shared = TranscriptionQueue()
     static let transcriptionModePreference = "CassiniTranscriptionMode"
-    private struct WarmWorkerLease {
-        let worker: WarmSpeechWorker
-        let engine: String
-        let model: SpeechModelController.JobModel?
-        var followingFolder: URL?
+    private typealias WarmWorkerLease = WarmWorkerCoordinator<WarmSpeechWorker, SpeechModelController.JobModel?>.Lease
+    init() {
+        warmCoordinator.onFollowingChanged = { [weak self] folder in
+            self?.following = folder
+        }
     }
     var transcriptionMode: TranscriptionMode {
         get { TranscriptionMode.resolve(RecordingPreferences.defaults.object(forKey: Self.transcriptionModePreference)).mode }
@@ -52,84 +52,36 @@ import Darwin
     @ObservationIgnored private var closing = false
     @ObservationIgnored private var paused = false
     @ObservationIgnored private var trashing = Set<String>()
-    @ObservationIgnored private var warmWorker: WarmWorkerLease?
-    @ObservationIgnored private var followStartTask: Task<Void, Never>?
-    @ObservationIgnored private var followGeneration: UInt64 = 0
+    @ObservationIgnored private let warmCoordinator = WarmWorkerCoordinator<WarmSpeechWorker, SpeechModelController.JobModel?>()
     @ObservationIgnored private var activeRecordingFolder: URL?
     func isStopping(_ folder: URL) -> Bool { stoppingFolders.contains(folder.path) }
     func preemptFollowerForModelChange() {
         preemptFollower()
     }
     private func preemptFollower() {
-        followGeneration &+= 1
-        followStartTask?.cancel()
-        followStartTask = nil
-        following = nil
-        if let lease = warmWorker {
-            warmWorker = nil
-            Task.detached(priority: .userInitiated) {
-                lease.worker.terminateImmediately()
-                withExtendedLifetime(lease.model) {}
-            }
-        }
+        warmCoordinator.preempt()
     }
     private func terminateWarmWorkerAndWait() async {
-        followGeneration &+= 1
-        let startTask = followStartTask
-        startTask?.cancel()
-        followStartTask = nil
-        await startTask?.value
-        following = nil
-        if let lease = warmWorker {
-            warmWorker = nil
-            await Task.detached(priority: .userInitiated) {
-                lease.worker.terminateImmediately()
-                withExtendedLifetime(lease.model) {}
-            }.value
-        }
+        await warmCoordinator.terminateAndWait()
+    }
+    private func waitForWorkerTeardown() async {
+        await warmCoordinator.waitForTeardown()
     }
     private func ensureFollowing(folder: URL) {
         let path = folder.path
-        guard transcriptionMode == .transcribeWhileRecording,
-              !closing, !paused, task == nil, pending.isEmpty,
-              !trashing.contains(path), !stoppingFolders.contains(path) else { return }
-        if warmWorker?.followingFolder?.path == path, warmWorker?.worker.isAlive == true {
-            following = folder
-            return
+        let canContinue: @MainActor () -> Bool = { [weak self] in
+            guard let self else { return false }
+            return self.transcriptionMode == .transcribeWhileRecording &&
+                !self.closing && !self.paused && self.task == nil && self.pending.isEmpty &&
+                !self.trashing.contains(path) && !self.stoppingFolders.contains(path)
         }
-        if following?.path == path, followStartTask != nil { return }
-        followGeneration &+= 1
-        let generation = followGeneration
-        followStartTask?.cancel()
-        let previousLease = warmWorker
-        warmWorker = nil
-        following = folder
-        followStartTask = Task { [weak self] in
-            if let previousLease {
-                await Task.detached(priority: .userInitiated) {
-                    previousLease.worker.terminateImmediately()
-                    withExtendedLifetime(previousLease.model) {}
-                }.value
-            }
-            guard let self, !Task.isCancelled, self.followGeneration == generation,
-                  !self.closing, !self.paused, self.task == nil, self.pending.isEmpty,
-                  self.transcriptionMode == .transcribeWhileRecording,
-                  !self.trashing.contains(path), !self.stoppingFolders.contains(path) else {
-                if let self, self.followGeneration == generation {
-                    self.following = nil; self.followStartTask = nil
-                }
-                return
-            }
+        warmCoordinator.ensureFollowing(folder: folder, canContinue: canContinue) { [weak self] _ in
+            guard let self else { return nil }
             do {
                 let model = try await SpeechModelController.shared.modelForNewJob()
-                guard !Task.isCancelled, self.followGeneration == generation,
-                      !self.closing, !self.paused, self.task == nil, self.pending.isEmpty,
-                      self.transcriptionMode == .transcribeWhileRecording else {
+                guard !Task.isCancelled, canContinue() else {
                     withExtendedLifetime(model) {}
-                    if self.followGeneration == generation {
-                        self.following = nil; self.followStartTask = nil
-                    }
-                    return
+                    return nil
                 }
                 let engine = model == nil ? "whistle" : "parakeet"
                 let executable = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/" + (model == nil ? "cassini-whistle-worker" : "cassini-parakeet-worker"))
@@ -139,17 +91,23 @@ import Darwin
                 let worker = try await Task.detached(priority: .utility) {
                     try WarmSpeechWorker(executable: executable, arguments: arguments, environment: WhistleEnvironment.worker())
                 }.value
-                if Task.isCancelled || self.followGeneration != generation || self.closing || self.paused || self.task != nil || !self.pending.isEmpty {
+                if Task.isCancelled || !canContinue() {
                     await Task.detached(priority: .userInitiated) {
                         worker.terminateImmediately()
                         withExtendedLifetime(model) {}
                     }.value
-                    if self.followGeneration == generation {
-                        self.following = nil; self.followStartTask = nil
-                    }
-                    return
+                    return nil
                 }
-                let reply = try await worker.send(requestData, timeout: 60)
+                let reply: WarmSpeechWorker.Reply
+                do {
+                    reply = try await worker.send(requestData, timeout: 60)
+                } catch {
+                    await Task.detached(priority: .userInitiated) {
+                        worker.terminateImmediately()
+                        withExtendedLifetime(model) {}
+                    }.value
+                    return nil
+                }
                 struct FollowResponse: Decodable { let error: String?; let code: String? }
                 let decoded = try? JSONDecoder().decode(FollowResponse.self, from: reply.line)
                 if let model, reply.exited, decoded?.code == "invalid-model" {
@@ -158,51 +116,41 @@ import Darwin
                         withExtendedLifetime(model) {}
                     }.value
                     await SpeechModelController.shared.invalidModel(generation: model.generation)
-                    guard !Task.isCancelled, self.followGeneration == generation,
-                          !self.closing, !self.paused, self.task == nil, self.pending.isEmpty,
-                          self.transcriptionMode == .transcribeWhileRecording else {
-                        if self.followGeneration == generation {
-                            self.following = nil; self.followStartTask = nil
-                        }
-                        return
-                    }
+                    guard !Task.isCancelled, canContinue() else { return nil }
                     let whistleExe = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cassini-whistle-worker")
                     let whistleWorker = try await Task.detached(priority: .utility) {
                         try WarmSpeechWorker(executable: whistleExe, arguments: [], environment: WhistleEnvironment.worker())
                     }.value
-                    let whistleReply = try await whistleWorker.send(requestData, timeout: 60)
+                    if Task.isCancelled || !canContinue() {
+                        await Task.detached(priority: .userInitiated) { whistleWorker.terminateImmediately() }.value
+                        return nil
+                    }
+                    let whistleReply: WarmSpeechWorker.Reply
+                    do {
+                        whistleReply = try await whistleWorker.send(requestData, timeout: 60)
+                    } catch {
+                        await Task.detached(priority: .userInitiated) { whistleWorker.terminateImmediately() }.value
+                        return nil
+                    }
                     let whistleDecoded = try? JSONDecoder().decode(FollowResponse.self, from: whistleReply.line)
                     guard !whistleReply.exited, whistleDecoded?.error == nil,
-                          !Task.isCancelled, self.followGeneration == generation,
-                          !self.closing, !self.paused, self.task == nil, self.pending.isEmpty else {
+                          !Task.isCancelled, canContinue() else {
                         await Task.detached(priority: .userInitiated) { whistleWorker.terminateImmediately() }.value
-                        if self.followGeneration == generation {
-                            self.following = nil; self.followStartTask = nil
-                        }
-                        return
+                        return nil
                     }
-                    self.warmWorker = WarmWorkerLease(worker: whistleWorker, engine: "whistle", model: nil, followingFolder: folder)
-                    self.followStartTask = nil
-                    return
+                    return WarmWorkerLease(worker: whistleWorker, engine: "whistle", token: nil, followingFolder: folder)
                 }
                 guard !reply.exited, decoded?.error == nil,
-                      !Task.isCancelled, self.followGeneration == generation,
-                      !self.closing, !self.paused, self.task == nil, self.pending.isEmpty else {
+                      !Task.isCancelled, canContinue() else {
                     await Task.detached(priority: .userInitiated) {
                         worker.terminateImmediately()
                         withExtendedLifetime(model) {}
                     }.value
-                    if self.followGeneration == generation {
-                        self.following = nil; self.followStartTask = nil
-                    }
-                    return
+                    return nil
                 }
-                self.warmWorker = WarmWorkerLease(worker: worker, engine: engine, model: model, followingFolder: folder)
-                self.followStartTask = nil
+                return WarmWorkerLease(worker: worker, engine: engine, token: model, followingFolder: folder)
             } catch {
-                if self.followGeneration == generation {
-                    self.following = nil; self.followStartTask = nil
-                }
+                return nil
             }
         }
     }
@@ -215,7 +163,7 @@ import Darwin
         automaticPending.remove(path); explicitRetries.remove(path)
         let child = active?.path == path ? task : nil
         child?.cancel()
-        if following?.path == path || warmWorker?.followingFolder?.path == path {
+        if following?.path == path || warmCoordinator.activeLease?.followingFolder.path == path {
             preemptFollower()
         }
         let metadata = preparing?.folder.path == path ? preparing?.work : nil
@@ -223,6 +171,7 @@ import Darwin
         let willWrite = fixtureOnStopMetadataWillWrite
         #endif
         let stopTask = Task {
+            await waitForWorkerTeardown()
             _ = try? await metadata?.value
             await child?.value
             pending.removeAll { $0.folder.path == path }; prepared.remove(path)
@@ -254,9 +203,10 @@ import Darwin
         automaticPending.remove(path); explicitRetries.remove(path)
         let child = active?.path == path ? task : nil
         child?.cancel()
-        if following?.path == path || warmWorker?.followingFolder?.path == path {
-            await terminateWarmWorkerAndWait()
+        if following?.path == path || warmCoordinator.activeLease?.followingFolder.path == path {
+            preemptFollower()
         }
+        await waitForWorkerTeardown()
         let metadata = preparing?.folder.path == path ? preparing?.work : nil
         let stopping = stoppingTasks[path]
         _ = try? await metadata?.value
@@ -285,12 +235,14 @@ import Darwin
         pending.removeAll(); prepared.removeAll()
         automaticPending.removeAll(); explicitRetries.removeAll()
         await task?.value
+        await waitForWorkerTeardown()
         #if DEBUG
         if !stoppingTasks.isEmpty { fixtureOnBarrierAwaitingStops?("shutdown") }
         #endif
         while let next = stoppingTasks.values.first {
             await next.value
         }
+        await waitForWorkerTeardown()
     }
     #if DEBUG
     nonisolated enum AttemptOutcome: Equatable, Sendable { case completed, lockContended, alreadySettled, failed, cancelled }
@@ -322,6 +274,7 @@ import Darwin
         while let next = stoppingTasks.values.first {
             await next.value
         }
+        await waitForWorkerTeardown()
     }
     func resumeAfterMove() { guard !closing else { return }; paused = false; known = Set(active.map { [$0.path] } ?? []) }
     func consider(_ meetings: [LibraryMeeting], automatic: Bool) {
@@ -357,10 +310,10 @@ import Darwin
         if mode == .transcribeWhileRecording {
             if task == nil, pending.isEmpty, let recording = recordingMeeting {
                 ensureFollowing(folder: recording.folder)
-            } else if recordingMeeting == nil, task == nil, pending.isEmpty, warmWorker?.followingFolder != nil {
+            } else if recordingMeeting == nil, task == nil, pending.isEmpty, warmCoordinator.activeLease != nil {
                 preemptFollower()
             }
-        } else if warmWorker != nil || followStartTask != nil {
+        } else if warmCoordinator.hasActiveOrStartingWorker {
             preemptFollower()
         }
     }
@@ -380,7 +333,7 @@ import Darwin
         if !automatic {
             userStoppedRevisions.removeValue(forKey:path)
             if retry || meeting.transcriptPaused { known.remove(path) }
-            if following?.path != path, warmWorker?.followingFolder?.path != path {
+            if following?.path != path, warmCoordinator.activeLease?.followingFolder.path != path {
                 preemptFollower()
             }
         } else if retry {
@@ -485,26 +438,17 @@ import Darwin
                     // with the desired engine, dispatch `transcribeMeeting` onto that same worker.
                     let handedOffWarm: WarmWorkerLease?
                     if !fixtureOverridesWorker,
-                       let lease = warmWorker,
-                       lease.followingFolder?.path == meeting.folder.path,
-                       lease.engine == desiredEngine,
-                       lease.worker.isAlive {
-                        warmWorker = nil
-                        following = nil
+                       let lease = warmCoordinator.claimForHandoff(folder: meeting.folder, desiredEngine: desiredEngine) {
                         handedOffWarm = lease
                     } else {
                         handedOffWarm = nil
                         await terminateWarmWorkerAndWait()
+                        try Task.checkCancellation()
                     }
                     struct Response: Decodable { let error: String?; let code: String? }
                     if let warm = handedOffWarm {
                         defer {
-                            let worker = warm.worker
-                            let model = warm.model
-                            Task.detached(priority: .utility) {
-                                worker.shutdown()
-                                withExtendedLifetime(model) {}
-                            }
+                            warmCoordinator.releaseHandedOff(warm, graceful: true)
                         }
                         activeModel = warm.engine
                         #if DEBUG
@@ -514,7 +458,7 @@ import Darwin
                         #endif
                         let reply = try await warm.worker.send(input, timeout: 24 * 60 * 60)
                         let response = try? JSONDecoder().decode(Response.self, from: reply.line)
-                        if let model = warm.model, reply.exited, response?.code == "invalid-model" {
+                        if let model = warm.token, reply.exited, response?.code == "invalid-model" {
                             await SpeechModelController.shared.invalidModel(generation: model.generation)
                             try Task.checkCancellation(); activeModel = "whistle"
                             let whistleWorker = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/cassini-whistle-worker")

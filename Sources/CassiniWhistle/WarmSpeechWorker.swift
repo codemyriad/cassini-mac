@@ -6,6 +6,16 @@ import Darwin
 /// (`follow`, `stopFollow`, `transcribeMeeting`, `shutdown`) with warm handoff and
 /// immediate preemption/termination.
 public final class WarmSpeechWorker: @unchecked Sendable {
+    // Internal test seam: production waits on the same independent exit group;
+    // tests can gate grace/escalation phases deterministically without wall-clock sleeps.
+    struct WatchdogClock: Sendable {
+        enum Phase: Sendable, Hashable { case eofGrace, shutdownGrace, escalation }
+        var wait: @Sendable (Phase, DispatchGroup, TimeInterval) -> Bool
+        static let live = WatchdogClock(wait: { _, exited, delay in
+            exited.wait(timeout: .now() + delay) == .timedOut
+        })
+    }
+
     public enum Failure: Error {
         case timedOut
         case closed
@@ -23,14 +33,18 @@ public final class WarmSpeechWorker: @unchecked Sendable {
     private let stdinPipe: Pipe
     private let stdoutPipe: Pipe
     private let stderrPipe: Pipe
+    private let clock: WatchdogClock
     private let stateLock = NSLock()
-    private let exitedSemaphore = DispatchSemaphore(value: 0)
+    private let exitGroup = DispatchGroup()
     private let stderrGroup = DispatchGroup()
+    private let stdoutReadGroup = DispatchGroup()
     private var stderrBuffer = Data()
     private var stdoutPending = Data()
     private var closed = false
     private var terminated = false
     private var stdinClosed = false
+    private var escalationStarted = false
+    private var pipesClosed = false
 
     public var processIdentifier: Int32 { process.processIdentifier }
     public var isAlive: Bool {
@@ -39,7 +53,11 @@ public final class WarmSpeechWorker: @unchecked Sendable {
         return !closed && !terminated && process.isRunning
     }
 
-    public init(executable: URL, arguments: [String], environment: [String: String]) throws {
+    public convenience init(executable: URL, arguments: [String], environment: [String: String]) throws {
+        try self.init(executable: executable, arguments: arguments, environment: environment, clock: .live)
+    }
+
+    init(executable: URL, arguments: [String], environment: [String: String], clock: WatchdogClock) throws {
         let proc = Process()
         proc.executableURL = executable
         proc.arguments = arguments
@@ -55,15 +73,25 @@ public final class WarmSpeechWorker: @unchecked Sendable {
         self.stdinPipe = inPipe
         self.stdoutPipe = outPipe
         self.stderrPipe = errPipe
+        self.clock = clock
 
-        let exited = self.exitedSemaphore
-        proc.terminationHandler = { _ in exited.signal() }
-        try proc.run()
+        let exitGroup = self.exitGroup
+        exitGroup.enter()
+        proc.terminationHandler = { _ in exitGroup.leave() }
+        do {
+            try proc.run()
+        } catch {
+            proc.terminationHandler = nil
+            exitGroup.leave()
+            throw error
+        }
 
         // Drain stderr continuously so the child can never block on a full stderr pipe.
+        let stderrGroup = self.stderrGroup
         stderrGroup.enter()
         let errFD = errPipe.fileHandleForReading.fileDescriptor
         Thread.detachNewThread { [weak self] in
+            defer { stderrGroup.leave() }
             var bytes = [UInt8](repeating: 0, count: 8192)
             var captured = Data()
             let cap = 262_144
@@ -82,7 +110,6 @@ public final class WarmSpeechWorker: @unchecked Sendable {
                 self.stateLock.lock()
                 self.stderrBuffer = captured
                 self.stateLock.unlock()
-                self.stderrGroup.leave()
             }
         }
     }
@@ -92,7 +119,8 @@ public final class WarmSpeechWorker: @unchecked Sendable {
     }
 
     /// Sends one JSON-line request and awaits one JSON-line reply.
-    /// Cancelling the enclosing Swift Task immediately terminates the child process.
+    /// Cancelling the enclosing Swift Task signals termination without blocking the
+    /// caller's thread, then awaits process exit and pipe cleanup off-thread.
     public func send(_ requestJSON: Data, timeout: TimeInterval = 24 * 60 * 60) async throws -> Reply {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -106,7 +134,7 @@ public final class WarmSpeechWorker: @unchecked Sendable {
                 }
             }
         } onCancel: {
-            self.terminateImmediately()
+            self.requestTermination()
         }
     }
 
@@ -115,7 +143,10 @@ public final class WarmSpeechWorker: @unchecked Sendable {
         let wasTerminatedBeforeStart = terminated
         let isClosed = closed
         stateLock.unlock()
-        if wasTerminatedBeforeStart { throw CancellationError() }
+        if wasTerminatedBeforeStart {
+            finishTeardownBlocking()
+            throw CancellationError()
+        }
         if isClosed { throw Failure.closed }
 
         var payload = requestJSON
@@ -130,19 +161,39 @@ public final class WarmSpeechWorker: @unchecked Sendable {
             writeError = EIO
         }
 
-        let line = try readLine(timeout: timeout)
-        let running = process.isRunning
-        if !running {
-            process.waitUntilExit()
-            stderrGroup.wait()
+        let line: Data?
+        do {
+            line = try readLine(timeout: timeout)
+        } catch is CancellationError {
+            finishTeardownBlocking()
+            throw CancellationError()
+        } catch Failure.timedOut {
+            terminateImmediately()
+            throw Failure.timedOut
         }
-        stateLock.lock()
-        let wasTerminated = terminated
-        let err = stderrBuffer
-        stateLock.unlock()
 
-        if wasTerminated { throw CancellationError() }
+        stateLock.lock()
+        let wasTerminatedAfterRead = terminated
+        stateLock.unlock()
+        if wasTerminatedAfterRead {
+            finishTeardownBlocking()
+            throw CancellationError()
+        }
+
         if let line {
+            let running = process.isRunning
+            if !running {
+                finishTeardownBlocking()
+            }
+            stateLock.lock()
+            let wasTerminated = terminated
+            let err = stderrBuffer
+            stateLock.unlock()
+
+            if wasTerminated {
+                finishTeardownBlocking()
+                throw CancellationError()
+            }
             return Reply(
                 line: line,
                 stderr: err,
@@ -150,13 +201,27 @@ public final class WarmSpeechWorker: @unchecked Sendable {
                 status: running ? 0 : process.terminationStatus
             )
         }
+
         if let writeError {
             throw Failure.writeFailed(writeError)
         }
+
+        // EOF on stdout can arrive before Foundation observes process termination,
+        // or if the child closed stdout while remaining alive. Never read
+        // `terminationStatus` until exit is confirmed off-thread.
+        awaitExitAfterEOF()
+        stateLock.lock()
+        let wasTerminatedAfterEOF = terminated
+        let err = stderrBuffer
+        stateLock.unlock()
+        if wasTerminatedAfterEOF { throw CancellationError() }
         return Reply(line: Data(), stderr: err, exited: true, status: process.terminationStatus)
     }
 
     private func readLine(timeout: TimeInterval) throws -> Data? {
+        stdoutReadGroup.enter()
+        defer { stdoutReadGroup.leave() }
+
         let fd = stdoutPipe.fileHandleForReading.fileDescriptor
         let deadline = Date().addingTimeInterval(timeout)
         let maxLineBytes = 4_194_304
@@ -175,7 +240,6 @@ public final class WarmSpeechWorker: @unchecked Sendable {
 
             let remaining = deadline.timeIntervalSinceNow
             if remaining <= 0 {
-                terminateImmediately()
                 throw Failure.timedOut
             }
             let pollMs = Int32(min(100, max(1, Int(remaining * 1000))))
@@ -206,58 +270,117 @@ public final class WarmSpeechWorker: @unchecked Sendable {
         }
     }
 
-    /// Cleanly closes stdin so the worker finishes its loop and exits 0; escalates if it hangs.
-    public func shutdown() {
+    /// Signals termination without waiting for process exit or pipe drains.
+    /// Safe to invoke synchronously from task cancellation handlers on the main actor.
+    private func requestTermination() {
         stateLock.lock()
-        if closed { stateLock.unlock(); return }
-        closed = true
-        let closeIn = !stdinClosed
-        stdinClosed = true
-        stateLock.unlock()
-
-        if closeIn {
-            try? stdinPipe.fileHandleForWriting.close()
-        }
-        if process.isRunning {
-            if exitedSemaphore.wait(timeout: .now() + 2.0) == .timedOut, process.isRunning {
-                process.terminate()
-                if exitedSemaphore.wait(timeout: .now() + 0.3) == .timedOut, process.isRunning {
-                    kill(process.processIdentifier, SIGKILL)
-                }
-            }
-        }
-        process.waitUntilExit()
-        process.terminationHandler = nil
-        try? stdoutPipe.fileHandleForReading.close()
-        stderrGroup.wait()
-        try? stderrPipe.fileHandleForReading.close()
-    }
-
-    /// Immediately preempts and terminates the child (`SIGTERM` -> 300 ms -> `SIGKILL`).
-    public func terminateImmediately() {
-        stateLock.lock()
-        let alreadyClosed = closed && terminated
         closed = true
         terminated = true
         let closeIn = !stdinClosed
         stdinClosed = true
+        let startEscalation = !escalationStarted
+        escalationStarted = true
         stateLock.unlock()
-        if alreadyClosed { return }
+
+        if closeIn {
+            try? stdinPipe.fileHandleForWriting.close()
+        }
+        if startEscalation {
+            if process.isRunning {
+                process.terminate()
+            }
+            let proc = self.process
+            let exitGroup = self.exitGroup
+            let clock = self.clock
+            Thread.detachNewThread {
+                if clock.wait(.escalation, exitGroup, 0.3), proc.isRunning {
+                    kill(proc.processIdentifier, SIGKILL)
+                }
+            }
+        }
+    }
+
+    private func awaitExitAfterEOF() {
+        stateLock.lock()
+        closed = true
+        let closeIn = !stdinClosed
+        stdinClosed = true
+        stateLock.unlock()
 
         if closeIn {
             try? stdinPipe.fileHandleForWriting.close()
         }
         if process.isRunning {
-            process.terminate()
-            let pid = process.processIdentifier
-            if exitedSemaphore.wait(timeout: .now() + 0.3) == .timedOut, process.isRunning {
-                kill(pid, SIGKILL)
+            if clock.wait(.eofGrace, exitGroup, 2.0), process.isRunning {
+                stateLock.lock()
+                let shouldEscalate = !escalationStarted
+                escalationStarted = true
+                stateLock.unlock()
+                if shouldEscalate {
+                    process.terminate()
+                    if clock.wait(.escalation, exitGroup, 0.3), process.isRunning {
+                        kill(process.processIdentifier, SIGKILL)
+                    }
+                }
             }
         }
+        finishTeardownBlocking()
+    }
+
+    private func finishTeardownBlocking() {
         process.waitUntilExit()
-        process.terminationHandler = nil
-        try? stdoutPipe.fileHandleForReading.close()
         stderrGroup.wait()
-        try? stderrPipe.fileHandleForReading.close()
+        stdoutReadGroup.wait()
+        stateLock.lock()
+        closed = true
+        let closeIn = !stdinClosed
+        stdinClosed = true
+        let closePipes = !pipesClosed
+        pipesClosed = true
+        stateLock.unlock()
+
+        if closeIn {
+            try? stdinPipe.fileHandleForWriting.close()
+        }
+        if closePipes {
+            process.terminationHandler = nil
+            try? stdoutPipe.fileHandleForReading.close()
+            try? stderrPipe.fileHandleForReading.close()
+        }
+    }
+
+    /// Cleanly closes stdin so the worker finishes its loop and exits 0; escalates if it hangs.
+    public func shutdown() {
+        stateLock.lock()
+        let alreadyClosed = closed
+        closed = true
+        let closeIn = !stdinClosed
+        stdinClosed = true
+        stateLock.unlock()
+
+        if closeIn {
+            try? stdinPipe.fileHandleForWriting.close()
+        }
+        if !alreadyClosed, process.isRunning {
+            if clock.wait(.shutdownGrace, exitGroup, 2.0), process.isRunning {
+                stateLock.lock()
+                let shouldEscalate = !escalationStarted
+                escalationStarted = true
+                stateLock.unlock()
+                if shouldEscalate {
+                    process.terminate()
+                    if clock.wait(.escalation, exitGroup, 0.3), process.isRunning {
+                        kill(process.processIdentifier, SIGKILL)
+                    }
+                }
+            }
+        }
+        finishTeardownBlocking()
+    }
+
+    /// Immediately preempts and terminates the child (`SIGTERM` -> 300 ms -> `SIGKILL`).
+    public func terminateImmediately() {
+        requestTermination()
+        finishTeardownBlocking()
     }
 }
