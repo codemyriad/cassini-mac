@@ -1,0 +1,1342 @@
+{
+  "schema": "cassini.head-start.desktop-segment-cache-vectors.v1",
+  "cacheFormat": "cassini.recognition-cache.v2",
+  "keyPreimageRule": "cassini.recognition-cache.v2\\n<modelIdentity>\\n<pcmF32Sha256>\\n<sampleCount>",
+  "constants": {
+    "sampleRateHz": 16000,
+    "maxCacheFileBytes": 16777216,
+    "maxCacheSegments": 100000,
+    "maxCachedWords": 10000,
+    "maxRelativeWordMs": 86400000
+  },
+  "cases": [
+    {
+      "id": "parakeet-hit-zero-offset",
+      "description": "Exact Parakeet v2 cache hit at offsetMs=0 with no clamping or presence drops.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86": {
+            "sampleCount": 16000,
+            "text": "hello world",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 120,
+                "endMs": 480,
+                "text": "hello"
+              },
+              {
+                "startMs": 520,
+                "endMs": 960,
+                "text": "world"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 16000,
+          "endSample": 32000,
+          "reason": "vad"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86",
+        "cacheHit": true,
+        "rejectReason": null,
+        "finalized": {
+          "baseMs": 1000,
+          "clampEndMs": 2000,
+          "offsetsAssumedZero": false,
+          "language": "en",
+          "text": "hello world",
+          "words": [
+            {
+              "startMs": 1120,
+              "endMs": 1480,
+              "text": "hello"
+            },
+            {
+              "startMs": 1520,
+              "endMs": 1960,
+              "text": "world"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "whistle-hit-nonzero-offset",
+      "description": "Same pure segment PCM reused by Whistle at non-zero fractional offsetMs=1234.5 (D55).",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "whistle@b6e02f048568ac5d01a2042556c658061e699acbc0aa2a1439f52f3d461dffeb",
+        "segments": {
+          "d1c19738b631022bbb1796512e2407d9bbea5f404204d1f23657e4c2a1635893": {
+            "sampleCount": 16000,
+            "text": "hello world",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 120,
+                "endMs": 480,
+                "text": "hello"
+              },
+              {
+                "startMs": 520,
+                "endMs": 960,
+                "text": "world"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "whistle@b6e02f048568ac5d01a2042556c658061e699acbc0aa2a1439f52f3d461dffeb",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 8000,
+          "endSample": 24000,
+          "reason": "vad"
+        },
+        "offsetMs": 1234.5,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "d1c19738b631022bbb1796512e2407d9bbea5f404204d1f23657e4c2a1635893",
+        "cacheHit": true,
+        "rejectReason": null,
+        "finalized": {
+          "baseMs": 1734,
+          "clampEndMs": 2734,
+          "offsetsAssumedZero": false,
+          "language": "en",
+          "text": "hello world",
+          "words": [
+            {
+              "startMs": 1854,
+              "endMs": 2214,
+              "text": "hello"
+            },
+            {
+              "startMs": 2254,
+              "endMs": 2694,
+              "text": "world"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "parakeet-hit-unknown-offset-assumed-zero",
+      "description": "Unknown offsetMs=null reuses pure cache entry and flags offsetsAssumedZero (D55 M9).",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86": {
+            "sampleCount": 16000,
+            "text": "hello world",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 120,
+                "endMs": 480,
+                "text": "hello"
+              },
+              {
+                "startMs": 520,
+                "endMs": 960,
+                "text": "world"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 8000,
+          "endSample": 24000,
+          "reason": "vad"
+        },
+        "offsetMs": null,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86",
+        "cacheHit": true,
+        "rejectReason": null,
+        "finalized": {
+          "baseMs": 500,
+          "clampEndMs": 1500,
+          "offsetsAssumedZero": true,
+          "language": "en",
+          "text": "hello world",
+          "words": [
+            {
+              "startMs": 620,
+              "endMs": 980,
+              "text": "hello"
+            },
+            {
+              "startMs": 1020,
+              "endMs": 1460,
+              "text": "world"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hit-g11-audio-end-clamp",
+      "description": "Unclamped cached relativeWords are clamped to min(segmentEndMs, audioEndMs) at finalization (G11).",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86": {
+            "sampleCount": 16000,
+            "text": "hello trailing",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 100,
+                "endMs": 450,
+                "text": "hello"
+              },
+              {
+                "startMs": 820,
+                "endMs": 1250,
+                "text": "trailing"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 16000,
+          "endSample": 32000,
+          "reason": "vad"
+        },
+        "offsetMs": 500,
+        "audioEndMs": 2350,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86",
+        "cacheHit": true,
+        "rejectReason": null,
+        "finalized": {
+          "baseMs": 1500,
+          "clampEndMs": 2350,
+          "offsetsAssumedZero": false,
+          "language": "en",
+          "text": "hello trailing",
+          "words": [
+            {
+              "startMs": 1600,
+              "endMs": 1950,
+              "text": "hello"
+            },
+            {
+              "startMs": 2320,
+              "endMs": 2350,
+              "text": "trailing"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hit-d63-session-presence-midpoint",
+      "description": "D63 #3 midpoint filter keeps mid16k==pStart, drops mid16k==pEnd, and rebuilds text post-Stop.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86": {
+            "sampleCount": 16000,
+            "text": "alpha beta gamma",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 100,
+                "endMs": 300,
+                "text": "alpha"
+              },
+              {
+                "startMs": 400,
+                "endMs": 600,
+                "text": "beta"
+              },
+              {
+                "startMs": 700,
+                "endMs": 900,
+                "text": "gamma"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 16000,
+          "endSample": 32000,
+          "reason": "vad"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": [
+          [
+            19200,
+            24000
+          ],
+          [
+            26000,
+            32000
+          ]
+        ],
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86",
+        "cacheHit": true,
+        "rejectReason": null,
+        "finalized": {
+          "baseMs": 1000,
+          "clampEndMs": 2000,
+          "offsetsAssumedZero": false,
+          "language": "en",
+          "text": "alpha gamma",
+          "words": [
+            {
+              "startMs": 1100,
+              "endMs": 1300,
+              "text": "alpha"
+            },
+            {
+              "startMs": 1700,
+              "endMs": 1900,
+              "text": "gamma"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hit-ownership-windows-presence-drop",
+      "description": "ownershipWindows switch restricts sessionPresence so unowned words drop at finalization while cache stays pure.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86": {
+            "sampleCount": 16000,
+            "text": "alpha beta gamma",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 100,
+                "endMs": 300,
+                "text": "alpha"
+              },
+              {
+                "startMs": 400,
+                "endMs": 600,
+                "text": "beta"
+              },
+              {
+                "startMs": 700,
+                "endMs": 900,
+                "text": "gamma"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 16000,
+          "endSample": 32000,
+          "reason": "vad"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": [
+          [
+            16000,
+            24000
+          ]
+        ],
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86",
+        "cacheHit": true,
+        "rejectReason": null,
+        "finalized": {
+          "baseMs": 1000,
+          "clampEndMs": 2000,
+          "offsetsAssumedZero": false,
+          "language": "en",
+          "text": "alpha",
+          "words": [
+            {
+              "startMs": 1100,
+              "endMs": 1300,
+              "text": "alpha"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "miss-ownership-windows-masked-pcm",
+      "description": "Zero-masking unowned PCM alters pcmF32Sha256 and forces a clean cache miss.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86": {
+            "sampleCount": 16000,
+            "text": "alpha beta gamma",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 100,
+                "endMs": 300,
+                "text": "alpha"
+              },
+              {
+                "startMs": 400,
+                "endMs": 600,
+                "text": "beta"
+              },
+              {
+                "startMs": 700,
+                "endMs": 900,
+                "text": "gamma"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 4000
+            },
+            {
+              "values": [
+                0.0
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "2d78b2e7a7f0db072cd8a089ec5813117354c23e0c291489aa0b59efbc0e5a50",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 16000,
+          "endSample": 32000,
+          "reason": "vad"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "cc3ef589a7473a254168f05b3df117af7425a9c0adbb12d53fa38df8a1b411a7",
+        "cacheHit": false,
+        "rejectReason": "cacheMiss",
+        "finalized": null
+      }
+    },
+    {
+      "id": "hit-r71-no-vad-window-energy-and-seam",
+      "description": "R71 noVadWindow hits pure cache; energetic gate drops silent hallucination and merge_seam deduplicates overlap.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "c5b7edb72bac28ded8d298d2ab7345e2b0f56c12526dd787e13e08ebcefa6602": {
+            "sampleCount": 16000,
+            "text": "agreed today uh",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 110,
+                "endMs": 360,
+                "text": "agreed"
+              },
+              {
+                "startMs": 420,
+                "endMs": 680,
+                "text": "today"
+              },
+              {
+                "startMs": 920,
+                "endMs": 980,
+                "text": "uh"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 6400
+            },
+            {
+              "values": [
+                0.0
+              ],
+              "repeat": 3200
+            }
+          ]
+        },
+        "pcmF32Sha256": "fae1a30c02826d68cfe6057574692879a9f26a06e8a515baa2edbaafa7ce7f96",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 232000,
+          "endSample": 248000,
+          "reason": "noVadWindow"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": {
+          "previousWords": [
+            {
+              "startMs": 14100,
+              "endMs": 14400,
+              "text": "we"
+            },
+            {
+              "startMs": 14600,
+              "endMs": 14850,
+              "text": "agreed"
+            }
+          ],
+          "overlapMs": 500
+        }
+      },
+      "expected": {
+        "derivedKey": "c5b7edb72bac28ded8d298d2ab7345e2b0f56c12526dd787e13e08ebcefa6602",
+        "cacheHit": true,
+        "rejectReason": null,
+        "finalized": {
+          "baseMs": 14500,
+          "clampEndMs": 15500,
+          "offsetsAssumedZero": false,
+          "language": "en",
+          "text": "we agreed today",
+          "words": [
+            {
+              "startMs": 14100,
+              "endMs": 14400,
+              "text": "we"
+            },
+            {
+              "startMs": 14600,
+              "endMs": 14850,
+              "text": "agreed"
+            },
+            {
+              "startMs": 14920,
+              "endMs": 15180,
+              "text": "today"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "reject-model-tag-changed-header",
+      "description": "Cache file written for Whistle is rejected when queried for Parakeet v2.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "whistle@b6e02f048568ac5d01a2042556c658061e699acbc0aa2a1439f52f3d461dffeb",
+        "segments": {
+          "d1c19738b631022bbb1796512e2407d9bbea5f404204d1f23657e4c2a1635893": {
+            "sampleCount": 16000,
+            "text": "hello world",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 120,
+                "endMs": 480,
+                "text": "hello"
+              },
+              {
+                "startMs": 520,
+                "endMs": 960,
+                "text": "world"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 0,
+          "endSample": 16000,
+          "reason": "vad"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86",
+        "cacheHit": false,
+        "rejectReason": "modelMismatch",
+        "finalized": null
+      }
+    },
+    {
+      "id": "reject-model-tag-changed-key",
+      "description": "Entry keyed under Whistle modelIdentity misses when queried for Parakeet v2.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "d1c19738b631022bbb1796512e2407d9bbea5f404204d1f23657e4c2a1635893": {
+            "sampleCount": 16000,
+            "text": "hello world",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 120,
+                "endMs": 480,
+                "text": "hello"
+              },
+              {
+                "startMs": 520,
+                "endMs": 960,
+                "text": "world"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 0,
+          "endSample": 16000,
+          "reason": "vad"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86",
+        "cacheHit": false,
+        "rejectReason": "cacheMiss",
+        "finalized": null
+      }
+    },
+    {
+      "id": "reject-clock-warp-100ppm",
+      "description": "Altered PCM bytes (+100 ppm linear clock warp) change pcmF32Sha256 and force a cache miss.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "5c15c02d82024f052c4967631b4b6e968807d1e78bbea00e04452eadd7f3c908": {
+            "sampleCount": 64,
+            "text": "ok",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 0,
+                "endMs": 4,
+                "text": "ok"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-base64",
+          "base64": "AAAAAI4SMD0rc609V7L9PXExIz5BrUI+h1xcPml7bz4ZeHs+Mvd/PmvWfD6eLXI+GE5gPiTARz4APyk+SrMFPiZYvD0ZW089rcb+OyacEL0iYZ69Z7zvvb/5HL4/aD2+YzJYvuWLbL6Y2Xm+DLZ/vpH0fb6KonS+DQdkvr6gTL4PIi++6WsMvgQOy725b269YKV+vLgE4jwWKI89SIvhPUObFj5n9Dc+w9JTPtdhaT49/Xc+kzV/Ps3Tfj7W2nY+e4dnPppOUT6q2TQ+qwETPmSR2T1vpIY9S9O+PAqaoryXl3+9gSLTvZEXEL4TUzK+vT5Pvgf+Zb5943W+6HV+vg=="
+        },
+        "pcmF32Sha256": "0c9345a756a03d33bd4eb2849edb61543a93644b0b20c98821ed4b9618c99ab4",
+        "sampleCount": 64,
+        "segment": {
+          "startSample": 0,
+          "endSample": 64,
+          "reason": "vad"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "2c630f1ca97636253fcec8603cad3e409d6c63b7471b22568ba7640febce010e",
+        "cacheHit": false,
+        "rejectReason": "cacheMiss",
+        "finalized": null
+      }
+    },
+    {
+      "id": "reject-wrong-sample-count-entry",
+      "description": "Corrupt entry whose sampleCount disagrees with the queried sampleCount is rejected.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86": {
+            "sampleCount": 15999,
+            "text": "hello world",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 120,
+                "endMs": 480,
+                "text": "hello"
+              },
+              {
+                "startMs": 520,
+                "endMs": 960,
+                "text": "world"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 0,
+          "endSample": 16000,
+          "reason": "vad"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86",
+        "cacheHit": false,
+        "rejectReason": "sampleCountMismatch",
+        "finalized": null
+      }
+    },
+    {
+      "id": "reject-wrong-sample-count-key",
+      "description": "Querying with a different sampleCount derives a different key and misses cleanly.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86": {
+            "sampleCount": 16000,
+            "text": "hello world",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 120,
+                "endMs": 480,
+                "text": "hello"
+              },
+              {
+                "startMs": 520,
+                "endMs": 960,
+                "text": "world"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 15999,
+        "segment": {
+          "startSample": 0,
+          "endSample": 15999,
+          "reason": "vad"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "6c33b3f7d2be11863a79b10a3e7a8799d175db1764a85ba011dcfa10aa953fe6",
+        "cacheHit": false,
+        "rejectReason": "cacheMiss",
+        "finalized": null
+      }
+    },
+    {
+      "id": "reject-legacy-v1-format",
+      "description": "Legacy cassini.recognition-cache.v1 cache is ignored cleanly per D51.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v1",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86": {
+            "sampleCount": 16000,
+            "text": "hello world",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 120,
+                "endMs": 480,
+                "text": "hello"
+              },
+              {
+                "startMs": 520,
+                "endMs": 960,
+                "text": "world"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 0,
+          "endSample": 16000,
+          "reason": "vad"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86",
+        "cacheHit": false,
+        "rejectReason": "unsupportedFormat",
+        "finalized": null
+      }
+    },
+    {
+      "id": "reject-malformed-negative-word-start",
+      "description": "Negative word startMs is rejected.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86": {
+            "sampleCount": 16000,
+            "text": "hello world",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": -10,
+                "endMs": 200,
+                "text": "hello"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 0,
+          "endSample": 16000,
+          "reason": "vad"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86",
+        "cacheHit": false,
+        "rejectReason": "invalidEntry",
+        "finalized": null
+      }
+    },
+    {
+      "id": "reject-malformed-inverted-word-bounds",
+      "description": "Inverted word timing (endMs < startMs) is rejected.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86": {
+            "sampleCount": 16000,
+            "text": "hello world",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 500,
+                "endMs": 400,
+                "text": "hello"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 0,
+          "endSample": 16000,
+          "reason": "vad"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86",
+        "cacheHit": false,
+        "rejectReason": "invalidEntry",
+        "finalized": null
+      }
+    },
+    {
+      "id": "reject-malformed-float-word-timestamp",
+      "description": "Non-integer float word startMs is rejected.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86": {
+            "sampleCount": 16000,
+            "text": "hello world",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 120.5,
+                "endMs": 480,
+                "text": "hello"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 0,
+          "endSample": 16000,
+          "reason": "vad"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86",
+        "cacheHit": false,
+        "rejectReason": "invalidEntry",
+        "finalized": null
+      }
+    },
+    {
+      "id": "reject-malformed-empty-word-text",
+      "description": "Word with empty text is rejected.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86": {
+            "sampleCount": 16000,
+            "text": "hello world",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 120,
+                "endMs": 480,
+                "text": ""
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 0,
+          "endSample": 16000,
+          "reason": "vad"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86",
+        "cacheHit": false,
+        "rejectReason": "invalidEntry",
+        "finalized": null
+      }
+    },
+    {
+      "id": "reject-malformed-overflow-word-end",
+      "description": "Absurd word endMs above 24 h ceiling is rejected.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86": {
+            "sampleCount": 16000,
+            "text": "hello world",
+            "language": "en",
+            "relativeWords": [
+              {
+                "startMs": 120,
+                "endMs": 86400001,
+                "text": "hello"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 0,
+          "endSample": 16000,
+          "reason": "vad"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86",
+        "cacheHit": false,
+        "rejectReason": "invalidEntry",
+        "finalized": null
+      }
+    },
+    {
+      "id": "reject-malformed-empty-language",
+      "description": "Entry with empty language string is rejected.",
+      "cacheDocument": {
+        "format": "cassini.recognition-cache.v2",
+        "model": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "segments": {
+          "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86": {
+            "sampleCount": 16000,
+            "text": "hello world",
+            "language": "",
+            "relativeWords": [
+              {
+                "startMs": 120,
+                "endMs": 480,
+                "text": "hello"
+              },
+              {
+                "startMs": 520,
+                "endMs": 960,
+                "text": "world"
+              }
+            ]
+          }
+        }
+      },
+      "query": {
+        "modelIdentity": "parakeet-ultra-0.6b-int8-v2@50c15b94ea9cb1c2f8dbcdcbc0f15b450169154deeb206923cb5388f60892366",
+        "pcmSpec": {
+          "encoding": "f32le-patterns",
+          "patterns": [
+            {
+              "values": [
+                0.125,
+                -0.125
+              ],
+              "repeat": 8000
+            }
+          ]
+        },
+        "pcmF32Sha256": "e34ed185469d983b06975a4d08411abf58af1316742b530dc862e676005fd5f3",
+        "sampleCount": 16000,
+        "segment": {
+          "startSample": 0,
+          "endSample": 16000,
+          "reason": "vad"
+        },
+        "offsetMs": 0,
+        "audioEndMs": null,
+        "sessionPresence": null,
+        "r71Fallback": null
+      },
+      "expected": {
+        "derivedKey": "1ea53e0d8cd262fc81eea277563ccddd4923c664189e30c7d4a7ce994b16fb86",
+        "cacheHit": false,
+        "rejectReason": "invalidEntry",
+        "finalized": null
+      }
+    }
+  ]
+}

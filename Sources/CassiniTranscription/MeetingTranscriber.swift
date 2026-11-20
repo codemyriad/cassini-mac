@@ -34,11 +34,13 @@ public enum MeetingTranscriber {
         case missing
     }
     public static func setStatus(directory: URL, id: UUID, status: String) throws {
+        var clearCache = false
         try MeetingMetadataWriter(directory: directory, id: id).transaction { metadata in
             var transcript = metadata["transcript"] as! [String:Any]
             if status == "queued", (transcript["status"] as? String) == "failed" {
                 // Retry is a fresh recognition, not a resume of failed output.
                 transcript["reference"] = NSNull()
+                clearCache = true
             }
             // D67.2: a failed write-down references no words. Its partial transcript.json stays in the
             // folder, unreferenced, so no reader (or a published copy) shows partial words as stored.
@@ -48,10 +50,12 @@ public enum MeetingTranscriber {
             metadata["etaMinutes"] = NSNull()
             metadata["error"] = status == "failed" ? ["id":"transcribe-failed", "action":"Try again"] : NSNull()
         }
+        if clearCache { SegmentRecognitionCache.Store.remove(in: directory) }
     }
     /// Prepares a pending queue entry without clobbering a transcript completed or paused elsewhere.
     public static func queueIfEligible(directory: URL, id: UUID, automatic: Bool, explicitRetry: Bool) throws -> Bool {
         var eligible = false
+        var clearCache = false
         try MeetingMetadataWriter(directory: directory, id: id).transaction(skippingUnchanged: true) { metadata in
             guard var transcript = metadata["transcript"] as? [String:Any],
                   let status = transcript["status"] as? String else { return }
@@ -62,9 +66,11 @@ public enum MeetingTranscriber {
             }
             if status == "done" {
                 guard explicitRetry, !automatic else { return }
+                clearCache = true
             } else if status == "failed" {
                 guard explicitRetry, !automatic else { return }
                 transcript["reference"] = NSNull()
+                clearCache = true
             } else if status == "none" {
                 if automatic && isPaused { return }
             } else {
@@ -77,6 +83,7 @@ public enum MeetingTranscriber {
             metadata["error"] = NSNull()
             eligible = true
         }
+        if clearCache { SegmentRecognitionCache.Store.remove(in: directory) }
         return eligible
     }
     /// Revalidates eligibility under `.transcription.lock` before spawning a worker.
@@ -216,12 +223,20 @@ public enum MeetingTranscriber {
             return .init(text:word.word,startMs:startMs + from,endMs:startMs + min(max(b,from),lengthMs))
         }
     }
-    /// Called synchronously after each committed transcript sidecar, before the next publication.
-    public static func run(directory inputDirectory: URL, engine: WhistleEngine, detector: SpeechDetector, me: String = "Me", others: String = "The others", uiLanguage: CassiniLanguage = .system, sidecarWritten: () -> Void = {}) throws {
-        try run(directory:inputDirectory,detector:detector,model:"whistle",initialETA:0.15,me:me,others:others,uiLanguage:uiLanguage,sidecarWritten:sidecarWritten,recognize:engine.transcribe)
+    static func clamped(_ words: [SegmentRecognitionCache.RelativeWord], startMs: Int64, lengthMs: Int64) -> [RecognitionFallback.Word] {
+        words.map { word in
+            let from = min(max(0, word.startMs), lengthMs)
+            return .init(text: word.text, startMs: startMs + from, endMs: startMs + min(max(word.endMs, from), lengthMs))
+        }
     }
-    public static func run(directory inputDirectory: URL, detector: SpeechDetector, model: String,
+    /// Called synchronously after each committed transcript sidecar, before the next publication.
+    public static func run(directory inputDirectory: URL, engine: WhistleEngine, detector: SpeechDetector, me: String = "Me", others: String = "The others", uiLanguage: CassiniLanguage = .system, precomputedPrefixes: [String: PrecomputedTrackPrefix] = [:], sidecarWritten: () -> Void = {}) throws {
+        try run(directory:inputDirectory,detector:detector,model:"whistle",modelIdentity:WhistleAssets.modelIdentity,initialETA:0.15,me:me,others:others,uiLanguage:uiLanguage,precomputedPrefixes:precomputedPrefixes,sidecarWritten:sidecarWritten,recognize:engine.transcribe)
+    }
+    public static func run(directory inputDirectory: URL, detector: any SpeechProbabilityProvider, model: String,
+                           modelIdentity: String? = nil,
                            initialETA: Double, initialLanguage: String = "auto", me: String = "Me", others: String = "The others", uiLanguage: CassiniLanguage = .system,
+                           precomputedPrefixes: [String: PrecomputedTrackPrefix] = [:],
                            sidecarWritten: () -> Void = {},
                            recognize: ([Float]) throws -> WhistleTranscript) throws {
         var folderInfo = stat()
@@ -301,7 +316,12 @@ public enum MeetingTranscriber {
                     continue
                 }
                 if !received && recorded == nil { assumedZero = true }
-                let audio = try SegmentedAudio(url: url, detector: detector)
+                let canonicalTrackPath: String? = realpath(url.path, nil).map { ptr in
+                    defer { free(ptr) }
+                    return String(cString: ptr)
+                }
+                let prefix = canonicalTrackPath.flatMap { precomputedPrefixes[$0] } ?? precomputedPrefixes[url.path]
+                let audio = try SegmentedAudio(url: url, detector: detector, precomputedPrefix: prefix)
                 var segments = audio.segments
                 var kept = audio.sampleCount > 0 ? [0..<audio.sampleCount] : []
                 // D49/D33 seams and D52.2 presence: audio outside this source's ownership,
@@ -351,7 +371,9 @@ public enum MeetingTranscriber {
                 let ordered = progress.published(items,complete:status == "done")
                 struct Body: Encodable { let language: String; let items: [LibraryTranscriptItem] }
                 // D53.2: an unknown language is written as "und", never the "auto" request.
-                let data = try JSONEncoder().encode(Body(language: TranscriptLanguage.written(language), items: ordered))
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.sortedKeys]
+                let data = try encoder.encode(Body(language: TranscriptLanguage.written(language), items: ordered))
                 guard data.count <= 64 * 1024 * 1024 else { throw TranscriptionFailure.runtime("transcript size limit") }
                 if status == "done" || ordered.count >= retained { try atomicTranscript(data, directory: directory); wroteSidecar = true; sidecarWritten() }
                 let factor = processed > 0 ? elapsed / processed : initialETA
@@ -400,14 +422,27 @@ public enum MeetingTranscriber {
                     }
                 }
             }
+            let cacheModelIdentity = modelIdentity ?? (model == "whistle" ? WhistleAssets.modelIdentity : model)
+            var recognitionCache = SegmentRecognitionCache.Store.load(directory: directory, modelIdentity: cacheModelIdentity)
             try publish(status: "running")
             /// Recognise one range of a track; word times are clamped to its own audio (G11).
             func words(_ track: Track, _ audio: SegmentedAudio, _ segment: SpeechSegment) throws -> [RecognitionFallback.Word] {
                 let began = ProcessInfo.processInfo.systemUptime, samples = try audio.samples(segment)
-                let result = try recognize(samples)
-                if ["auto","und",""].contains(language) { language = result.language }
                 let start = track.ms(segment.startSample), length = Int64(samples.count) * 1000 / 16000
-                let out = try Self.clamped(result.words ?? [],startMs:start,lengthMs:length)
+                let out: [RecognitionFallback.Word]
+                if let hit = recognitionCache.lookup(samples: samples) {
+                    if ["auto","und",""].contains(language) { language = hit.entry.language }
+                    out = Self.clamped(hit.entry.relativeWords, startMs: start, lengthMs: length)
+                } else {
+                    let result = try recognize(samples)
+                    if ["auto","und",""].contains(language) { language = result.language }
+                    out = try Self.clamped(result.words ?? [], startMs: start, lengthMs: length)
+                    if let key = SegmentRecognitionCache.deriveKey(modelIdentity: cacheModelIdentity, samples: samples),
+                       let entry = SegmentRecognitionCache.entry(from: result, sampleCount: samples.count) {
+                        recognitionCache.insert(key: key, entry: entry)
+                        try? recognitionCache.saveAtomically(to: directory)
+                    }
+                }
                 let speech = Double(samples.count) / 16000
                 processed += speech; remaining = max(0,remaining - speech); elapsed += max(0, ProcessInfo.processInfo.systemUptime - began)
                 return out
@@ -498,6 +533,7 @@ public enum MeetingTranscriber {
             // D52.4 R71 provenance (additive, not displayed): every firing person's tracks, in track order.
             fallbackDecisions = RecognitionFallback.decide(decisions.sorted { $0.index < $1.index }.map(\.track)).entries.map(\.json)
             try publish(status: "done")
+            SegmentRecognitionCache.Store.remove(in: directory)
         } catch {
             var markedFailed = false
             try? failAttemptUnderHeldLock(directory: directory, id: meeting.id, markedFailed: &markedFailed)

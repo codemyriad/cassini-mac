@@ -26,7 +26,13 @@ final class D52ScratchTranscriptionMeetingTests: XCTestCase {
                                           .init(id:"system",label:"System",kind:"system",sampleRate:16000,channels:1)]
         sources += (0..<12).map { .init(id:"r\($0)",label:"Guest \($0)",kind:"remote",sampleRate:16000,channels:1,sourceTrackId:"guest-\($0)") }
         try session.transition(starting:sources)
-        for source in sources { try session.appendNative(id:source.id,pcm:pcm,offsetMs:0) }
+        for (index, source) in sources.enumerated() {
+            // Shift each span slightly so every span has distinct PCM and invokes `recognize`
+            // (with pure segment caching, byte-identical tracks legitimately reuse cached output).
+            let start = index * 64
+            let spanPCM = Data(speech[speech.startIndex.advanced(by: start)..<speech.startIndex.advanced(by: start + pcm.count)])
+            try session.appendNative(id: source.id, pcm: spanPCM, offsetMs: 0)
+        }
         try session.finish()
         let before = scratchCount()
         var peak = 0, calls = 0

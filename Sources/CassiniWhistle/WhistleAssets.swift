@@ -14,6 +14,8 @@ enum WhistlePins {
     ]
 }
 public struct WhistleAssets {
+    /// Canonical model identity for `cassini.recognition-cache.v2` (D-1117 / D109).
+    public static let modelIdentity = "whistle@" + WhistlePins.model
     /// Source identity for diagnostics and narrowly scoped golden policy. Both
     /// standalone original slices and sealed bundles are validated below.
     public static var sourcePins: [String:String] {
