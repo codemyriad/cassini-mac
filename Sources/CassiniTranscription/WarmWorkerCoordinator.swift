@@ -2,11 +2,56 @@
 import Foundation
 import CassiniWhistle
 
+private final class OffMainBox<Value: Sendable>: @unchecked Sendable {
+    var value: Value?
+    init(_ value: Value) { self.value = value }
+}
+
 /// Minimal teardown/liveness contract for a managed warm worker process.
 public protocol WarmWorkerManaging: AnyObject, Sendable {
     var isAlive: Bool { get }
     func shutdown()
     func terminateImmediately()
+}
+
+extension WarmWorkerManaging {
+    /// Runs `shutdown()` on a dedicated non-cooperative OS thread so blocking
+    /// waits (`waitUntilExit`, pipe drains, or test gates) cannot starve the
+    /// Swift Concurrency cooperative thread pool.
+    public func shutdownAsync() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            Thread.detachNewThread {
+                self.shutdown()
+                continuation.resume()
+            }
+        }
+    }
+
+    /// Runs `terminateImmediately()` on a dedicated non-cooperative OS thread so
+    /// blocking waits cannot starve the Swift Concurrency cooperative thread pool.
+    public func terminateImmediatelyAsync() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            Thread.detachNewThread {
+                self.terminateImmediately()
+                continuation.resume()
+            }
+        }
+    }
+
+    /// Runs `terminateImmediately()` on a dedicated non-cooperative OS thread and
+    /// releases `token` on that same thread after termination completes so any
+    /// synchronous cleanup in `token`'s `deinit` stays off `@MainActor` and off
+    /// the Swift Concurrency cooperative thread pool.
+    public func terminateImmediatelyAsync<Token: Sendable>(releasing token: consuming Token) async {
+        let box = OffMainBox(consume token)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            Thread.detachNewThread {
+                self.terminateImmediately()
+                box.value = nil
+                continuation.resume()
+            }
+        }
+    }
 }
 
 extension WarmSpeechWorker: WarmWorkerManaging {}
@@ -110,8 +155,7 @@ public final class WarmWorkerCoordinator<Worker: WarmWorkerManaging, Token: Send
                 }
                 return
             }
-            let lease = await start(generation)
-            guard let lease else {
+            guard let lease = await start(generation) else {
                 if self.followGeneration == generation {
                     self.following = nil
                     self.followStartTask = nil
@@ -119,14 +163,14 @@ public final class WarmWorkerCoordinator<Worker: WarmWorkerManaging, Token: Send
                 return
             }
             guard !Task.isCancelled, self.followGeneration == generation, canContinue() else {
-                await Self.tearDownOffMain(lease, graceful: false)
+                await Self.tearDownOffMain(OffMainBox(consume lease), graceful: false)
                 if self.followGeneration == generation {
                     self.following = nil
                     self.followStartTask = nil
                 }
                 return
             }
-            self.activeLease = lease
+            self.activeLease = consume lease
             self.followStartTask = nil
         }
     }
@@ -155,18 +199,19 @@ public final class WarmWorkerCoordinator<Worker: WarmWorkerManaging, Token: Send
     @discardableResult
     private func enqueueTeardown(
         startTask: Task<Void, Never>?,
-        lease: Lease?,
+        lease: consuming Lease?,
         graceful: Bool
     ) -> Task<Void, Never>? {
         guard startTask != nil || lease != nil else { return teardownTask }
         let previous = teardownTask
         teardownGeneration &+= 1
         let generation = teardownGeneration
+        let leaseBox = lease.map { OffMainBox($0) }
         let task = Task { @MainActor [weak self] in
             await previous?.value
             await startTask?.value
-            if let lease {
-                await Self.tearDownOffMain(lease, graceful: graceful)
+            if let leaseBox {
+                await Self.tearDownOffMain(leaseBox, graceful: graceful)
             }
             if let self, self.teardownGeneration == generation {
                 self.teardownTask = nil
@@ -176,14 +221,19 @@ public final class WarmWorkerCoordinator<Worker: WarmWorkerManaging, Token: Send
         return task
     }
 
-    private static func tearDownOffMain(_ lease: Lease, graceful: Bool) async {
-        await Task.detached(priority: .userInitiated) {
-            if graceful {
-                lease.worker.shutdown()
-            } else {
-                lease.worker.terminateImmediately()
+    private static func tearDownOffMain(_ leaseBox: OffMainBox<Lease>, graceful: Bool) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            Thread.detachNewThread {
+                if let lease = leaseBox.value {
+                    if graceful {
+                        lease.worker.shutdown()
+                    } else {
+                        lease.worker.terminateImmediately()
+                    }
+                }
+                leaseBox.value = nil
+                continuation.resume()
             }
-            withExtendedLifetime(lease.token) {}
-        }.value
+        }
     }
 }

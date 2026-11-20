@@ -80,6 +80,38 @@ private final class ConcurrencyTracker: @unchecked Sendable {
     }
 }
 
+private final class DeinitProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var context: (isMainThread: Bool, inCooperativeTask: Bool)?
+
+    func recordDeinit(isMainThread: Bool, inCooperativeTask: Bool) {
+        lock.lock()
+        context = (isMainThread: isMainThread, inCooperativeTask: inCooperativeTask)
+        lock.unlock()
+    }
+
+    var deinitContext: (isMainThread: Bool, inCooperativeTask: Bool)? {
+        lock.lock()
+        defer { lock.unlock() }
+        return context
+    }
+}
+
+private final class TrackedToken: @unchecked Sendable {
+    let probe: DeinitProbe
+
+    init(probe: DeinitProbe) {
+        self.probe = probe
+    }
+
+    deinit {
+        probe.recordDeinit(
+            isMainThread: Thread.isMainThread,
+            inCooperativeTask: withUnsafeCurrentTask { $0 != nil }
+        )
+    }
+}
+
 private final class GatedWorker: WarmWorkerManaging, @unchecked Sendable {
     let id: String
     let tracker: ConcurrencyTracker
@@ -88,6 +120,7 @@ private final class GatedWorker: WarmWorkerManaging, @unchecked Sendable {
     private let lock = NSLock()
     private var alive = true
     private var tornDown = false
+    private var teardownExecution: (isMainThread: Bool, inCooperativeTask: Bool)?
 
     init(id: String, tracker: ConcurrencyTracker) {
         self.id = id
@@ -101,6 +134,12 @@ private final class GatedWorker: WarmWorkerManaging, @unchecked Sendable {
         return alive
     }
 
+    var teardownContext: (isMainThread: Bool, inCooperativeTask: Bool)? {
+        lock.lock()
+        defer { lock.unlock() }
+        return teardownExecution
+    }
+
     func shutdown() {
         tearDown(kind: "shutdown")
     }
@@ -110,17 +149,23 @@ private final class GatedWorker: WarmWorkerManaging, @unchecked Sendable {
     }
 
     private func tearDown(kind: String) {
+        let onMainThread = Thread.isMainThread
+        let inCooperativeTask = withUnsafeCurrentTask { $0 != nil }
+
         lock.lock()
         if tornDown {
             lock.unlock()
             return
         }
         tornDown = true
+        teardownExecution = (isMainThread: onMainThread, inCooperativeTask: inCooperativeTask)
         lock.unlock()
 
         tracker.record("\(kind)-enter:\(id)")
         teardownEntered.open()
-        teardownRelease.waitBlocking()
+        if !onMainThread && !inCooperativeTask {
+            teardownRelease.waitBlocking()
+        }
 
         lock.lock()
         alive = false
@@ -140,6 +185,7 @@ private final class GatedWorker: WarmWorkerManaging, @unchecked Sendable {
         let start1CleanupRelease = Gate()
         let start2Entered = Gate()
         let start2Done = Gate()
+        let w1TokenProbe = DeinitProbe()
         var worker1: GatedWorker?
 
         coordinator.ensureFollowing(folder: folderA, canContinue: { true }) { _ in
@@ -148,7 +194,7 @@ private final class GatedWorker: WarmWorkerManaging, @unchecked Sendable {
             start1Entered.open()
             // Simulate a blocked follow handshake cancelled by preemption.
             await start1CleanupRelease.waitAsync()
-            await Task.detached { w1.terminateImmediately() }.value
+            await w1.terminateImmediatelyAsync(releasing: TrackedToken(probe: w1TokenProbe))
             return nil
         }
 
@@ -191,6 +237,16 @@ private final class GatedWorker: WarmWorkerManaging, @unchecked Sendable {
         w2.teardownRelease.open()
         await coordinator.terminateAndWait()
         #expect(tracker.snapshot.live == 0)
+
+        let w1Ctx = try! #require(w1.teardownContext)
+        #expect(w1Ctx.isMainThread == false)
+        #expect(w1Ctx.inCooperativeTask == false)
+        let w1Deinit = try! #require(w1TokenProbe.deinitContext)
+        #expect(w1Deinit.isMainThread == false)
+        #expect(w1Deinit.inCooperativeTask == false)
+        let w2Ctx = try! #require(w2.teardownContext)
+        #expect(w2Ctx.isMainThread == false)
+        #expect(w2Ctx.inCooperativeTask == false)
     }
 
     @Test @MainActor func modelSwitchPreemptionBlocksNextWorkerUntilPreviousTeardownFinishes() async {
@@ -218,7 +274,7 @@ private final class GatedWorker: WarmWorkerManaging, @unchecked Sendable {
             barrierCompleted.open()
             let w2 = GatedWorker(id: "whistle-cold-w2", tracker: tracker)
             w2.teardownRelease.open()
-            w2.terminateImmediately()
+            await w2.terminateImmediatelyAsync()
         }
 
         // Yield to MainActor to ensure `terminateAndWait()` has entered its await.
@@ -358,5 +414,102 @@ private final class GatedWorker: WarmWorkerManaging, @unchecked Sendable {
         let exitW1 = snap.events.firstIndex(of: "exit:shutdown-w1")
         let shutdownDone = snap.events.firstIndex(of: "shutdown-barrier-done")
         #expect(exitW1 != nil && shutdownDone != nil && exitW1! < shutdownDone!)
+    }
+
+    @Test @MainActor func concurrentBlockedTeardownsDoNotStarveCooperativePool() async {
+        let count = max(16, ProcessInfo.processInfo.activeProcessorCount * 2)
+        let tracker = ConcurrencyTracker()
+        var coordinators: [WarmWorkerCoordinator<GatedWorker, TrackedToken>] = []
+        var workers: [GatedWorker] = []
+        var tokenProbes: [DeinitProbe] = []
+
+        for index in 0..<count {
+            let coordinator = WarmWorkerCoordinator<GatedWorker, TrackedToken>()
+            let folder = URL(fileURLWithPath: "/tmp/meeting-pool-\(index)")
+            let ready = Gate()
+            let probe = DeinitProbe()
+            tokenProbes.append(probe)
+            coordinator.ensureFollowing(folder: folder, canContinue: { true }) { _ in
+                let worker = GatedWorker(id: "pool-w\(index)", tracker: tracker)
+                defer { ready.open() }
+                return .init(worker: worker, engine: "whistle", token: TrackedToken(probe: probe), followingFolder: folder)
+            }
+            await ready.waitAsync()
+            let worker = try! #require(coordinator.activeLease?.worker)
+            coordinators.append(coordinator)
+            workers.append(worker)
+        }
+
+        for coordinator in coordinators {
+            coordinator.preempt()
+        }
+        for worker in workers {
+            await worker.teardownEntered.waitAsync()
+        }
+
+        // All `count` workers (> activeProcessorCount) are simultaneously blocked in
+        // `Gate.waitBlocking()`. Verify the Swift Concurrency cooperative thread pool
+        // still makes forward progress.
+        let probe = await Task.detached(priority: .userInitiated) { 42 }.value
+        #expect(probe == 42)
+
+        for worker in workers {
+            worker.teardownRelease.open()
+        }
+        for coordinator in coordinators {
+            await coordinator.waitForTeardown()
+        }
+        #expect(tracker.snapshot.live == 0)
+
+        for (worker, tokenProbe) in zip(workers, tokenProbes) {
+            let teardownCtx = try! #require(worker.teardownContext)
+            #expect(teardownCtx.isMainThread == false)
+            #expect(teardownCtx.inCooperativeTask == false)
+            let deinitCtx = try! #require(tokenProbe.deinitContext)
+            #expect(deinitCtx.isMainThread == false)
+            #expect(deinitCtx.inCooperativeTask == false)
+        }
+    }
+
+    @Test @MainActor func rejectedStartupLeaseReleasesTokenOffMain() async {
+        let tracker = ConcurrencyTracker()
+        let coordinator = WarmWorkerCoordinator<GatedWorker, TrackedToken>()
+        let folder = URL(fileURLWithPath: "/tmp/meeting-rejected-startup")
+        let tokenProbe = DeinitProbe()
+        let startEntered = Gate()
+        var allowContinue = true
+        var startedWorker: GatedWorker?
+
+        coordinator.ensureFollowing(folder: folder, canContinue: { allowContinue }) { _ in
+            let worker = GatedWorker(id: "rejected-w1", tracker: tracker)
+            startedWorker = worker
+            startEntered.open()
+            allowContinue = false
+            return .init(
+                worker: worker,
+                engine: "parakeet",
+                token: TrackedToken(probe: tokenProbe),
+                followingFolder: folder
+            )
+        }
+
+        await startEntered.waitAsync()
+        let worker = try! #require(startedWorker)
+        await worker.teardownEntered.waitAsync()
+
+        #expect(tokenProbe.deinitContext == nil)
+        worker.teardownRelease.open()
+        await coordinator.terminateAndWait()
+
+        #expect(coordinator.activeLease == nil)
+        #expect(coordinator.following == nil)
+        #expect(tracker.snapshot.live == 0)
+
+        let teardownCtx = try! #require(worker.teardownContext)
+        #expect(teardownCtx.isMainThread == false)
+        #expect(teardownCtx.inCooperativeTask == false)
+        let deinitCtx = try! #require(tokenProbe.deinitContext)
+        #expect(deinitCtx.isMainThread == false)
+        #expect(deinitCtx.inCooperativeTask == false)
     }
 }
