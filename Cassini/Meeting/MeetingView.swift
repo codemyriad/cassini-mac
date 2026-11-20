@@ -319,16 +319,24 @@ struct MeetingView: View {
         }.fixedSize()
     }
     private var playerTimeline: some View {
-        HStack(spacing: 10) {
-            Text(LibraryFormat.playerTime(Int64(model.positionMs), durationMs: Int64(model.durationMs), locale: UXText.locale))
-                .monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk)
-                .font(.system(size: 11.5)).accessibilityIdentifier("meeting-elapsed").fixedSize()
+        let durationText = LibraryFormat.playerTime(Int64(model.durationMs), durationMs: Int64(model.durationMs), locale: UXText.locale)
+        return HStack(spacing: 10) {
+            ZStack(alignment: .trailing) {
+                Text(durationText)
+                    .monospacedDigit()
+                    .font(.system(size: 11.5))
+                    .hidden()
+                    .accessibilityHidden(true)
+                Text(LibraryFormat.playerTime(Int64(model.positionMs), durationMs: Int64(model.durationMs), locale: UXText.locale))
+                    .monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk)
+                    .font(.system(size: 11.5)).accessibilityIdentifier("meeting-elapsed")
+            }.fixedSize()
             MeetingPositionSlider(position:Binding(get:{ Double(model.positionMs) },set:{ model.seek(Int($0)) }),duration:Double(max(1,model.durationMs)),
                                   readout:isTranscribing ? TimelineReadout() : model.timelineReadout,
                                   names:isTranscribing ? [:] : meeting.speakerDisplayNames,
                                   timeline:isTranscribing ? ListeningTimeline() : model.listen.timeline)
                 .frame(minWidth:80,maxWidth:.infinity).frame(height:22)
-            Text(LibraryFormat.playerTime(Int64(model.durationMs), durationMs: Int64(model.durationMs), locale: UXText.locale))
+            Text(durationText)
                 .monospacedDigit().foregroundStyle(CassiniTheme.secondaryInk)
                 .font(.system(size: 11.5)).accessibilityIdentifier("meeting-duration").fixedSize()
         }
