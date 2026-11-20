@@ -122,8 +122,19 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(about.waitForExistence(timeout:20),app.debugDescription)
         let licences = about.descendants(matching:.any).matching(identifier:"about-licences").firstMatch
         XCTAssertTrue(licences.waitForExistence(timeout:5),about.debugDescription)
-        XCTAssertTrue(about.descendants(matching:.any)["about-help"].exists)
-        XCTAssertTrue(about.descendants(matching:.any)["about-privacy"].exists)
+        let help = about.descendants(matching:.any).matching(identifier:"about-help").firstMatch
+        let reportProblem = about.descendants(matching:.any).matching(identifier:"about-report-problem").firstMatch
+        let privacy = about.descendants(matching:.any).matching(identifier:"about-privacy").firstMatch
+        let sourceCode = about.descendants(matching:.any).matching(identifier:"about-source-code").firstMatch
+        XCTAssertTrue(help.exists)
+        XCTAssertTrue(reportProblem.exists)
+        XCTAssertTrue(privacy.exists)
+        XCTAssertTrue(sourceCode.exists)
+        XCTAssertEqual(visibleText(reportProblem),"Report a problem")
+        XCTAssertLessThan(help.frame.maxX,reportProblem.frame.minX,"Report a problem sits after Help")
+        XCTAssertLessThan(reportProblem.frame.maxX,privacy.frame.minX,"Report a problem sits before Privacy")
+        XCTAssertGreaterThan(licences.frame.minY,reportProblem.frame.maxY,"Licences and Source code sit on the second line")
+        XCTAssertLessThan(licences.frame.maxX,sourceCode.frame.minX,"Source code sits after Licences")
         capture(about,name:"about")
         licences.click()
         XCTAssertTrue(about.sheets.firstMatch.waitForExistence(timeout:5),about.debugDescription)
