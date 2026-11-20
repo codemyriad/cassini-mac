@@ -363,6 +363,9 @@ private final class CaptureFiles: @unchecked Sendable {
         autoGeneration += 1
         let generation = autoGeneration
         autoRecord = enabled; RecordingPreferences.defaults.set(enabled,forKey:"CassiniAutoRecord")
+        #if DEBUG
+        if BrowserCompanionFixture.kind != nil { return }
+        #endif
         if !enabled { service.setAutoRecord(false,microphone:true); return }
         // Input authorization belongs to the selected route; separated calls
         // never request hardware microphone consent.
@@ -618,6 +621,9 @@ private final class CaptureFiles: @unchecked Sendable {
         do { try fm.removeItem(at:folder); return true } catch { return false }
     }
     private func replacePeers(_ peers: [BrowserControlPeerSnapshot]) {
+        #if DEBUG
+        guard BrowserCompanionFixture.kind == nil else { return }
+        #endif
         self.peers = peers
         reloadBaseline = reloadBaseline.filter { key,revision in peers.contains { $0.id == key.peer && $0.healthRevision == revision } }
         let keys = Set(companionHealth.reloadTabs.map(\.key))
