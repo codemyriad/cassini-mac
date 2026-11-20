@@ -228,13 +228,13 @@ extension LibraryBoards {
     @MainActor func testDockReopenKeepsMinimizedMeetingAndSearchState() async throws {
         let app=try launch("meeting",fixture:"main");defer { app.terminate() }
         let window=app.windows["cassini-library-window"]
-        XCTAssertTrue(window.textFields["meeting-find"].waitForExistence(timeout:15))
+        XCTAssertTrue(window.buttons["meeting-find-button"].firstMatch.waitForExistence(timeout:15))
         window.buttons["_XCUI:MinimizeWindow"].click()
         try await dockReopen(app)
-        XCTAssertTrue(window.textFields["meeting-find"].waitForExistence(timeout:10),"Minimized meeting stays open")
-        waitForWindowless { window.textFields["meeting-find"].isHittable }
-        window.searchFields["library-search-field"].click(); app.typeText("budget")
-        let field=window.searchFields["library-search-field"]
+        XCTAssertTrue(window.buttons["meeting-find-button"].firstMatch.waitForExistence(timeout:10),"Minimized meeting stays open")
+        waitForWindowless { window.buttons["meeting-find-button"].firstMatch.isHittable }
+        window.searchFields.firstMatch.click(); app.typeText("budget")
+        let field=window.searchFields.firstMatch
         XCTAssertEqual(field.value as? String,"budget")
         window.buttons["_XCUI:MinimizeWindow"].click()
         try await dockReopen(app)

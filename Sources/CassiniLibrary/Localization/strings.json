@@ -7431,7 +7431,6 @@
   {
    "id": "search.field.placeholder",
    "en": "Search every meeting",
-   "mac": "Search",
    "platforms": [
     "gnome",
     "mac"
@@ -7439,6 +7438,7 @@
    "role": "placeholder",
    "boards": [
     "Library-mac",
+    "LibraryOpen-MacNative",
     "LibraryReceived",
     "LibraryReceived-mac",
     "Main",
@@ -7446,28 +7446,23 @@
     "Search-mac"
    ],
    "milestone": "UX12",
-   "note": "HARMONY 10. GNOME: placeholder of the entry that the sidebar toggle reveals (not visible on Main). Mac: 220 px toolbar search field, trailing in the detail toolbar, as drawn on Library-mac. Board quirk: Library-mac draws the field trailing in the detail toolbar, Search-mac moves the active field to the sidebar, and LibraryReceived-mac omits it. Decision: Mac keeps one field in the toolbar on every Library screen (HARMONY 10).",
+   "note": "HARMONY 10. GNOME: placeholder of the entry that the sidebar toggle reveals (not visible on Main). Mac: 220 px toolbar search field, trailing in the detail toolbar, as drawn on Library-mac. Board quirk: Library-mac draws the field trailing in the detail toolbar, Search-mac moves the active field to the sidebar, and LibraryReceived-mac omits it. Decision: Mac keeps one field in the toolbar on every Library screen (HARMONY 10). D108 (Mac meeting screen, native macOS 26): the Mac placeholder is 'Search every meeting' too (.searchable(placement: .sidebar), board LibraryOpen-MacNative); the Mac override 'Search' (it 'Cerca', fr 'Rechercher', es 'Buscar', pt-BR 'Buscar', pt-PT 'Pesquisar') is dropped.",
    "status": "drawn",
    "l10n": {
     "it": {
-     "text": "Cerca in tutte le riunioni",
-     "mac": "Cerca"
+     "text": "Cerca in tutte le riunioni"
     },
     "fr": {
-     "text": "Rechercher dans toutes les réunions",
-     "mac": "Rechercher"
+     "text": "Rechercher dans toutes les réunions"
     },
     "es": {
-     "text": "Buscar en todas las reuniones",
-     "mac": "Buscar"
+     "text": "Buscar en todas las reuniones"
     },
     "pt-BR": {
-     "text": "Buscar em todas as reuniões",
-     "mac": "Buscar"
+     "text": "Buscar em todas as reuniões"
     },
     "pt-PT": {
-     "text": "Pesquisar em todas as reuniões",
-     "mac": "Pesquisar"
+     "text": "Pesquisar em todas as reuniões"
     }
    }
   },
@@ -24024,6 +24019,43 @@
     },
     "pt-PT": {
      "text": "Pesquisar nesta reunião"
+    }
+   }
+  },
+  {
+   "id": "meeting.find.position",
+   "en": "{index} of {count}",
+   "platforms": [
+    "mac"
+   ],
+   "role": "label",
+   "boards": [
+    "LibraryOpen-MacNative",
+    "LibraryOpen-MacNativeFind",
+    "QA-Mac"
+   ],
+   "milestone": "Mac meeting screen (D108)",
+   "placeholders": {
+    "index": "position of the current match, from 1",
+    "count": "number of matches in this meeting"
+   },
+   "note": "D108 §6: match position inside the Mac find bar under the toolbar (e.g. '2 of 3'), next to the Find in this meeting field. No plural forms: count is a bare number. VoiceOver reads it as the field's value.",
+   "status": "drawn",
+   "l10n": {
+    "it": {
+     "text": "{index} di {count}"
+    },
+    "fr": {
+     "text": "{index} sur {count}"
+    },
+    "es": {
+     "text": "{index} de {count}"
+    },
+    "pt-BR": {
+     "text": "{index} de {count}"
+    },
+    "pt-PT": {
+     "text": "{index} de {count}"
     }
    }
   },

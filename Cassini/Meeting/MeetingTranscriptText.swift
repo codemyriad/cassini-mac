@@ -148,11 +148,12 @@ struct MeetingTranscriptText: NSViewRepresentable {
             }
         }
         for range in findRanges where range.location >= 0 && range.length > 0 && NSMaxRange(range) <= text.length {
-            text.addAttributes([.backgroundColor: CassiniTheme.nsLegacyMatchFill(dark:dark,isCurrent:false),
-                                .foregroundColor: CassiniTheme.nsHighlightInk ?? CassiniTheme.nsInk], range: range)
+            text.addAttributes([.backgroundColor: CassiniTokens.highlightEntry.resolvedNSColor(dark: dark),
+                                .foregroundColor: CassiniTokens.highlightInkEntry.resolvedNSColor(dark: dark)], range: range)
         }
         if let range = selectedFindRange, range.location >= 0, range.length > 0, NSMaxRange(range) <= text.length {
-            text.addAttribute(.backgroundColor,value:CassiniTheme.nsLegacyMatchFill(dark:dark,isCurrent:true),range:range)
+            text.addAttributes([.backgroundColor: CassiniTokens.accentEntry.resolvedNSColor(dark: dark),
+                                .foregroundColor: CassiniTokens.onAccentEntry.resolvedNSColor(dark: dark)], range: range)
         }
         return text
     }
@@ -325,7 +326,7 @@ extension MeetingTranscriptText {
             report["findSelectionInvalidatesNativeCache"] = first != inactive && fill(0) == inactive && fill(3) == first
             let light = fill(3)
             search.dark = true; search.update(target)
-            report["findAppearanceInvalidatesNativeCache"] = fill(3) != light && fill(3) == CassiniTheme.nsLegacyMatchFill(dark:true,isCurrent:true)
+            report["findAppearanceInvalidatesNativeCache"] = fill(3) != light && fill(3) == CassiniTokens.accentEntry.resolvedNSColor(dark: true)
         }
         let button = view.accessibilityChildren()?.first as? NSButton
         button?.sendAction(button?.action,to:button?.target)

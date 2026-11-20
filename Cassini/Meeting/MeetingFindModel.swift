@@ -4,6 +4,7 @@ import Foundation
 import Observation
 
 @MainActor @Observable final class MeetingFindModel {
+    var visible = false
     var query = ""
     var focused = false
     private(set) var matches: [TranscriptFind.Match] = []
@@ -15,7 +16,18 @@ import Observation
     private(set) var searching = false
     @ObservationIgnored private var revision = 0
 
-    func requestFocus() { focusRequest &+= 1 }
+    func requestFocus() { visible = true; focusRequest &+= 1 }
+    func close() {
+        revision &+= 1
+        visible = false
+        query = ""
+        focused = false
+        matches = []
+        selected = nil
+        ranges = [:]
+        selectedIndex = nil
+        searching = false
+    }
     func consumeFocusRequest() -> Bool {
         guard handledFocusRequest != focusRequest else { return false }
         handledFocusRequest = focusRequest
@@ -26,10 +38,15 @@ import Observation
         selectedIndex = selected.flatMap { matches.firstIndex(of: $0) }
     }
     var status: String {
-        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
-        let values = ["query": query.trimmingCharacters(in: .whitespacesAndNewlines), "index": ((selectedIndex ?? 0) + 1).formatted(.number.locale(UXText.locale)),
-                      "count": matches.count.formatted(.number.locale(UXText.locale))]
-        return UXText.text(matches.isEmpty ? "mac.legacy.match.none" : matches.count == 1 ? "mac.legacy.match.one" : "mac.legacy.match.position", values)
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        if matches.isEmpty {
+            return UXText.text("mac.legacy.match.none", ["query": trimmed])
+        }
+        return UXText.text("meeting.find.position", [
+            "index": ((selectedIndex ?? 0) + 1).formatted(.number.locale(UXText.locale)),
+            "count": matches.count.formatted(.number.locale(UXText.locale)),
+        ])
     }
     func search(turns: [MeetingPresentation.Turn], meeting: LibraryMeeting, language: CassiniLanguage, locale: Locale) async {
         revision &+= 1

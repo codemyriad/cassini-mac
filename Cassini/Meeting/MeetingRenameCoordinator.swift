@@ -199,6 +199,15 @@ import CassiniLibrary
             working=false;task=nil;LibraryMoveCoordinator.shared.maybeRetryDeferred()
         }
     }
+    func renameInline(_ meeting: LibraryMeeting, to newTitle: String) {
+        let original = meeting.title ?? UXText.text("library.untitled")
+        guard canRename(meeting), newTitle != original else { return }
+        let normalizedNew = MeetingRename.normalized(newTitle)
+        guard normalizedNew == nil || normalizedNew != original else { return }
+        self.meeting = meeting
+        self.name = newTitle
+        apply()
+    }
     func apply() {
         guard canApply, let meeting else { return }
         if presentation == .speakers,let speakerID {
