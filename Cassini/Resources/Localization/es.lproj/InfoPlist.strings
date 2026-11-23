@@ -1,3 +1,3 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-"NSMicrophoneUsageDescription" = "Cassini graba tu micrófono en una pista separada de la reunión en este equipo.";
-"NSAudioCaptureUsageDescription" = "Cuando empiezas a grabar, Cassini graba el audio de las aplicaciones seleccionadas o del sistema en este equipo.";
+"NSMicrophoneUsageDescription" = "Para lo que dices. Se transcribe en este Mac.";
+"NSAudioCaptureUsageDescription" = "Para los demás en tu app de reuniones, de modo que también queden en la grabación.";

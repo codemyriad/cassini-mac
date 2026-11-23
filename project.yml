@@ -174,8 +174,8 @@ targets:
         LSMinimumSystemVersion: "15.0"
         NSHumanReadableCopyright: "© 2026 Codemyriad OÜ"
         NSPrincipalClass: NSApplication
-        NSMicrophoneUsageDescription: Cassini records your microphone as a separate local meeting track.
-        NSAudioCaptureUsageDescription: Cassini records selected application or system audio locally when you start recording.
+        NSMicrophoneUsageDescription: "For what you say. It’s transcribed on this Mac."
+        NSAudioCaptureUsageDescription: "For the others in your meeting app, so they are on the recording too."
         NSSupportsAutomaticTermination: false
         NSSupportsSuddenTermination: false
         CFBundleDocumentTypes:

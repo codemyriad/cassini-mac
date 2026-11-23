@@ -117,11 +117,11 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>Cassini records selected application or system audio locally when you start recording.</string>
+	<string>For the others in your meeting app, so they are on the recording too.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Codemyriad OÜ</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Cassini records your microphone as a separate local meeting track.</string>
+	<string>For what you say. It’s transcribed on this Mac.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSSupportsAutomaticTermination</key>

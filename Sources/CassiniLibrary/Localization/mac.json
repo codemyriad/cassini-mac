@@ -45,48 +45,6 @@
       }
     },
     {
-      "id": "mac.permission.microphone",
-      "en": "Cassini records your microphone as a separate local meeting track.",
-      "l10n": {
-        "it": {
-          "text": "Cassini registra il tuo microfono in una traccia separata della riunione su questo computer."
-        },
-        "fr": {
-          "text": "Cassini enregistre votre microphone sur une piste distincte au sein de la réunion, sur cet ordinateur."
-        },
-        "es": {
-          "text": "Cassini graba tu micrófono en una pista separada de la reunión en este equipo."
-        },
-        "pt-BR": {
-          "text": "O Cassini grava seu microfone em uma faixa separada da reunião neste computador."
-        },
-        "pt-PT": {
-          "text": "O Cassini grava o seu microfone numa faixa separada da reunião neste computador."
-        }
-      }
-    },
-    {
-      "id": "mac.permission.audio",
-      "en": "Cassini records selected application or system audio locally when you start recording.",
-      "l10n": {
-        "it": {
-          "text": "Quando avvii una registrazione, Cassini registra su questo computer l’audio delle applicazioni selezionate o del sistema."
-        },
-        "fr": {
-          "text": "Lorsque vous démarrez un enregistrement, Cassini enregistre le son des applications sélectionnées ou du système sur cet ordinateur."
-        },
-        "es": {
-          "text": "Cuando empiezas a grabar, Cassini graba el audio de las aplicaciones seleccionadas o del sistema en este equipo."
-        },
-        "pt-BR": {
-          "text": "Quando você começa a gravar, o Cassini grava o áudio dos aplicativos selecionados ou do sistema neste computador."
-        },
-        "pt-PT": {
-          "text": "Quando começa a gravar, o Cassini grava o áudio das aplicações selecionadas ou do sistema neste computador."
-        }
-      }
-    },
-    {
       "id": "mac.recording.outputChanged",
       "en": "The output audio format changed. Start a new recording with the current device.",
       "l10n": {
