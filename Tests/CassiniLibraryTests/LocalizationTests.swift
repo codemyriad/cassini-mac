@@ -250,11 +250,13 @@ import Testing
         let root=URL(fileURLWithPath:#filePath).resolvingSymlinksInPath().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let plist=try #require(PropertyListSerialization.propertyList(from:Data(contentsOf:root.appendingPathComponent("Cassini/Info.plist")),format:nil) as? [String:Any])
         #expect(Set(try #require(plist["CFBundleLocalizations"] as? [String])) == Set(CassiniLanguage.allCases.map(\.rawValue)))
+        #expect(plist["NSMicrophoneUsageDescription"] as? String == LibraryLocalization.shared.text("permissionPrompt.microphone.mac",language:.en))
+        #expect(plist["NSAudioCaptureUsageDescription"] as? String == LibraryLocalization.shared.text("permissionPrompt.systemAudio.mac",language:.en))
         for language in CassiniLanguage.allCases {
             let url=root.appendingPathComponent("Cassini/Resources/Localization/\(language.rawValue).lproj/InfoPlist.strings")
             let strings=try #require(PropertyListSerialization.propertyList(from:Data(contentsOf:url),format:nil) as? [String:String])
-            #expect(strings["NSMicrophoneUsageDescription"] == LibraryLocalization.shared.text("mac.permission.microphone",language:language))
-            #expect(strings["NSAudioCaptureUsageDescription"] == LibraryLocalization.shared.text("mac.permission.audio",language:language))
+            #expect(strings["NSMicrophoneUsageDescription"] == LibraryLocalization.shared.text("permissionPrompt.microphone.mac",language:language))
+            #expect(strings["NSAudioCaptureUsageDescription"] == LibraryLocalization.shared.text("permissionPrompt.systemAudio.mac",language:language))
         }
     }
     @Test func bundledAndApplicationCatalogsHaveTheExactCoordinatorDigest() throws {
