@@ -558,8 +558,16 @@ final class LibraryBoards: XCTestCase {
         let window = app.windows["cassini-library-window"]
         let budget = window.outlines.staticTexts.matching(NSPredicate(format:"value == %@ OR label == %@","Budget review","Budget review")).firstMatch
         XCTAssertTrue(budget.waitForExistence(timeout:20),app.debugDescription); budget.click()
+        budget.rightClick()
+        XCTAssertTrue(window.menuItems["move-to-trash"].waitForExistence(timeout:5),app.debugDescription)
+        capture(window,name:"qa-meeting-context-menu")
+        app.typeKey(.escape,modifierFlags:[])
         // 1. File → Rename… sheet
-        app.menuBars.menuBarItems["File"].click(); app.menuItems["Rename…"].click()
+        let fileMenuBarItem = app.menuBars.menuBarItems["File"]
+        fileMenuBarItem.click()
+        XCTAssertTrue(app.menuItems["Rename…"].waitForExistence(timeout:5),app.debugDescription)
+        capture(fileMenuBarItem.menus.firstMatch,name:"qa-file-menu")
+        app.menuItems["Rename…"].click()
         let field = app.textFields["rename-name"]
         XCTAssertTrue(field.waitForExistence(timeout:10),app.debugDescription)
         XCTAssertEqual(field.value as? String,"Budget review")

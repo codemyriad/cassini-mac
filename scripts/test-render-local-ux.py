@@ -187,6 +187,11 @@ class RenderLocalUX(unittest.TestCase):
         self.mode = 'interrupt'
         self.render(error=KeyboardInterrupt)
 
+    def test_library_find_and_size_reach_fixture(self):
+        self.render('library', extra=('--find', 'budget', '--size', 'narrow'))
+        self.assertEqual(self.arguments[self.arguments.index('-CassiniFindPreview') + 1], 'budget')
+        self.assertEqual(self.arguments[self.arguments.index('-CassiniScreenshotSize') + 1], 'narrow')
+
 
 if __name__ == '__main__':
     unittest.main()
