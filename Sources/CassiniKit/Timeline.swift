@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 
 /// A short overlapping utterance shown as a chip inside another speaker's turn.

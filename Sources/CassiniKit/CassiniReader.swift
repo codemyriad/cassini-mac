@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 
 /// Reads a Cassini portable meeting following SPEC.md "Reading a file".

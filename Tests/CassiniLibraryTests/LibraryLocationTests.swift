@@ -24,7 +24,7 @@ struct LibraryLocationTests {
             #expect(lease.roots.first == destination)
             #expect(!FileManager.default.fileExists(atPath:old.path))
         }
-        try LibraryRouting.withLock(file:config,exclusive:true) {
+        _ = try LibraryRouting.withLock(file:config,exclusive:true) {
             #expect(throws:(any Error).self) { try LibraryRouting.withRecordingAccess(file:config,defaultRoot:fixture.root) { _,_ in Issue.record("Move publication must block creation") } }
         }
     }

@@ -265,7 +265,6 @@ final class LibraryStore {
                     selectedKey = key; selectionWhenAvailable = nil; selectionFolderWhenAvailable = nil
                 }
                 TranscriptionQueue.shared.consider(result.meetings,automatic:context.automaticallyConsidersTranscriptions && !context.screenshot && !MeetingRenameFixture.enabled && (!RecordingFixture.enabled || RecordingFixture.transcribes))
-                LegacyOpening.refreshTranscripts(result.meetings)
                 let validKeys = Set(meetings.map(\.libraryKey))
                 let surviving = selectedKeys.intersection(validKeys)
                 if surviving.isEmpty {

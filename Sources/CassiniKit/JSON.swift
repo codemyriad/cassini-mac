@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 
 /// A parsed JSON value. Objects keep member order and reject repeated names.

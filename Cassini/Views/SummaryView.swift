@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
 
 /// The meeting summary, from the manifest's `summary.md` attachment: headings, paragraphs, lists

@@ -107,25 +107,6 @@ final class SessionModel {
         return LibraryFormat(locale:UXText.locale,language:UXText.language).absoluteDate(time)
     }
 
-    static let dateStyle = Date.FormatStyle(date: .abbreviated, time: .omitted)
-
-    static func parseRFC3339(_ s: String) -> Date? {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f.date(from: s) { return d }
-        f.formatOptions = [.withInternetDateTime]
-        return f.date(from: s)
-    }
-
-    /// `YYYY-MM-DDTHH:MM:SS` as a Date in UTC, so formatting in UTC reproduces the label's own day.
-    static func localLabelDate(_ s: String) -> Date? {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = TimeZone(identifier: "UTC")
-        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-        return f.date(from: s)
-    }
-
     var hasSummary: Bool { manifest?.summaryMarkdown != nil }
 
     var fileName: String { fileURL?.lastPathComponent ?? "" }
@@ -207,7 +188,7 @@ final class SessionModel {
                 self.timelineTask = nil; self.preparingTranscript = false
                 if let ms = self.player?.currentMs { self.tick(ms) }
             }
-        case .unavailable(let f):
+        case .unavailable:
             transcriptProblem = UXText.text("mac.legacy.transcriptUnreadable")
         }
     }

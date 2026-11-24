@@ -69,8 +69,6 @@ enum TranscriptBuilder {
     static let chipNameFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
     static let chipFont = NSFont.systemFont(ofSize: 12)
     static let noteFont = NSFont.systemFont(ofSize: 12)
-    static let nbsp = "\u{00A0}"
-    static let thinNbsp = "\u{202F}"
 
     static func build(timeline: Timeline, hidden: Set<String>, label: (String) -> String, color: (String) -> NSColor) -> TranscriptLayout {
         let out = NSMutableAttributedString()

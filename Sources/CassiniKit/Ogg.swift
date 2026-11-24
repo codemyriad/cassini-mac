@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 
 /// One Ogg page (RFC 3533 §6), with its body sliced out of the file.
