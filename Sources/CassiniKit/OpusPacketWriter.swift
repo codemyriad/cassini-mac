@@ -90,26 +90,6 @@ public enum OpusStreamFile {
         }
         try writer.finish(sampleCount:digest.sampleCount); return digest
     }
-    public static func packetBitrateHistogram(_ data: Data) throws -> (histogram: [Int:Int], packetCount: Int) {
-        _ = try OpusAudioDigest.compute(data)
-        var histogram: [Int:Int] = [:], count = 0
-        try packets(data) { index,packet in
-            guard index >= 2 else { return }; count += 1
-            let packetSamples: Int? = packet.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) -> Int? in
-                OpusAudioDigest.packetSamples(bytes)
-            }
-            guard let samples = packetSamples else { throw AudioDigestError.malformedPacket(index,"duration") }
-            let channels: Int = (packet[0] & 4) == 0 ? 1 : 2
-            // Keep the same operations/rounding while bounding Swift 6.1's
-            // constraint solver, used by the hosted Xcode 16.4 toolchain.
-            let bits: Double = Double(packet.count) * 8.0
-            let bitsPerSecond: Double = bits * 48_000.0 / Double(samples)
-            let perChannel: Double = bitsPerSecond / Double(channels)
-            let rate: Int = Int(perChannel.rounded(.toNearestOrAwayFromZero))
-            histogram[rate,default:0] += 1
-        }
-        return (histogram,count)
-    }
     private static func packets(_ data: Data, consume: (Int,Data) throws -> Void) throws {
         try data.withUnsafeBytes { bytes in
             var reader = OggPageReader(bytes,verifyCRC:false), index = 0, partial = Data()

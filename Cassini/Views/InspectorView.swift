@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import CassiniKit
 import CassiniLibrary
 import SwiftUI

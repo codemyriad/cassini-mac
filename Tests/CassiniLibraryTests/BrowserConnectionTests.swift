@@ -12,13 +12,16 @@ struct BrowserConnectionTests {
         var snapshot = BrowserCompanionConnection.snapshot(directory:root)
         #expect(snapshot.connected && snapshot.browser == "Chrome")
         #expect(snapshot.recordingDirectories == [LibraryLocation.canonical(fixture.folder).path])
-        var second: BrowserCompanionConnection? = try .init(directory:root)
-        snapshot = BrowserCompanionConnection.snapshot(directory:root)
-        #expect(snapshot.connected && snapshot.browser == nil)
-        first = nil
-        #expect(BrowserCompanionConnection.snapshot(directory:root).connected)
-        #expect(BrowserCompanionConnection.snapshot(directory:root).recordingDirectories.isEmpty)
-        second = nil
+        do {
+            let second = try BrowserCompanionConnection(directory:root)
+            withExtendedLifetime(second) {
+                snapshot = BrowserCompanionConnection.snapshot(directory:root)
+                #expect(snapshot.connected && snapshot.browser == nil)
+                first = nil
+                #expect(BrowserCompanionConnection.snapshot(directory:root).connected)
+                #expect(BrowserCompanionConnection.snapshot(directory:root).recordingDirectories.isEmpty)
+            }
+        }
         #expect(!BrowserCompanionConnection.snapshot(directory:root).connected)
         let stale = root.appendingPathComponent(UUID().uuidString + ".json")
         try Data("{\"version\":1,\"browser\":\"Chrome\"}".utf8).write(to:stale)

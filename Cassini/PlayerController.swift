@@ -151,12 +151,6 @@ final class PlayerController {
         speed = order[(i + 1) % order.count]
     }
 
-    func stepSpeed(_ direction: Int) {
-        let s = PlayerController.speeds
-        let i = s.firstIndex(of: speed) ?? 1
-        speed = s[max(0, min(s.count - 1, i + direction))]
-    }
-
     /// Stops playback for good; called when the document window closes.
     func shutDown() {
         pause()

@@ -40,7 +40,7 @@ private final class Failures: @unchecked Sendable {
 }
 private func buffer(channels: UInt32, interleaved: Bool = false, frames: UInt32 = 4) throws -> AVAudioPCMBuffer {
     let layout = try #require(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | channels))
-    let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout))
+    let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, interleaved: interleaved, channelLayout: layout)
     let result = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
     result.frameLength = frames
     for c in 0..<Int(channels) {

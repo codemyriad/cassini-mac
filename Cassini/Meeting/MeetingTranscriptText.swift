@@ -281,7 +281,7 @@ final class MeetingTurnTextView: NSTextView {
         guard event.clickCount == 1, selectedRange().length == 0 else { return }
         let up = convert(window?.mouseLocationOutsideOfEventStream ?? event.locationInWindow, from: nil)
         guard hypot(up.x-point.x,up.y-point.y) < 4,
-              let container = textContainer, let layout = layoutManager, let storage = textStorage else { return }
+              let container = textContainer, let layout = layoutManager, textStorage != nil else { return }
         let local = NSPoint(x: point.x-textContainerOrigin.x, y: point.y-textContainerOrigin.y)
         let glyph = layout.glyphIndex(for: local, in: container)
         guard glyph < layout.numberOfGlyphs,

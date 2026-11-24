@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 
 /// The trust states of SPEC.md "Trust and integrity". The raw values are normative.

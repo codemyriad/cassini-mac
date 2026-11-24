@@ -8,12 +8,9 @@ private final class PassiveProofState: @unchecked Sendable {
     private var time: UInt64 = 1_000
     private var rows: [BrowserControlPeerSnapshot] = []
     private var nativeStarts = 0
-    private var signalExpectation: XCTestExpectation?
-    func expectSignalStart(_ value: XCTestExpectation) { lock.withLock { signalExpectation = value } }
     func signal(_ action: BrowserSignalAction) {
         if case .start = action {
-            let done = lock.withLock { nativeStarts += 1; return signalExpectation }
-            done?.fulfill()
+            lock.withLock { nativeStarts += 1 }
         }
     }
     var signalStarts: Int { lock.withLock { nativeStarts } }
