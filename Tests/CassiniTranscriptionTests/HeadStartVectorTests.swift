@@ -7,7 +7,7 @@ import Darwin
 import CassiniLibrary
 import CassiniWhistle
 
-/// Wave 0 shared head-start transcription vector conformance tests (D-1117 / D109 / D-1122).
+/// Wave 0 shared head-start transcription vector conformance tests (D-1117 / D109 / D111 / D-1122).
 final class HeadStartVectorTests: XCTestCase {
     private static func fixtureURL(_ name: String) -> URL {
         URL(fileURLWithPath: #filePath)
@@ -38,6 +38,7 @@ final class HeadStartVectorTests: XCTestCase {
     func testTranscriptionModeVectors() throws {
         let data = try Data(contentsOf: Self.fixtureURL("transcription-mode-vectors.json"))
         let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(TranscriptionMode.defaultMode, .transcribeWhileRecording)
         XCTAssertEqual(root["defaultMode"] as? String, TranscriptionMode.defaultMode.rawValue)
         let cases = try XCTUnwrap(root["cases"] as? [[String: Any]])
         XCTAssertGreaterThanOrEqual(cases.count, 10)

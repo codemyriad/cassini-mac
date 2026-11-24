@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 
-/// D-1117 / D109 non-UI transcription policy seam.
-/// Shipped default stays `.afterStop` until platform qualification passes.
+/// D-1117 / D109 / D111 non-UI transcription policy seam.
+/// Shipped default is `.transcribeWhileRecording` (D111); `.afterStop` and `.recordOnly`
+/// remain supported canonical modes.
 public enum TranscriptionMode: String, Codable, Equatable, Sendable, CaseIterable {
     case recordOnly = "recordOnly"
     case afterStop = "afterStop"
     case transcribeWhileRecording = "transcribeWhileRecording"
 
-    public static let defaultMode: TranscriptionMode = .afterStop
+    public static let defaultMode: TranscriptionMode = .transcribeWhileRecording
 
     public struct Resolution: Equatable, Sendable {
         public let mode: TranscriptionMode
@@ -50,10 +51,10 @@ public enum TranscriptionMode: String, Codable, Equatable, Sendable, CaseIterabl
 
     /// Resolves a persisted raw value (canonical, Python snake_case, or Kotlin UPPER_SNAKE_CASE,
     /// case-sensitive). Any null, empty, wrong-case, non-string, or unrecognized token resolves
-    /// deterministically to `.afterStop`.
+    /// deterministically to `defaultMode` (`.transcribeWhileRecording`).
     public static func resolve(_ rawValue: Any?) -> Resolution {
         guard let token = rawValue as? String else {
-            return Resolution(mode: .afterStop, fellBackToDefault: true)
+            return Resolution(mode: defaultMode, fellBackToDefault: true)
         }
         switch token {
         case "recordOnly", "record_only", "RECORD_ONLY":
@@ -63,7 +64,7 @@ public enum TranscriptionMode: String, Codable, Equatable, Sendable, CaseIterabl
         case "transcribeWhileRecording", "transcribe_while_recording", "TRANSCRIBE_WHILE_RECORDING":
             return Resolution(mode: .transcribeWhileRecording, fellBackToDefault: false)
         default:
-            return Resolution(mode: .afterStop, fellBackToDefault: true)
+            return Resolution(mode: defaultMode, fellBackToDefault: true)
         }
     }
 
