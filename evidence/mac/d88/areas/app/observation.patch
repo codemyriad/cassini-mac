@@ -1,5 +1,0 @@
---- a/Cassini/Browser/CaptureSelfTest.swift
-+++ b/Cassini/Browser/CaptureSelfTest.swift
-@@ -245 +245 @@
--                Task { @MainActor in check() }
-+                // Mutation omits re-observation.
