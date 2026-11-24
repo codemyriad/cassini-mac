@@ -40,11 +40,13 @@ function fixture(){
     }
   }
   class MediaStreamAudioSourceNode extends AudioNode {#stream;constructor(context,{mediaStream}){super(context,0,1);this.#stream=mediaStream}get mediaStream(){return this.#stream}}
+  class MediaStreamTrackAudioSourceNode extends AudioNode {constructor(context,{mediaStreamTrack}){super(context,0,1)}}
   class MediaStreamAudioDestinationNode extends AudioNode {#stream=new Stream(new Track('MediaStreamAudioDestinationNode'));constructor(context){super(context,1,0)}get stream(){return this.#stream}}
   class GainNode extends AudioNode {constructor(context){super(context,1,1);this.gain=new AudioParam()}}
   class AudioContext extends BaseAudioContext {
     constructor(){super();this.destination=new AudioNode(this,1,0)}
     createMediaStreamSource(mediaStream){return new MediaStreamAudioSourceNode(this,{mediaStream})}
+    createMediaStreamTrackSource(mediaStreamTrack){return new MediaStreamTrackAudioSourceNode(this,{mediaStreamTrack})}
     createMediaStreamDestination(){return new MediaStreamAudioDestinationNode(this)}
     createGain(){return new GainNode(this)}createOscillator(){return new AudioNode(this,0,1)}createMediaElementSource(){return new AudioNode(this,0,1)}
     createChannelMerger(inputs=6){return new AudioNode(this,inputs,1)}createChannelSplitter(outputs=6){return new AudioNode(this,1,outputs)}
@@ -53,12 +55,16 @@ function fixture(){
   class Sender {
     #track;constructor(track){this.#track=track;this.packets=0;this.age=0;this.pending=null}
     get track(){return this.#track}set track(value){this.#track=value}
-    async getStats(){if(this.pending)await this.pending;return new Report([['out',{id:'out',type:'outbound-rtp',kind:'audio',packetsSent:this.packets,timestamp:origin+now-this.age}]])}
+    async getStats(){this.statsReads=(this.statsReads||0)+1;if(this.pending)await this.pending;return new Report([['out',{id:'out',type:'outbound-rtp',kind:'audio',packetsSent:this.packets,timestamp:origin+now-this.age}]])}
   }
   class Receiver {
     #track=new Track();constructor(){this.packets=0;this.age=0}
     get track(){return this.#track}
-    async getStats(){return new Report([['in',{id:'in',type:'inbound-rtp',kind:'audio',packetsReceived:this.packets,timestamp:origin+now-this.age}]])}
+    async getStats(){
+      const report=new Report([['in',{id:'in',type:'inbound-rtp',kind:'audio',packetsReceived:this.packets,timestamp:origin+now-this.age}]]);
+      for(let i=0;i<this.extraRows;i++)report.set(i,{type:'candidate-pair'});
+      return report;
+    }
   }
   class Transceiver {
     #sender;#receiver;#direction='sendrecv';constructor(sender,receiver){this.#sender=sender;this.#receiver=receiver}
@@ -71,11 +77,12 @@ function fixture(){
     getTransceivers(){return this.slots}setRemoteDescription(){return Promise.resolve()}
     close(){this.#signal='closed';this.#connection='closed'}
   }
-  const location={get href(){return 'https://neutral.invalid/call'}};
+  let address='https://neutral.invalid/call';
+  const location={get href(){return address}};
   const window={RTCPeerConnection:Peer,location,postMessage:packet=>messages.push(packet),addEventListener:(name,fn)=>listeners.push(fn)};
   const context=vm.createContext({isSecureContext:true,window,location,RTCPeerConnection:Peer,RTCRtpSender:Sender,RTCRtpReceiver:Receiver,RTCRtpTransceiver:Transceiver,
     MediaStreamTrack:Track,MediaStream:Stream,RTCStatsReport:Report,BaseAudioContext,AudioContext,AudioNode,AudioParam,
-    MediaStreamAudioSourceNode,MediaStreamAudioDestinationNode,
+    MediaStreamAudioSourceNode,MediaStreamTrackAudioSourceNode,MediaStreamAudioDestinationNode,
     navigator:{mediaDevices:{async getUserMedia(){return new Stream(new Track())},async getDisplayMedia(){return new Stream(new Track('Shared screen audio'))}}},
     crypto:{randomUUID:()=> 'hook-document'},performance:{timeOrigin:origin,now:()=>now},
     setInterval:fn=>timers.push(fn),setTimeout,clearTimeout});
@@ -94,7 +101,7 @@ function fixture(){
     // deliberately poisoned Promise.prototype.then/species. Browsers ignore
     // an interval callback return value; this bridge waits intrinsically.
     Object.defineProperty(sampled,'constructor',{value:Promise});await sampled;}
-  return {context,window,listeners,messages,peer,read,advance,tick,Track,stateReads:()=>stateReads};
+  return {context,window,listeners,messages,peer,read,advance,tick,Track,navigate:url=>{address=url},stateReads:()=>stateReads};
 }
 test('real capture provenance and proven clones require two fresh progress samples; preview and synthetic senders do not qualify',async()=>{
   for(const kind of ['captured','clone','synthetic']){
@@ -409,4 +416,206 @@ test('the terminal check walks each nested output once: teardown work grows line
  };
  const small=await work(4),large=await work(8);
  assert.ok(large<=small*3,`teardown work ${small} at width 4 and ${large} at width 8 must scale linearly`);
+});
+
+test('MediaStreamTrackAudioSourceNode and createMediaStreamTrackSource keep captured mic lineage and reject non-mic or getter-swapped tracks',async()=>{
+ const f=fixture(),g=await graphPeer(f,({audio,mic,output})=>{
+  audio.createMediaStreamTrackSource(mic.getAudioTracks()[0]).connect(output);
+ });
+ assert.equal(await qualifies(f,g.peer),true);
+ const fCtor=fixture(),gCtor=await graphPeer(fCtor,({audio,mic,output})=>{
+  new fCtor.context.MediaStreamTrackAudioSourceNode(audio,{mediaStreamTrack:mic.getAudioTracks()[0]}).connect(output);
+ });
+ assert.equal(await qualifies(fCtor,gCtor.peer),true);
+ const fNeg=fixture(),gNeg=await graphPeer(fNeg,async({audio,output})=>{
+  const display=await fNeg.context.navigator.mediaDevices.getDisplayMedia();
+  audio.createMediaStreamTrackSource(display.getAudioTracks()[0]).connect(output);
+ });
+ assert.equal(await qualifies(fNeg,gNeg.peer),false);
+ const fSwap=fixture(),gSwap=await graphPeer(fSwap,async({audio,mic,output})=>{
+  const display=await fSwap.context.navigator.mediaDevices.getDisplayMedia();
+  const options={};
+  Object.defineProperty(options,'mediaStreamTrack',{configurable:true,get(){
+   Object.defineProperty(options,'mediaStreamTrack',{value:mic.getAudioTracks()[0],configurable:true});
+   return display.getAudioTracks()[0];
+  }});
+  new fSwap.context.MediaStreamTrackAudioSourceNode(audio,options).connect(output);
+ });
+ assert.equal(await qualifies(fSwap,gSwap.peer),false);
+});
+
+test('sub-millisecond negative timestamp skew is tolerated and clamped while larger future timestamps are rejected',async()=>{
+ const f=fixture(),p=await f.peer('captured');
+ p.sender.age=-1;p.receiver.age=-1;
+ assert.equal(await qualifies(f,p),true);
+ assert.equal(f.read().ageMs,0);
+ const fBad=fixture(),pBad=await fBad.peer('captured');
+ pBad.sender.age=-10;pBad.receiver.age=-10;
+ assert.equal(await qualifies(fBad,pBad),false);
+});
+
+test('peer overflow waits for omitted and tracked transports to close before fresh proof',async()=>{
+ const f=fixture(),original=await f.peer();
+ assert.equal(await qualifies(f,original),true);
+ const others=Array.from({length:64},()=>new f.context.RTCPeerConnection());
+ assert.equal(f.read().cohortQualified,false);
+ original.pc.close();original.track.readyState='ended';
+ for(const pc of others.slice(0,-1))pc.close();
+ assert.equal(f.read().ended,false,'the omitted peer is still open');
+ f.navigate('https://neutral.invalid/another');
+ const replacement=await f.peer();
+ assert.equal(await qualifies(f,replacement),false,'navigation and a new peer cannot clear a live excess');
+ others.at(-1).close();
+ assert.equal(f.read().cohortQualified,false,'closing the last omitted peer cannot admit an ongoing call');
+ replacement.pc.close();replacement.track.readyState='ended';
+ const next=await f.peer();
+ await f.tick([next]);assert.equal(f.read().cohortQualified,false);
+ await f.tick([next]);assert.equal(f.read().cohortQualified,true);
+});
+
+test('root overflow waits for native teardown and reclaims ended lineage for a new call',async()=>{
+ const f=fixture(),original=await f.peer();
+ assert.equal(await qualifies(f,original),true);
+ const clones=Array.from({length:1024},()=>original.track.clone());
+ assert.equal(f.read().cohortQualified,false);
+ for(const track of clones.slice(0,-1))track.readyState='ended';
+ original.pc.close();original.track.readyState='ended';
+ const retry=await f.peer();
+ assert.equal(await qualifies(f,retry),false,'the refused capture is still live');
+ clones.at(-1).readyState='ended';
+ assert.equal(f.read().cohortQualified,false);
+ retry.pc.close();retry.track.readyState='ended';
+ const next=await f.peer();
+ await f.tick([next]);assert.equal(f.read().cohortQualified,false);
+ await f.tick([next]);assert.equal(f.read().cohortQualified,true);
+});
+
+test('stats overflow stays latched until closed transports and the qualified capture end',async()=>{
+ const f=fixture(),original=await f.peer();
+ assert.equal(await qualifies(f,original),true);
+ original.receiver.extraRows=128;
+ await f.tick([original]);assert.equal(f.read().cohortQualified,false);
+ original.receiver.extraRows=0;
+ assert.equal(await qualifies(f,original),false);
+ original.pc.close();
+ const retry=await f.peer(original.track);
+ assert.equal(await qualifies(f,retry),false,'a retained microphone keeps the native episode open');
+ retry.pc.close();original.track.readyState='ended';
+ assert.equal(f.read().ended,true);
+ const next=await f.peer();
+ await f.tick([next]);assert.equal(f.read().cohortQualified,false);
+ await f.tick([next]);assert.equal(f.read().cohortQualified,true);
+ assert.equal(f.read().hookGeneration,'1');
+});
+
+function addSlot(f,peer,direction){
+ const sender=new f.context.RTCRtpSender(peer.track),receiver=new f.context.RTCRtpReceiver();
+ const slot=new f.context.RTCRtpTransceiver(sender,receiver);
+ slot.currentDirection=direction;peer.pc.slots.push(slot);
+ return {sender,receiver};
+}
+
+test('large connected peers expose late active audio slots but withhold admission',async()=>{
+ for(const direction of ['inactive','recvonly','sendonly']){
+  const f=fixture(),p=await f.peer(),duplex=p.pc.slots.pop();
+  for(let i=0;i<64;i++)addSlot(f,p,direction);
+  p.pc.slots.push(duplex);
+  await f.tick([p]);await f.tick([p]);
+  const value=f.read();
+  assert.equal(value.sourceCount,direction==='recvonly'?64:1,direction);
+  assert.equal(value.receivedPeers,1,direction);assert.equal(value.capturedSendingPeers,1,direction);
+  assert.equal(value.cohortQualified,false,direction);assert.equal(value.samePeerCount,0);
+  p.pc.slots.splice(0,64);assert.equal(await qualifies(f,p),false,'shrinking in place cannot admit the call');
+ }
+});
+
+test('a duplex slot crossing the 128-task budget cannot qualify from a partial sample',async()=>{
+ const f=fixture(),first=await f.peer();
+ for(let i=0;i<62;i++)addSlot(f,first,'sendrecv');
+ addSlot(f,first,'recvonly');
+ const last=await f.peer();
+ await f.tick([first,last]);await f.tick([first,last]);
+ assert.equal(f.read().cohortQualified,false,'127 tasks plus another duplex slot exceed the budget');
+ assert.equal(last.sender.statsReads||0,0,'the 129th getStats call must not start');
+});
+
+test('128 native stats tasks followed by an inactive slot stay within budget',async()=>{
+ const f=fixture(),first=await f.peer();
+ for(let i=0;i<63;i++)addSlot(f,first,'sendrecv');
+ const idle=await f.peer();idle.pc.slots[0].currentDirection='inactive';
+ assert.equal(await qualifies(f,first),true);
+});
+
+test('adding a 129th native stats endpoint withdraws existing proof before the next tick',async()=>{
+ const f=fixture(),first=await f.peer();
+ assert.equal(await qualifies(f,first),true);
+ for(let i=0;i<63;i++)addSlot(f,first,'sendrecv');
+ const last=await f.peer();last.pc.slots[0].currentDirection='recvonly';
+ assert.equal(f.read().cohortQualified,false);
+});
+
+test('a 65th historical qualified peer cannot be admitted without retaining its terminal endpoints',async()=>{
+ const f=fixture();
+ for(let i=0;i<65;i++){
+  const p=await f.peer();
+  assert.equal(await qualifies(f,p),i<64,'sequential peer '+(i+1));
+  p.pc.close(); // Live qualified captures keep this the same episode.
+ }
+});
+
+test('the collector never reports ended while the omitted 65th historical sender microphone is still live',async()=>{
+ const f=fixture(),calls=[];
+ for(let i=0;i<65;i++){
+  const p=await f.peer();
+  calls.push(p);
+  assert.equal(await qualifies(f,p),i<64,'sequential peer '+(i+1));
+  p.pc.close();
+ }
+ for(const p of calls.slice(0,64))p.track.readyState='ended';
+ assert.equal(calls[64].track.readyState,'live');
+ assert.equal(f.read().ended,false,'an omitted live endpoint withholds the end');
+ assert.equal(f.read().ended,false,'repeated reads keep it withheld and do not exhaust the witness list');
+ calls[64].track.readyState='ended';
+ assert.equal(f.read().ended,true,'the end is reported once that endpoint really ended');
+});
+
+test('a live sender without native mic lineage sets only a content-free diagnostic',async()=>{
+ const f=fixture(),p=await f.peer('synthetic');
+ assert.equal(await qualifies(f,p),false);
+ assert.equal(f.read().unverifiedMicSenderObserved,true);
+ assert.equal(f.read().capturedSendingPeers,0);
+ p.pc.slots[0].currentDirection='recvonly';
+ assert.equal(f.read().unverifiedMicSenderObserved,false);
+ p.pc.slots[0].currentDirection='sendrecv';p.track.enabled=false;
+ assert.equal(f.read().unverifiedMicSenderObserved,false);
+ p.sender.track=(await f.context.navigator.mediaDevices.getUserMedia()).getAudioTracks()[0];
+ assert.equal(f.read().unverifiedMicSenderObserved,false);
+ assert.equal(f.read().cohortQualified,false,'known lineage alone cannot qualify');
+ assert.equal(await qualifies(f,p),true);
+ const generated=await f.peer('synthetic');
+ generated.pc.slots[0].currentDirection='sendonly';
+ for(let i=0;i<64;i++)addSlot(f,generated,'inactive');
+ assert.equal(f.read().unverifiedMicSenderObserved,true,'over-bound observation can still explain an unrooted sender');
+ assert.equal(f.read().cohortQualified,false);
+});
+
+test('address fences preserve live qualified captures as overflow teardown witnesses',async()=>{
+ const f=fixture(),p=await f.peer();
+ assert.equal(await qualifies(f,p),true);
+ p.receiver.extraRows=128;await f.tick([p]);assert.equal(f.read().cohortQualified,false);
+ p.pc.close();
+ f.navigate('https://neutral.invalid/new-room');
+ const retry=await f.peer();
+ assert.equal(await qualifies(f,retry),false,'the original captured track is still live');
+ retry.pc.close();p.track.readyState='ended';
+ const next=await f.peer();
+ assert.equal(await qualifies(f,next),true);
+});
+
+test('losing an excess peer witness withholds admission for the rest of the document',async()=>{
+ const f=fixture(),peers=Array.from({length:129},()=>new f.context.RTCPeerConnection());
+ for(const pc of peers)pc.close();
+ f.navigate('https://neutral.invalid/new-room');
+ const next=await f.peer();
+ assert.equal(await qualifies(f,next),false);
 });

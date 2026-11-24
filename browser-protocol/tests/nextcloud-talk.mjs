@@ -7,6 +7,7 @@ import {generateKeyPairSync,createHash} from 'node:crypto';
 import {cp,mkdir,mkdtemp,readFile,writeFile,chmod,rm} from 'node:fs/promises';
 import os from 'node:os';import path from 'node:path';import {fileURLToPath} from 'node:url';
 import {joinNextcloudTalk,talkMediaState} from '../scenarios/nextcloud-talk.mjs';
+import {openPopupForTab,recheckPopup} from './support/popup-check.mjs';
 import {installRtcTopologyProbe,summarizeRtcTopology,waitRtcTopology,summarizeRtcCohortComparison} from './rtc-topology-probe.mjs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -89,11 +90,10 @@ try{
  const row=await until(()=>inventory().find(m=>m.sourceCount>=2&&m.heard===true),'extension detects both real Talk peers with RTP evidence',20000);
  report.cases.push('real Nextcloud sources detected');
  // A real toolbar popup sees the meeting as Chrome's active tab. This test
- // opens its resources as an extension page, so route only that metadata query
- // to Chrome's actual meeting-tab object, as in the loaded-reload fixture.
- popup=await observer.newPage();await popup.goto(`chrome-extension://${id}/popup.html`);
- await popup.evaluate(tabId=>{const query=chrome.tabs.query.bind(chrome.tabs);chrome.tabs.query=async options=>options.active?[await chrome.tabs.get(tabId)]:query(options);},row.tabId);
- await popup.getByRole('heading',{name:'Interactive session is unverified',exact:true}).waitFor();
+ // opens its resources as an extension page, so bind that metadata query
+ // before popup.js runs its initial open check.
+ popup=await openPopupForTab(observer,id,row.tabId);
+ assert.equal(await popup.locator('#status').textContent(),'Interactive session is unverified');
  const beforeStart=await popup.evaluate(tabId=>chrome.runtime.sendMessage({target:'background',type:'status',tabId}),row.tabId);
  assert.ok(inventory().some(item=>item.tabId===row.tabId&&item.sourceCount>=2&&item.heard===true),
   'listen-only Talk retains both RTP sources without automatic admission');
@@ -103,7 +103,11 @@ try{
  const directory=started.status.path;
  await until(async()=>{try{const m=JSON.parse(await readFile(path.join(directory,'session.json'),'utf8'));return m.tracks.filter(t=>t.kind==='remote'&&t.frames>=t.sampleRate*2).length>=2&&m;}catch{return null;}},'two separately captured remote tracks');
  await popup.getByRole('heading',{name:'Browser capture is active',exact:true}).waitFor();
- assert.equal(await popup.getByRole('button',{name:/record|stop/i}).count(),0);
+ // This control client never opts in to popup-record-v1: Stop is shown for the
+ // tab's capture but disabled with a reason, and the popup asks nothing.
+ const stopButton=popup.getByRole('button',{name:'Stop recording',exact:true});await stopButton.waitFor();
+ assert.equal(await stopButton.isDisabled(),true);
+ assert.ok(!events.some(e=>e.type==='recordRequest'),'no popup ask without the app opt-in');
  const stopId='nextcloud-stop';control.write(JSON.stringify({type:'command',requestId:stopId,action:'stop',tabId:row.tabId,independent:true})+'\n');
  const stopped=await until(()=>events.find(e=>e.type==='result'&&e.requestId===stopId),'native Stop result');assert.equal(stopped.ok,true,JSON.stringify(stopped));
  const final=JSON.parse(await readFile(path.join(directory,'session.json'),'utf8'));report.manifest=final;
@@ -134,13 +138,17 @@ try{
   peaks.push(frequency);
  }
  assert.deepEqual([...new Set(peaks)].sort((a,b)=>a-b),[440,880],'remote tracks must carry separate known peer tones without cross-mixing');
- // D80.3: measure the real topology before choosing an admission binding.
- // The baseline observer was muted for the independent capture proof above.
+ // D80.3 / D-982: add a 3rd remote participant (4-person call: 3 remote + active mic)
+ // and measure the real split-PC topology + sustained callSignals renewal.
+ const thirdBrowser=await chromium.launch({channel:'chromium',headless:true,args:[...sharedArgs,`--use-file-for-fake-audio-capture=${await wave(660)}`]});participants.push(thirdBrowser);
+ const thirdContext=await thirdBrowser.newContext({permissions:['microphone','camera'],userAgent});
+ await joinNextcloudTalk(await thirdContext.newPage(),{url:callURL,name:'Al-Khwarizmi'});
+ await until(async()=>{const state=await talkMediaState(meeting);return state.remoteAudio>=3&&state;},'three real Talk remote audio sources');
  report.rtcTopologyMuted=await meeting.evaluate(()=>cassiniRtcTopology());
  await meeting.getByRole('button',{name:/^Unmute(?: audio)?(?: \(.*\))?$/i}).first().click();
  const topologyBefore=await waitRtcTopology(meeting,{sending:'captured'});
  report.rtcTopology=summarizeRtcTopology(topologyBefore,await waitRtcTopology(meeting,{previous:topologyBefore,sending:'captured'}));
- assert.ok(report.rtcTopology.sendingPeers>0&&report.rtcTopology.receivingPeers>0,'Talk measurement requires real bidirectional packet progress');
+ assert.ok(report.rtcTopology.sendingPeers>0&&report.rtcTopology.receivingPeers>=3,'4-person Talk measurement requires real bidirectional packet progress with 3 remote peers');
  report.rtcCohortCandidates=await meeting.evaluate(()=>cassiniRtcCohortFacts());
  assert.equal(report.rtcTopology.samePeerConnection,false,'real Talk must exercise split publisher/subscriber PCs');
  // D80.5 product gate: the SHIPPED native collector and worker must publish
@@ -149,18 +157,32 @@ try{
  control.write(JSON.stringify({type:'configure',capabilities:['call-signals-v1','verified-auto-admission-v1']})+'\n');
  const ack=await controlEvent(()=>events.slice(proofStart).find(event=>event.type==='configured'),'verified capability acknowledgement');
  assert.deepEqual([...ack.capabilities].sort(),['call-signals-v1','verified-auto-admission-v1'].sort());
- const qualified=await controlEvent(()=>events.slice(proofStart).filter(event=>event.type==='callSignals').flatMap(event=>event.tabs).find(tab=>tab.tabId===row.tabId&&tab.callEvidence.state==='active'),'real Talk verified active publication');
+ const qualifiedSignal=await controlEvent(()=>events.slice(proofStart).find(event=>event.type==='callSignals'&&event.tabs.some(tab=>tab.tabId===row.tabId&&tab.callEvidence.state==='active')),'real Talk verified active publication');
+ const qualified=qualifiedSignal.tabs.find(tab=>tab.tabId===row.tabId);
  assert.equal(qualified.remoteAudio,'separated');assert.equal(qualified.callEvidence.adapter.version,'2');
  const verified=await controlEvent(()=>inventory().find(item=>item.tabId===row.tabId&&item.browserDocumentId===qualified.documentGeneration),'correlated verified RTP inventory');
  assert.equal(verified.documentGeneration,qualified.sourceDocumentGeneration);assert.equal(verified.callGeneration,qualified.callEvidence.callGeneration);
  assert.notEqual(qualified.documentGeneration,qualified.sourceDocumentGeneration);
- await popup.getByRole('heading',{name:'Interactive media session detected',exact:true}).waitFor();
+ await recheckPopup(popup);
+ assert.equal(await popup.locator('#status').textContent(),'Interactive media session detected');
+ // Verify active callEvidence is renewed across multiple post-qualification sampling cycles without dropping to unknown.
+ const renewalSignals=await controlEvent(()=>{
+  const postActive=events.slice(proofStart).filter(event=>event.type==='callSignals'&&event.sequence>qualifiedSignal.sequence);
+  return postActive.length>=3&&postActive;
+ },'sustained active callSignals renewals');
+ const renewals=renewalSignals.map(event=>event.tabs.find(tab=>tab.tabId===row.tabId));
+ assert.ok(renewals.every(tab=>tab?.callEvidence.state==='active'&&tab.callEvidence.callGeneration===qualified.callEvidence.callGeneration&&tab.remoteAudio==='separated'),
+  '4-person active Talk call must not drop to unknown across callSignals renewals');
+ await recheckPopup(popup);
+ assert.equal(await popup.locator('#status').textContent(),'Interactive media session detected');
  report.d805Admission={state:qualified.callEvidence.state,remoteAudio:qualified.remoteAudio,acknowledged:true,namespaceBinding:true,
-   adapterVersion:qualified.callEvidence.adapter.version,splitPeerConnection:true,
+   adapterVersion:qualified.callEvidence.adapter.version,splitPeerConnection:true,renewals:renewals.length,
    collector:await meeting.evaluate(()=>{const value=__cassiniCallEvidenceV1.read();return {version:value.version,
      cohortQualified:value.cohortQualified,samePeerCount:value.samePeerCount,receivedPeers:value.receivedPeers,capturedSendingPeers:value.capturedSendingPeers}})};
  assert.equal(report.d805Admission.collector.cohortQualified,true);assert.equal(report.d805Admission.collector.samePeerCount,0);
- report.cases.push('D80.5 real split-PC Talk qualifies through native collector and worker as one fresh document/frame cohort');
+ assert.ok(report.d805Admission.collector.receivedPeers>=3,'4-person Talk call must report at least 3 receiving peers');
+ assert.equal(report.d805Admission.collector.capturedSendingPeers,1);
+ report.cases.push('D80.5 / D-982 real 4-person split-PC Talk qualifies and renews through native collector and worker');
  // Compare actual native fields against another room on the SAME backend.
  // A common SFU certificate/CNAME/stream placeholder is not room identity.
  // Retain only numeric facts plus a private in-browser reference table, then
