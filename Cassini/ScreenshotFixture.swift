@@ -121,13 +121,7 @@ enum ScreenshotFixture {
             }
             if let query = LibraryLaunchContext.argument("-CassiniFindPreview"), !query.isEmpty,
                let detail = MeetingNavigation.shared.detail {
-                detail.find.visible = true
-                detail.find.query = query
-                while detail.find.searching || detail.find.matches.isEmpty {
-                    let (events, signal) = AsyncStream<Void>.makeStream()
-                    withObservationTracking { _ = detail.find.searching; _ = detail.find.matches.count } onChange: { signal.yield(); signal.finish() }
-                    var iterator = events.makeAsyncIterator(); _ = await iterator.next()
-                }
+                await applyFindPreview(query, to: detail)
             }
             await withCheckedContinuation { continuation in DispatchQueue.main.async { continuation.resume() } }
             let customSize = LibraryLaunchContext.argument("-CassiniScreenshotSize") != nil
@@ -159,6 +153,12 @@ enum ScreenshotFixture {
                   let output = try? JSONSerialization.data(withJSONObject:["board":name,"width":width,"height":height,"pngBase64":png.base64EncodedString()]) else { exit(1) }
             FileHandle.standardOutput.write(output + Data([10])); exit(0)
         }
+    }
+    static func applyFindPreview(_ query: String, to detail: MeetingDetailModel) async {
+        let startRevision = detail.find.completedRevision
+        detail.find.visible = true
+        detail.find.query = query
+        await detail.find.waitForCompletion(of: query, after: startRevision)
     }
     static func prepareLegacy(_ window: NSWindow) {
         guard let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["window", "sheet"].contains(name),

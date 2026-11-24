@@ -152,6 +152,30 @@ import Observation
         report["findConsumesFocusOnce"] = find.consumeFocusRequest() && !find.consumeFocusRequest()
         find.requestFocus()
         report["findHandlesLaterFocusRequest"] = find.consumeFocusRequest() && !find.consumeFocusRequest()
+        let findPreview = MeetingDetailModel(meeting: asideMeeting, frozen: true)
+        func runFindPreview(_ query: String) async -> Int {
+            let startRevision = findPreview.find.completedRevision
+            let (events, signal) = AsyncStream<Void>.makeStream()
+            withObservationTracking { _ = findPreview.find.query } onChange: { signal.yield(); signal.finish() }
+            let waiter = Task { @MainActor in await ScreenshotFixture.applyFindPreview(query, to: findPreview) }
+            var iter = events.makeAsyncIterator(); _ = await iter.next()
+            await findPreview.find.search(turns: findPreview.turns, meeting: findPreview.meeting, language: UXText.language, locale: UXText.locale)
+            await waiter.value
+            return startRevision
+        }
+        let matchStartRevision = await runFindPreview("agree")
+        report["findPreviewCompletesMatchingQuery"] =
+            findPreview.find.visible && !findPreview.find.searching &&
+            findPreview.find.completedQuery == "agree" &&
+            findPreview.find.completedRevision > matchStartRevision &&
+            findPreview.find.matches.count == 1
+        let noMatchStartRevision = await runFindPreview("zzzz-no-match")
+        report["findPreviewCompletesNonmatchingQuery"] =
+            findPreview.find.visible && !findPreview.find.searching &&
+            findPreview.find.completedQuery == "zzzz-no-match" &&
+            findPreview.find.completedRevision > noMatchStartRevision &&
+            findPreview.find.matches.isEmpty
+        findPreview.close()
         var refreshed = fixture
         refreshed.state.transcript = .done
         let cached = MeetingDetailModel(meeting:refreshed,frozen:true)
