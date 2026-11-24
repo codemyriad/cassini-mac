@@ -1,6 +1,6 @@
 {
   "schema": "cassini.head-start.transcription-mode-vectors.v1",
-  "defaultMode": "afterStop",
+  "defaultMode": "transcribeWhileRecording",
   "canonicalModes": [
     "recordOnly",
     "afterStop",
@@ -8,17 +8,17 @@
   ],
   "cases": [
     {
-      "id": "default-after-stop",
+      "id": "default-transcribe-while-recording",
       "input": {
-        "rawMode": "afterStop",
+        "rawMode": "transcribeWhileRecording",
         "hasForegroundSavedJob": false,
         "manualTranscribeRequested": false,
         "platformSupportsPrecompute": true
       },
       "expected": {
-        "resolvedMode": "afterStop",
+        "resolvedMode": "transcribeWhileRecording",
         "fellBackToDefault": false,
-        "spawnWorkerDuringRecording": false,
+        "spawnWorkerDuringRecording": true,
         "autoEnqueueOnStop": true,
         "savedTranscriptStateOnStop": "queued",
         "enqueueOnManualRequest": false,
@@ -98,6 +98,24 @@
       }
     },
     {
+      "id": "after-stop-canonical",
+      "input": {
+        "rawMode": "afterStop",
+        "hasForegroundSavedJob": false,
+        "manualTranscribeRequested": false,
+        "platformSupportsPrecompute": true
+      },
+      "expected": {
+        "resolvedMode": "afterStop",
+        "fellBackToDefault": false,
+        "spawnWorkerDuringRecording": false,
+        "autoEnqueueOnStop": true,
+        "savedTranscriptStateOnStop": "queued",
+        "enqueueOnManualRequest": false,
+        "preemptActiveFollower": false
+      }
+    },
+    {
       "id": "after-stop-python-alias",
       "input": {
         "rawMode": "after_stop",
@@ -127,24 +145,6 @@
         "resolvedMode": "afterStop",
         "fellBackToDefault": false,
         "spawnWorkerDuringRecording": false,
-        "autoEnqueueOnStop": true,
-        "savedTranscriptStateOnStop": "queued",
-        "enqueueOnManualRequest": false,
-        "preemptActiveFollower": false
-      }
-    },
-    {
-      "id": "transcribe-while-recording-idle",
-      "input": {
-        "rawMode": "transcribeWhileRecording",
-        "hasForegroundSavedJob": false,
-        "manualTranscribeRequested": false,
-        "platformSupportsPrecompute": true
-      },
-      "expected": {
-        "resolvedMode": "transcribeWhileRecording",
-        "fellBackToDefault": false,
-        "spawnWorkerDuringRecording": true,
         "autoEnqueueOnStop": true,
         "savedTranscriptStateOnStop": "queued",
         "enqueueOnManualRequest": false,
@@ -242,7 +242,7 @@
       }
     },
     {
-      "id": "unknown-value-falls-back-to-after-stop",
+      "id": "unknown-value-falls-back-to-default",
       "input": {
         "rawMode": "livePreview",
         "hasForegroundSavedJob": false,
@@ -250,9 +250,9 @@
         "platformSupportsPrecompute": true
       },
       "expected": {
-        "resolvedMode": "afterStop",
+        "resolvedMode": "transcribeWhileRecording",
         "fellBackToDefault": true,
-        "spawnWorkerDuringRecording": false,
+        "spawnWorkerDuringRecording": true,
         "autoEnqueueOnStop": true,
         "savedTranscriptStateOnStop": "queued",
         "enqueueOnManualRequest": false,
@@ -260,7 +260,7 @@
       }
     },
     {
-      "id": "empty-string-falls-back-to-after-stop",
+      "id": "empty-string-falls-back-to-default",
       "input": {
         "rawMode": "",
         "hasForegroundSavedJob": false,
@@ -268,9 +268,9 @@
         "platformSupportsPrecompute": true
       },
       "expected": {
-        "resolvedMode": "afterStop",
+        "resolvedMode": "transcribeWhileRecording",
         "fellBackToDefault": true,
-        "spawnWorkerDuringRecording": false,
+        "spawnWorkerDuringRecording": true,
         "autoEnqueueOnStop": true,
         "savedTranscriptStateOnStop": "queued",
         "enqueueOnManualRequest": false,
@@ -278,7 +278,7 @@
       }
     },
     {
-      "id": "null-falls-back-to-after-stop",
+      "id": "null-falls-back-to-default",
       "input": {
         "rawMode": null,
         "hasForegroundSavedJob": false,
@@ -286,9 +286,9 @@
         "platformSupportsPrecompute": true
       },
       "expected": {
-        "resolvedMode": "afterStop",
+        "resolvedMode": "transcribeWhileRecording",
         "fellBackToDefault": true,
-        "spawnWorkerDuringRecording": false,
+        "spawnWorkerDuringRecording": true,
         "autoEnqueueOnStop": true,
         "savedTranscriptStateOnStop": "queued",
         "enqueueOnManualRequest": false,
@@ -296,7 +296,7 @@
       }
     },
     {
-      "id": "wrong-case-falls-back-to-after-stop",
+      "id": "wrong-case-falls-back-to-default",
       "input": {
         "rawMode": "recordonly",
         "hasForegroundSavedJob": false,
@@ -304,9 +304,9 @@
         "platformSupportsPrecompute": true
       },
       "expected": {
-        "resolvedMode": "afterStop",
+        "resolvedMode": "transcribeWhileRecording",
         "fellBackToDefault": true,
-        "spawnWorkerDuringRecording": false,
+        "spawnWorkerDuringRecording": true,
         "autoEnqueueOnStop": true,
         "savedTranscriptStateOnStop": "queued",
         "enqueueOnManualRequest": false,
@@ -314,7 +314,7 @@
       }
     },
     {
-      "id": "non-string-falls-back-to-after-stop",
+      "id": "non-string-falls-back-to-default",
       "input": {
         "rawMode": 42,
         "hasForegroundSavedJob": false,
@@ -322,9 +322,9 @@
         "platformSupportsPrecompute": true
       },
       "expected": {
-        "resolvedMode": "afterStop",
+        "resolvedMode": "transcribeWhileRecording",
         "fellBackToDefault": true,
-        "spawnWorkerDuringRecording": false,
+        "spawnWorkerDuringRecording": true,
         "autoEnqueueOnStop": true,
         "savedTranscriptStateOnStop": "queued",
         "enqueueOnManualRequest": false,
