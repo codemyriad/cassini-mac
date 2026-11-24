@@ -42,7 +42,7 @@ jobs:
         with:
           path: .build
           # Swift 6.1 can leave transitive clients with an obsolete nested-struct
-          # layout after an incremental rebuild (see evidence/mac/flaky/swiftpm-layout).
+          # layout after an incremental rebuild.
           # Reuse compiled objects only for identical inputs. The new namespace
           # also excludes already-saved products built from cross-source restores.
           key: swiftpm-coherent-v1-${{ matrix.arch }}-${{ steps.xcode.outputs.fingerprint }}-${{ steps.xcode.outputs.workspace }}-${{ steps.swiftpm_key.outputs.hash }}

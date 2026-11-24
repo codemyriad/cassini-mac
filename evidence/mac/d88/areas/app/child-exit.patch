@@ -1,5 +1,0 @@
---- a/Cassini/Browser/CaptureSelfTest.swift
-+++ b/Cassini/Browser/CaptureSelfTest.swift
-@@ -26 +26 @@
--        process.terminationHandler = { _ in exited.leave() }
-+        process.terminationHandler = { _ in }

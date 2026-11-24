@@ -1,4 +1,0 @@
---- a/Sources/CassiniBrowserControl/ControlRegistry.swift
-+++ b/Sources/CassiniBrowserControl/ControlRegistry.swift
-@@ -932 +931,0 @@
--            for start in unboundStarts.values { stoppedCalls.remember(start.context.call,now:clock()) }
