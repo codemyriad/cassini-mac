@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { connectReceiveSlots } from '../scenarios/product-topologies.mjs';
+import { recheckPopup } from './support/popup-check.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const extensionSource = path.resolve(process.env.CASSINI_TEST_EXTENSION || path.join(root, 'extension'));
@@ -172,8 +173,10 @@ try {
     const query = chrome.tabs.query.bind(chrome.tabs);
     chrome.tabs.query = async options => options.active ? [await chrome.tabs.get(tabId)] : query(options);
   }, tabId);
-  await popup.getByRole('heading',{name:'Interactive session is unverified',exact:true}).waitFor();
+  // The repaired relay entered after the page loaded, so it can never verify the call: the popup says to reload.
   await meeting.waitForFunction(() => discovery.some(row => row.sourceCount > 0 && row.heard === true));
+  await recheckPopup(popup);
+  assert.equal(await popup.locator('#status').textContent(), 'Reload this tab for automatic detection');
   const beforeStart = await popup.evaluate(tabId => chrome.runtime.sendMessage({target:'background',type:'status',tabId}), tabId);
   assert.ok(await meeting.evaluate(() => discovery.some(row => row.sourceCount > 0 && row.heard === true)),
     'reload repair must preserve the live RTP inventory without granting admission');
@@ -190,7 +193,12 @@ try {
   assert.ok(power/(pcm.length/2) > 0.001, 'reconnected worker must receive non-silent remote audio');
   await popup.getByRole('heading',{name:'Browser capture is active',exact:true}).waitFor();
   assert.equal(await popup.locator('#reload').isVisible(),false);
-  assert.equal(await popup.getByRole('button',{name:/record|stop/i}).count(),0);
+  // The fixture host never opts in to popup-record-v1: Stop is offered for this
+  // tab's capture, but disabled with a reason rather than asking anyone.
+  const stopButton = popup.getByRole('button',{name:'Stop recording',exact:true});
+  await stopButton.waitFor();
+  assert.equal(await stopButton.isDisabled(),true);
+  assert.match(await popup.locator('#record-hint').textContent(),/Stop (it|the recording) in the Cassini app/);
   await mkdir(path.join(root,'artifacts'),{recursive:true});
   await popup.locator('body').screenshot({path:path.join(root,'artifacts/popup-loaded-extension.png')});
   // Reload while production capture is active and the generated peer keeps

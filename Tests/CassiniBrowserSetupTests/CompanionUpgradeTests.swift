@@ -5,7 +5,7 @@ import Testing
 import CassiniBrowserSetup
 
 struct CompanionUpgradeTests {
-    @Test func actual022RuntimeUpgradesToReviewed028AndThenStaysUnchanged() throws {
+    @Test func actual022RuntimeUpgradesToReviewed0238AndThenStaysUnchanged() throws {
         let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("CassiniCompanionUpgrade-"+UUID().uuidString)
         let source = root.appendingPathComponent("source"), home = root.appendingPathComponent("home")
         try FileManager.default.createDirectory(at:source,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
@@ -31,11 +31,11 @@ struct CompanionUpgradeTests {
         // or installer mock. The home is private and no browser is launched.
         let program = "import os,runpy,sys; os.umask(0); sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name='__main__')"
         try run("/usr/bin/env",["python3","-c",program,repository.appendingPathComponent("scripts/bundle-browser-companion.py").path,source.path])
-        let upgraded = try install(installer,stage:"real 0.2.28 upgrade")
-        #expect(upgraded.updated && upgraded.version == "0.2.28")
+        let upgraded = try install(installer,stage:"real 0.2.38 upgrade")
+        #expect(upgraded.updated && upgraded.version == "0.2.38")
         #expect(try Data(contentsOf:installer.destination.appendingPathComponent("background.js")) != background)
         #expect(try Data(contentsOf:installer.destination.appendingPathComponent("app-control.js")) != control)
-        #expect(try String(contentsOf:installer.destination.appendingPathComponent("PROTOCOL_COMMIT.txt"),encoding:.utf8).trimmingCharacters(in:.whitespacesAndNewlines) == "572397ff7a0ba45f35ad60bbfea7f0c5fd442792")
+        #expect(try String(contentsOf:installer.destination.appendingPathComponent("PROTOCOL_COMMIT.txt"),encoding:.utf8).trimmingCharacters(in:.whitespacesAndNewlines) == "7a4461b62d122936cd72f8bcb2f57fa033f6aaf7")
         var identities: [String:NSNumber] = [:], dates: [String:Date] = [:]
         let files = try #require(FileManager.default.enumerator(atPath:source.path))
         var count = 0
@@ -50,7 +50,7 @@ struct CompanionUpgradeTests {
             identities[name] = try #require(attributes[.systemFileNumber] as? NSNumber)
             dates[name] = try #require(attributes[.modificationDate] as? Date)
         }
-        #expect(count == 21)
+        #expect(count == 24)
         #expect(try !installer.install().updated)
         for (name,inode) in identities {
             let attributes = try FileManager.default.attributesOfItem(atPath:installer.destination.appendingPathComponent(name).path)

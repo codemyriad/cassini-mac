@@ -122,6 +122,7 @@
     } catch {}
     return false;
   }
+  // --- WebAudio & media lineage tracking ---
   // WebAudio lineage, the same rules as the native collector's (rtc-evidence.js): a
   // MediaStreamAudioDestinationNode output carries what its graph's sources reach through
   // successful AudioNode connections. AudioParam modulation carries nothing.
@@ -169,11 +170,17 @@
     memo.set(output, reach);
     return reach;
   }
-  const audioContextPrototype = globalThis.AudioContext?.prototype;
+  const audioContextPrototype = (globalThis.AudioContext || globalThis.webkitAudioContext)?.prototype;
   const rememberAudioSource = node => {
     try {
       if (node?.mediaStream) audioSources.set(node, { tracks: node.mediaStream.getAudioTracks() });
       else if (node?.mediaElement) audioSources.set(node, { element: node.mediaElement });
+    } catch {}
+    return node;
+  };
+  const rememberAudioTrackSource = (node, track) => {
+    try {
+      if (node && track) audioSources.set(node, { tracks: [track] });
     } catch {}
     return node;
   };
@@ -188,6 +195,25 @@
     if (typeof create === "function") audioContextPrototype[factory] = function (...args) { return remember(Reflect.apply(create, this, args)); };
     if (typeof globalThis[Node] === "function") globalThis[Node] = new Proxy(globalThis[Node], {
       construct(target, args, newTarget) { return remember(Reflect.construct(target, args, newTarget)); }
+    });
+  }
+  const createTrackSource = audioContextPrototype?.createMediaStreamTrackSource;
+  if (typeof createTrackSource === "function") {
+    audioContextPrototype.createMediaStreamTrackSource = function (...args) {
+      const track = args.length > 0 ? args[0] : undefined;
+      return rememberAudioTrackSource(Reflect.apply(createTrackSource, this, args.length ? [track] : []), track);
+    };
+  }
+  if (typeof globalThis.MediaStreamTrackAudioSourceNode === "function") {
+    globalThis.MediaStreamTrackAudioSourceNode = new Proxy(globalThis.MediaStreamTrackAudioSourceNode, {
+      construct(target, args, newTarget) {
+        const options = args.length > 1 ? args[1] : undefined;
+        let track; try { track = options?.mediaStreamTrack; } catch {}
+        if (track !== undefined) {
+          return rememberAudioTrackSource(Reflect.construct(target, [args[0], { mediaStreamTrack: track }], newTarget), track);
+        }
+        return Reflect.construct(target, args, newTarget);
+      }
     });
   }
   const audioNodePrototype = globalThis.AudioNode?.prototype;
@@ -340,6 +366,7 @@
       return value;
     };
   }
+  // --- Discovery & RTP evidence sampling ---
   // Discovery is independent of capture: no AudioContext, cloned stream or PCM
   // is created until an explicit recording command arrives.
   let lastSourceCount = -1, lastHeard = null, latched = false, zeroSince = null, orphanedSince = null;
@@ -447,6 +474,7 @@
     } finally { sampling = false; }
   }
   setInterval(sampleEvidence, 1000);
+  // --- Capture session control ---
   let active = null, waitingHandshake = null;
   const emit = (token, value) => window.postMessage({ channel: "cassini-page", token, ...value }, "*");
   window.addEventListener("message", async event => {
@@ -456,8 +484,10 @@
       if (message.protocol === 1 && typeof message.instanceId === "string" && message.instanceId.length > 0 && message.instanceId.length <= 128) {
         // A replacement relay cannot start a new capture until the departing
         // relay's token has drained. Only the newest instance needs the reply.
-        if (active) waitingHandshake = message.instanceId;
-        else emit(null, {type:"hookReady", protocol:1, revision:hookRevision, instanceId:message.instanceId});
+        if (active) {
+          waitingHandshake = message.instanceId;
+          emit(null, {type:"hookDraining", protocol:1, revision:hookRevision, instanceId:message.instanceId});
+        } else emit(null, {type:"hookReady", protocol:1, revision:hookRevision, instanceId:message.instanceId});
       }
       return;
     }
