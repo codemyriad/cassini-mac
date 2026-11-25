@@ -1,26 +1,26 @@
-tree 22a17a37cbae97a7fad51ef5088b507f60752017
-parent bacd40317025b08231f3133347a1f2fcb72efb4e
-parent 848dae6b3c7bb416656b1848185d5fce248598f4
-author Silvio Tomatis <silviot@gmail.com> 1795562302 +0100
-committer GitHub <noreply@github.com> 1795562302 +0100
+tree f217b319484bacd7e3918f7af25114ae6e0c0271
+parent 2e4bc42f94d67d01145d32e3b98808431a48f83b
+parent 06a2cde5fa6a575a48c776dde2ea5ce90c65de5a
+author Silvio Tomatis <silviot@gmail.com> 1795566209 +0100
+committer GitHub <noreply@github.com> 1795566209 +0100
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJrBhs+CRC1aQ7uu5UhlAAAP/MQAE12VaMvfVu9jpFWUV7/rKfK
- 5pz/K29PSHsC5QyrNoCHK8jRhPqp1XNhl4jKToFwVhVNiHDJX5nPwyaE58Fr99Mi
- PvCTxz7maAFcbm5EUX1xis22n21IZPhhTNmubIlgkHNCjjHYGbsMXB56x4Ekd1cy
- 7SlpA2nbPukCAfc98HU/eVCTqtrgrZvlB/fOpmJl6fekcQ2eT4gm5+OM7DJYpDEQ
- AsGRCh2pGjEJEWH6PBjcHEYYxK0KmV6p0SZSUBE6hJp6tH58/XEeRQYF4au23opU
- pseE6ZGEBxp1gJwR+OhVr12aRlkUj+xepGO3jfzZ7ZvdDGdSP/q03CSKadop1nen
- eKKm89Iftx7pyIxmvqUWr5Py5MqAuWXWvE5n5vgFQ7QzQMr11J9RqLKTtQWvnQeU
- 808MNitOnLjH/qambwiH6do1+Md7hPxaWx5jvzTao30XVORyGVFCjBIq1N9migfs
- RjnecxFWA+Um10mJCvvOC8BsY/Isf1eXZ7rUTlIqSJUkDwLZG3z1CIeLuYlvEJaf
- 3s+3WjiAlpk4UQjRz7mc4945k4PWd5YjGMTqKM4Oe5qkaslVJcbyTJ/exDAYX+Sm
- 1Ree8+ka3NIBbGB1YVPvNIibqdc4UfQMQYWjzpzLNvDJN+8Er980J2kiZRXU0fRl
- HQ/n+gkNix3nfN0Z1uau
- =YjZa
+ wsFcBAABCAAQBQJrBiqBCRC1aQ7uu5UhlAAAB+4QADnBjBZQDnhh+Nqs8jT4OVfd
+ ThBSZwNol0UVp4ingwWIrGPv4Q7f5VZtQlU63hEbfcfN1osTyd2qJBckcgPlr70M
+ hgaH9XGkfLHnMEgVn7+Do0P/FyYN8EKLV14nZ7VJXL031TUc39fts01MG0+e+uYq
+ J5nr7izYVadCBrXzm3CLA5RumGSc0G/RQS9/PZDYKsdTr0pc1U0twNlv9TK2ObOE
+ RvrgO3iukSQFM2aSTyWZV+RjpZrFbjUEHL/dygTJddW1tDfmyxue2trPSnihXM/t
+ Xuvjsue4hw35xrhrOw58ZAzlJnb1QanR2cCDZcv81lQK1QMEqSQCIVq32Wx6OTxx
+ /eYc4lm3ItzwNnqp1+rlnZBYo7q9GSVlmd6V8+/RKYV1c+wKeBxGwcdBFJgo1Y1L
+ M3ojzBWuNHBNfX4YaFpusEGbV+8D46yNme7hhlhVXLr3ZJyvkoXAKtD2wcXEF7OB
+ kp9pDo4nVZRnhwxoeYTPCKkayD9hmt+oYiDDDUAm3eODHQo0O3HY/zz2Out2LMvq
+ EcHPNIqUwwTLsATJ5dSeRqumjO3gYPnb2lvaCUbiTPtwpvnAlGwZ7Q4AQckVtKw2
+ WCjeiTltfxkbMTvHybWA4VAphiN7gMYuRhEsCNwI1CNPNq7fNvMJez/OyHFOCms2
+ cFXDVFghXuzFnpWcRf5G
+ =2a0y
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #113 from codemyriad/fix/popup-settle-notify-and-e1-0.2.38
+Merge pull request #114 from codemyriad/test/remove-popup-test-sleeps-e1
 
-Notify popups on record-request settle/expiry and remove fixed sleeps in popup tests (0.2.38)
+Remove fixed sleeps and wall-clock assertion in popup unit tests (E1/D88)
