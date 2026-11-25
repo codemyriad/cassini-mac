@@ -53,6 +53,7 @@ assert all(report[name] is True for name in ('activeInvalidatesFind','queuedSkip
     'speakerRowReadOnlyKeepsPrimaryInk','speakerRowCaptionUsesFullRowWidth',
     'brandTokensSynced','brandTokensRejectsDrift',
     'findDoesNotFocusOnInitialMount','findConsumesFocusOnce','findHandlesLaterFocusRequest',
+    'findPreviewCompletesMatchingQuery','findPreviewCompletesNonmatchingQuery',
     'meetingCardRestLightIsCardRest','meetingCardRestDarkIsCardRest','meetingCardSelectedDarkLiftsAboveRest',
     'scrollEdgeWindowSuppressesTitlebarHairline','scrollEdgeLegacyFallbackHasNoHeaderHairline',
     'sessionPreparedOffMain','sessionMainActorProgressed','sessionSwitchCancelled',

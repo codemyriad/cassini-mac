@@ -94,12 +94,13 @@ enum ScreenshotFixture {
     /// automation. Renders only this app's fixture view, never the desktop.
     private static func localBoardRender(_ window: NSWindow) {
         guard ProcessInfo.processInfo.environment["CASSINI_LOCAL_WORKFLOW_TESTS"] == "1",
-              let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["first-run","record-first","test-recording-testing","test-recording-result","test-recording-refused","voices-question","meeting","recording","received","export","search"].contains(name),
+              let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["library","first-run","record-first","test-recording-testing","test-recording-result","test-recording-refused","voices-question","meeting","recording","received","export","search"].contains(name),
               !RecordingFixture.enabled else { return }
         Task { @MainActor in
             @MainActor func ready() -> Bool {
                 switch name {
                 case "first-run": return LibraryStore.shared.loaded
+                case "library": return LibraryStore.shared.loaded && MeetingNavigation.shared.detail != nil
                 case "meeting": return MeetingNavigation.shared.detail != nil
                 case "recording": return MeetingNavigation.shared.detail?.meeting.state.lifecycle == .recording
                 case "received": return LibraryStore.shared.selected?.state.origin == .received
@@ -118,17 +119,25 @@ enum ScreenshotFixture {
                let meeting=MeetingNavigation.shared.detail?.meeting {
                 await MeetingRenameCoordinator.shared.previewSpeaker(meeting)
             }
+            if let query = LibraryLaunchContext.argument("-CassiniFindPreview"), !query.isEmpty,
+               let detail = MeetingNavigation.shared.detail {
+                await applyFindPreview(query, to: detail)
+            }
             await withCheckedContinuation { continuation in DispatchQueue.main.async { continuation.resume() } }
+            let customSize = LibraryLaunchContext.argument("-CassiniScreenshotSize") != nil
             guard (name != "first-run" || LibraryStore.shared.loaded && LibraryStore.shared.meetings.isEmpty),
                   (name != "recording" || MeetingNavigation.shared.detail?.meeting.state.lifecycle == .recording),
                   (name != "meeting" || MeetingNavigation.shared.detail != nil),
+                  (name != "library" || MeetingNavigation.shared.detail != nil),
                   (name != "export" || window.attachedSheet != nil),
                   (name != "search" || LibrarySearchModel.shared.hits.count == 4),
-                  window.frame.size == NSSize(width:1120,height:720),
-                  let frame = window.contentView?.superview,
-                  let image = NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:1120,pixelsHigh:720,
+                  (customSize || window.frame.size == NSSize(width:1120,height:720)),
+                  let frame = window.contentView?.superview else { exit(1) }
+            let width = Int(frame.bounds.width.rounded()), height = Int(frame.bounds.height.rounded())
+            guard width > 0, height > 0,
+                  let image = NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:width,pixelsHigh:height,
                     bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0) else { exit(1) }
-            image.size = NSSize(width:1120,height:720)
+            image.size = frame.bounds.size
             frame.layoutSubtreeIfNeeded(); frame.cacheDisplay(in:frame.bounds,to:image)
             if let sheet = window.attachedSheet, let view = sheet.contentView?.superview,
                let overlay = view.bitmapImageRepForCachingDisplay(in:view.bounds) {
@@ -141,9 +150,15 @@ enum ScreenshotFixture {
                 NSGraphicsContext.restoreGraphicsState()
             }
             guard let png = image.representation(using:.png,properties:[:]),
-                  let output = try? JSONSerialization.data(withJSONObject:["board":name,"pngBase64":png.base64EncodedString()]) else { exit(1) }
+                  let output = try? JSONSerialization.data(withJSONObject:["board":name,"width":width,"height":height,"pngBase64":png.base64EncodedString()]) else { exit(1) }
             FileHandle.standardOutput.write(output + Data([10])); exit(0)
         }
+    }
+    static func applyFindPreview(_ query: String, to detail: MeetingDetailModel) async {
+        let startRevision = detail.find.completedRevision
+        detail.find.visible = true
+        detail.find.query = query
+        await detail.find.waitForCompletion(of: query, after: startRevision)
     }
     static func prepareLegacy(_ window: NSWindow) {
         guard let name = LibraryLaunchContext.argument("-CassiniScreenshot"), ["window", "sheet"].contains(name),
@@ -158,9 +173,16 @@ enum ScreenshotFixture {
         guard let screen = window.screen ?? NSScreen.main else { NSApp.terminate(nil); return }
         // The board-size job selects a larger display mode before launch. Keep
         // every edge on screen; never pass by clipping an offscreen window.
-        let shortSpeakerWindow = LibraryLaunchContext.argument("-CassiniScreenshotSize") == "760x480"
+        let requestedSize: NSSize? = {
+            guard let raw = LibraryLaunchContext.argument("-CassiniScreenshotSize") else { return nil }
+            if raw == "narrow" { return NSSize(width: 560, height: 720) }
+            let parts = raw.split(separator: "x")
+            guard parts.count == 2, let w = Double(parts[0]), let h = Double(parts[1]), w >= 320, h >= 320 else { return nil }
+            return NSSize(width: w, height: h)
+        }()
         let frame = NSRect(x: screen.visibleFrame.minX + 24, y: screen.visibleFrame.minY + 16,
-                           width: shortSpeakerWindow ? 760 : boardSize ? 1120 : 960, height: shortSpeakerWindow ? 480 : boardSize ? 720 : 640)
+                           width: requestedSize?.width ?? (boardSize ? 1120 : 960),
+                           height: requestedSize?.height ?? (boardSize ? 720 : 640))
         guard screen.visibleFrame.contains(frame) else { NSApp.terminate(nil); return }
         window.setFrame(frame, display: true)
         window.makeKeyAndOrderFront(nil)

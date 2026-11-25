@@ -14,6 +14,8 @@ import Observation
     private(set) var focusRequest = 0
     private(set) var handledFocusRequest = 0
     private(set) var searching = false
+    private(set) var completedQuery: String?
+    private(set) var completedRevision = 0
     @ObservationIgnored private var revision = 0
 
     func requestFocus() { visible = true; focusRequest &+= 1 }
@@ -27,6 +29,7 @@ import Observation
         ranges = [:]
         selectedIndex = nil
         searching = false
+        completedQuery = nil
     }
     func consumeFocusRequest() -> Bool {
         guard handledFocusRequest != focusRequest else { return false }
@@ -55,7 +58,11 @@ import Observation
         let previous = selected
         matches = []; selected = nil; ranges = [:]; selectedIndex = nil; searching = true
         defer { if requestedRevision == revision { searching = false } }
-        guard !requestedQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !requestedQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            completedQuery = requestedQuery
+            completedRevision &+= 1
+            return
+        }
         let task = Task.detached {
             let fallback = LibraryLocalization.shared.text("common.speaker.unnamed", ["n":"1"], language:language, locale:locale)
             let names = Dictionary(uniqueKeysWithValues: Set(turns.map(\.speaker)).map { id in
@@ -76,7 +83,24 @@ import Observation
             matches = found.matches; ranges = found.ranges
             selected = previous.flatMap { found.matches.contains($0) ? $0 : nil } ?? found.matches.first
             selectedIndex = selected.flatMap { found.matches.firstIndex(of: $0) }
+            completedQuery = requestedQuery
+            completedRevision &+= 1
         } catch is CancellationError { }
         catch { assertionFailure("Unexpected transcript find failure: \(error)") }
+    }
+    func waitForCompletion(of query: String, after previousRevision: Int) async {
+        while searching || completedQuery != query || completedRevision == previousRevision {
+            let (events, signal) = AsyncStream<Void>.makeStream()
+            withObservationTracking {
+                _ = searching
+                _ = completedQuery
+                _ = completedRevision
+            } onChange: {
+                signal.yield()
+                signal.finish()
+            }
+            var iterator = events.makeAsyncIterator()
+            _ = await iterator.next()
+        }
     }
 }
