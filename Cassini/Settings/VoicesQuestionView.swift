@@ -26,6 +26,7 @@ struct VoicesQuestionPresentation: ViewModifier {
               preferences.shouldAsk(speakerCount:detail.meeting.speakers.count),
               !MeetingNavigation.shared.loading, !LibrarySearchModel.shared.visible,
               MeetingRenameCoordinator.shared.presentation == nil,
+              !MeetingDateTimeCoordinator.shared.showing,
               !MeetingExportCoordinator.shared.showing, !RecordingDetailsCoordinator.shared.showing,
               !RecordCoordinator.shared.showingFirst, CompanionSetup.shared.presenter == nil,
               !BulkZipExportCoordinator.shared.busy,

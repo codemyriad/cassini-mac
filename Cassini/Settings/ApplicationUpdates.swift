@@ -69,7 +69,7 @@ import Sparkle
         if LibraryImportCoordinator.shared.isBusy { result.insert(.importing) }
         if MeetingExportCoordinator.shared.isBusy || BulkZipExportCoordinator.shared.isBusy { result.insert(.exporting) }
         if LibraryMoveCoordinator.shared.busy { result.insert(.moving) }
-        if MeetingRenameCoordinator.shared.working { result.insert(.renaming) }
+        if MeetingRenameCoordinator.shared.working || MeetingDateTimeCoordinator.shared.working { result.insert(.renaming) }
         if MeetingTrashCoordinator.shared.busy { result.insert(.trashing) }
         if RecordingPageModel.hasPendingEdits { result.insert(.editing) }
         if LibraryStore.shared.isRefreshing { result.insert(.scanning) }

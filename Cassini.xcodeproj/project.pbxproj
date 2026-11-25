@@ -64,6 +64,7 @@
 		4894B39EC42F7D4E8AE78059 /* CassiniWhistle in Frameworks */ = {isa = PBXBuildFile; productRef = 3C45C68D469B5B6F4F552DD8 /* CassiniWhistle */; };
 		4A444EA6F34B850173529772 /* CassiniModels in Frameworks */ = {isa = PBXBuildFile; productRef = 4BFD420B8922F647B49598D0 /* CassiniModels */; };
 		4B13F891F062EF653D0D14A2 /* MeetingNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AE03673C71C9FFE43B11FF3 /* MeetingNavigation.swift */; };
+		4E06BA27648F932A1FE67682 /* MeetingDateTimeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA5A34E51AE2D142793AF8E /* MeetingDateTimeView.swift */; };
 		53B81ABFE589A48A808D5BE7 /* RecordingRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = A251AA6D1A631420C5CC6EDF /* RecordingRuntime.swift */; };
 		54D2347F1AE4784A46C3E6B0 /* CaptureNotices.swift in Sources */ = {isa = PBXBuildFile; fileRef = B35AF9D7D59A27E9AAF9EBA6 /* CaptureNotices.swift */; };
 		5625FA5266F3668423F7B055 /* MeetingFindModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50794BA59A443D732C5F9C0C /* MeetingFindModel.swift */; };
@@ -157,6 +158,7 @@
 		DA28439058DB6791E960157B /* ListeningBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FD1CB695C71500E69641ABD /* ListeningBar.swift */; };
 		DAC9053F510941A335654DF9 /* CassiniBrowserSetup in Frameworks */ = {isa = PBXBuildFile; productRef = 55A344505230DCDE22F61882 /* CassiniBrowserSetup */; };
 		DCB14460A988FBEB731D578E /* IdleStatusMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = B55A10D9DBC9E3EA0C329FC4 /* IdleStatusMenu.swift */; };
+		DE00F0F9AA375C8A07856830 /* MeetingDateTimeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11AB76C2E01F49B09A3D57AA /* MeetingDateTimeCoordinator.swift */; };
 		DFC84D8E8256FA87A1CB3A51 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = C970A893030751577FFB2ABC /* InfoPlist.strings */; };
 		E0A49316E91E04F56C05A113 /* CassiniKit in Frameworks */ = {isa = PBXBuildFile; productRef = 6A70F100BBB78693556A7214 /* CassiniKit */; };
 		E157D0423525533C691EE6B2 /* CassiniLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = C9478324303A5448C8F218B3 /* CassiniLibrary */; };
@@ -278,6 +280,7 @@
 		0D7A75EA903A55281DA87E2F /* LibraryKeyboardMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryKeyboardMenu.swift; sourceTree = "<group>"; };
 		0E31D8C73A37ABF71375ADEB /* SettingsSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSelfTest.swift; sourceTree = "<group>"; };
 		0F013FF486F3F95A96DC36CC /* ScrollEdgeChromeSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollEdgeChromeSelfTest.swift; sourceTree = "<group>"; };
+		11AB76C2E01F49B09A3D57AA /* MeetingDateTimeCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingDateTimeCoordinator.swift; sourceTree = "<group>"; };
 		127092BBB0CAF57C83F84D65 /* CaptureDiskWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureDiskWatch.swift; sourceTree = "<group>"; };
 		12F78C037DFC84998CC4C0EA /* CassiniWindowScreenshots.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CassiniWindowScreenshots.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1306467A5EEEC9D698F5B4E9 /* Service.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Service.swift; sourceTree = "<group>"; };
@@ -302,7 +305,6 @@
 		34A161ECA8F0B18EA992202A /* MeetingNativeInputs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNativeInputs.swift; sourceTree = "<group>"; };
 		34EE191DCB541B08F4D08855 /* RecordFirstView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordFirstView.swift; sourceTree = "<group>"; };
 		3603D8B702C22E7035B613CC /* RecordingOverview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingOverview.swift; sourceTree = "<group>"; };
-		37E87002F21178229ABE6935 /* cassini-mac-d-1146 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac-d-1146"; path = .; sourceTree = SOURCE_ROOT; };
 		389A99CE7E7A8B7EFCC10826 /* TestRecordingInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestRecordingInput.swift; sourceTree = "<group>"; };
 		394709470D1488C8C15792DC /* CassiniParakeetWorker */ = {isa = PBXFileReference; includeInIndex = 0; path = CassiniParakeetWorker; sourceTree = BUILT_PRODUCTS_DIR; };
 		398B916BA60017DC5A45A118 /* LiveFolderSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveFolderSelfTest.swift; sourceTree = "<group>"; };
@@ -332,6 +334,7 @@
 		642BF5E60FF9A1A28395F1C6 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		65BF49C592097C68C439F4F6 /* MeetingTrashCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingTrashCoordinator.swift; sourceTree = "<group>"; };
 		69E1FB2AB082E4582CBD8EB9 /* SearchSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchSelfTest.swift; sourceTree = "<group>"; };
+		6CA5A34E51AE2D142793AF8E /* MeetingDateTimeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingDateTimeView.swift; sourceTree = "<group>"; };
 		6DDE6CF7B745BF0D21C9075B /* RecordingDetailsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingDetailsSheet.swift; sourceTree = "<group>"; };
 		71DF7EA2524442AFAEC56D70 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
 		737E76F3CEFE42EF03B76C3B /* WindowlessApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowlessApp.swift; sourceTree = "<group>"; };
@@ -423,6 +426,7 @@
 		F8BF0ACED41A65493BF24B94 /* ListeningSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningSelfTest.swift; sourceTree = "<group>"; };
 		FADD93CD5EFB25348FD278A4 /* BadgeLabelPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeLabelPresenter.swift; sourceTree = "<group>"; };
 		FC7EB5ED8D02011D731C1976 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		FC93F6C25E5FA576A092EC5D /* cassini-mac-d-1165 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac-d-1165"; path = .; sourceTree = SOURCE_ROOT; };
 		FD983E49204B3A8B5C9E4266 /* Service.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Service.swift; sourceTree = "<group>"; };
 		FDC2D28CF9C48F3E7198A41F /* Quartz.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Quartz.framework; path = System/Library/Frameworks/Quartz.framework; sourceTree = SDKROOT; };
 		FFDAA113CF52CBA710233AC3 /* UX */ = {isa = PBXFileReference; lastKnownFileType = folder; name = UX; path = Cassini/Resources/UX; sourceTree = SOURCE_ROOT; };
@@ -554,6 +558,8 @@
 			children = (
 				9FD1CB695C71500E69641ABD /* ListeningBar.swift */,
 				F8BF0ACED41A65493BF24B94 /* ListeningSelfTest.swift */,
+				11AB76C2E01F49B09A3D57AA /* MeetingDateTimeCoordinator.swift */,
+				6CA5A34E51AE2D142793AF8E /* MeetingDateTimeView.swift */,
 				C00B7DC9DDF9C68ED4B73C48 /* MeetingFindBar.swift */,
 				50794BA59A443D732C5F9C0C /* MeetingFindModel.swift */,
 				7AE03673C71C9FFE43B11FF3 /* MeetingNavigation.swift */,
@@ -919,7 +925,7 @@
 		F04E817D85F11D039AFB3A19 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				37E87002F21178229ABE6935 /* cassini-mac-d-1146 */,
+				FC93F6C25E5FA576A092EC5D /* cassini-mac-d-1165 */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -1477,6 +1483,8 @@
 				ED5162CC4576829212ED5CDA /* LiveFolderSelfTest.swift in Sources */,
 				6D57DA2EFFCE7EDA4F10CB65 /* LocalCompanionGuide.swift in Sources */,
 				6783F576899FEBDAFA27D7EC /* MeetingCard.swift in Sources */,
+				DE00F0F9AA375C8A07856830 /* MeetingDateTimeCoordinator.swift in Sources */,
+				4E06BA27648F932A1FE67682 /* MeetingDateTimeView.swift in Sources */,
 				238E15DAFC4D4A48D9E9A8DB /* MeetingExportCoordinator.swift in Sources */,
 				31F6B817B291D9F91D266F74 /* MeetingExportSheet.swift in Sources */,
 				EFE62DD40AF7F90F7E55A0EF /* MeetingFindBar.swift in Sources */,

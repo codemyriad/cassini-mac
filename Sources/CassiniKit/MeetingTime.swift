@@ -3,7 +3,7 @@ import Foundation
 
 /// D95: an actual recording instant or an unzoned label, never an artifact stamp.
 public struct MeetingTime: Sendable, Equatable {
-    public enum Source:String,Sendable {case recordedAtUtc,date="DATE",recordedAtLocal}
+    public enum Source:String,Sendable {case startedAt,recordedAtUtc,date="DATE",recordedAtLocal}
     public let source:Source
     public let value:String
     public let instant:Date?
@@ -17,9 +17,59 @@ public struct MeetingTime: Sendable, Equatable {
         self.source=source;self.value=value;self.instant=instant
         orderingKey=Self.parsed(source == .recordedAtLocal ? value+"Z" : value)?.key ?? ""
     }
-    public static func resolve(meeting:Meeting?,dateTag:String?) -> Self? {
+    /// D112 (L-87, S-12 Q17): strict RFC 3339 with explicit offset (-12:00..+14:00 or Z,
+    /// never -00:00, seconds floored, no fractional seconds) and a valid Gregorian date/clock.
+    private static let strictStartedAtPattern = #"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:Z|\+(?:(?:0[0-9]|1[0-3]):[0-5][0-9]|14:00)|-(?:00:(?:0[1-9]|[1-5][0-9])|(?:0[1-9]|1[01]):[0-5][0-9]|12:00))$"#
+    public static func isValidStartedAt(_ value:String) -> Bool {
+        guard !value.hasSuffix("-00:00"),
+              value.range(of:strictStartedAtPattern,options:.regularExpression) != nil else {return false}
+        return stamp(value) != nil
+    }
+    public static func userStartedAt(_ value:String) -> Self? {
+        guard isValidStartedAt(value), let parsed=stamp(value) else {return nil}
+        return .init(source:.startedAt,value:value,instant:parsed.date)
+    }
+    public static func utcOffsetMinutes(of startedAt:String) -> Int? {
+        guard isValidStartedAt(startedAt) else {return nil}
+        let suffix = startedAt.dropFirst(19)
+        if suffix == "Z" { return 0 }
+        let sign = suffix.first == "-" ? -1 : 1
+        let h = Int(suffix.dropFirst().prefix(2)) ?? 0
+        let m = Int(suffix.suffix(2)) ?? 0
+        return sign * (h * 60 + m)
+    }
+    public static func localLabel(ofStartedAt startedAt:String) -> String? {
+        guard isValidStartedAt(startedAt) else {return nil}
+        return String(startedAt.prefix(19))
+    }
+    public static func formatStartedAt(_ date:Date,timeZone:TimeZone) -> String {
+        let floored = Date(timeIntervalSince1970:date.timeIntervalSince1970.rounded(.down))
+        let offsetMinutes = timeZone.secondsFromGMT(for:floored) / 60
+        let clampedOffset = min(840,max(-720,offsetMinutes))
+        let zone = TimeZone(secondsFromGMT:clampedOffset * 60) ?? TimeZone(secondsFromGMT:0)!
+        var calendar = Calendar(identifier:.gregorian); calendar.timeZone = zone
+        let c = calendar.dateComponents([.year,.month,.day,.hour,.minute,.second],from:floored)
+        let base = String(format:"%04d-%02d-%02dT%02d:%02d:%02d",c.year!,c.month!,c.day!,c.hour!,c.minute!,c.second!)
+        if clampedOffset == 0 { return base + "Z" }
+        let sign = clampedOffset < 0 ? "-" : "+"
+        let absMin = abs(clampedOffset)
+        return base + String(format:"%@%02d:%02d",sign,absMin / 60,absMin % 60)
+    }
+    public static func resolve(meeting:Meeting?,dateTag:String?,x:JSON? = nil) -> Self? {
+        if x?["meeting"]?["startedAtSource"]?.string == "user",
+           let value = x?["meeting"]?["startedAt"]?.string,
+           let resolved = userStartedAt(value) {
+            return resolved
+        }
+        let excludeLegacyImportTime = x?["namePrefixSource"]?.string == "import-time"
+        if !excludeLegacyImportTime, let value = meeting?.startedAt, let resolved = userStartedAt(value) {
+            return resolved
+        }
         if let value=meeting?.recordedAtUtc,normalizedUTC(value) != nil,let parsed=parsed(value) {
             return .init(source:.recordedAtUtc,value:trimmed(value),instant:parsed.date)
+        }
+        if excludeLegacyImportTime {
+            return nil
         }
         if let tag=dateTag,let date=parsed(tag),date.key != meeting.flatMap({parsed($0.createdAtUtc)?.key}) {
             return .init(source:.date,value:trimmed(tag),instant:date.date)
@@ -63,7 +113,8 @@ public struct MeetingTime: Sendable, Equatable {
         var calendar=Calendar(identifier:.gregorian);calendar.timeZone=TimeZone(secondsFromGMT:0)!
         return DateComponents(calendar:calendar,year:n[0],month:n[1],day:n[2],hour:n[3],minute:n[4],second:n[5])
     }
-    public static func dateTag(recordedAtUtc:String?,createdAtUtc:String,legacy:String?) -> String {
+    public static func dateTag(startedAt:String? = nil,recordedAtUtc:String?,createdAtUtc:String,legacy:String?) -> String {
+        if let startedAt, isValidStartedAt(startedAt) {return startedAt}
         if let recordedAtUtc {return recordedAtUtc}
         if let legacy,let date=parsed(legacy),date.key != parsed(createdAtUtc)?.key {return legacy}
         return createdAtUtc
@@ -144,6 +195,14 @@ public struct MeetingTime: Sendable, Equatable {
 extension CassiniFile {
     public var meetingTime:MeetingTime? {
         guard state != .invalidCassiniMetadata,state != .unknownCassiniFormat else {return nil}
-        return MeetingTime.resolve(meeting:manifest?.meeting,dateTag:tags?["DATE"])
+        return MeetingTime.resolve(meeting:manifest?.meeting,dateTag:tags?["DATE"],x:manifest?.raw["x"]?["codemyriad.io"])
+    }
+    public var userStartedAt:String? {
+        guard state != .invalidCassiniMetadata,state != .unknownCassiniFormat,
+              let x = manifest?.raw["x"]?["codemyriad.io"],
+              x["meeting"]?["startedAtSource"]?.string == "user",
+              let value = x["meeting"]?["startedAt"]?.string,
+              MeetingTime.isValidStartedAt(value) else {return nil}
+        return value
     }
 }

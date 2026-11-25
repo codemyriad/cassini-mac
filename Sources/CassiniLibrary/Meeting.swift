@@ -127,6 +127,8 @@ public struct LibraryMeeting: Sendable {
     public var exportTitle: String? = nil
     public var start: Date?
     public var recordingUtcOffsetMinutes: Int? = nil
+    /// D112 (L-87): user-set RFC 3339 start with explicit UTC offset from meeting.json (`startedAtSource == "user"`).
+    public var userStartedAt: String? = nil
     /// An unzoned recording label remains separate from `start`, which is an instant.
     public var recordedTime: MeetingTime? = nil
     /// Creation/import time is usable for ordering, never for a meeting-time label.

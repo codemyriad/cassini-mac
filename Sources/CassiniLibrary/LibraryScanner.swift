@@ -138,8 +138,11 @@ public struct LibraryScanner: Sendable {
                     // R6 permits these display fallbacks even when a payload is
                     // damaged; they do not authenticate its words or notes.
                     titleCandidates += [file.manifest?.meeting.title, file.tags?["TITLE"]]
-                    meeting.start = file.meetingTime?.instant
-                    meeting.recordedTime = file.meetingTime
+                    let excludeLegacyImportTime = metadata?.namePrefixSource == "import-time" && file.userStartedAt == nil && file.meetingTime?.source != .recordedAtUtc
+                    if !excludeLegacyImportTime {
+                        meeting.start = file.meetingTime?.instant
+                        meeting.recordedTime = file.meetingTime
+                    }
                     meeting.sortingFallback = file.manifest.flatMap { MeetingTime.parseInstant($0.meeting.createdAtUtc) }
                     if case .success(let digest)? = file.audioDigest {
                         meeting.durationMs = Int64(digest.durationMs); meeting.audioFiles = [url]
@@ -173,6 +176,16 @@ public struct LibraryScanner: Sendable {
             if let start = meeting.start, meeting.state.lifecycle == .recording {
                 meeting.state.liveMs = max(0, Int64((now.timeIntervalSince(start) * 1000).rounded(.down)))
             }
+        }
+        // D112 (L-87): a date the person set (`startedAt` with `startedAtSource == "user"`)
+        // wins over everything (session.json createdAt, embedded DATE, recordedAtLocal, etc.).
+        if metadata?.startedAtSource == "user",
+           let userStartedAt = metadata?.startedAt,
+           let parsed = MeetingTime.userStartedAt(userStartedAt) {
+            meeting.userStartedAt = userStartedAt
+            meeting.start = parsed.instant
+            meeting.recordedTime = parsed
+            meeting.recordingUtcOffsetMinutes = MeetingTime.utcOffsetMinutes(of: userStartedAt)
         }
         meeting.state.audioAvailable = !meeting.audioFiles.isEmpty
         let titled = titleCandidates.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty }
