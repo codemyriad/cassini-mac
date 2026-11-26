@@ -9,6 +9,7 @@ struct MeetingPaneHeader: View {
     @Bindable var model: MeetingDetailModel
     let format: LibraryFormat
     @State private var rename = MeetingRenameCoordinator.shared
+    @State private var editingTitle = false
     private var meeting: LibraryMeeting { model.meeting }
 
     var body: some View {
@@ -24,16 +25,23 @@ struct MeetingPaneHeader: View {
 
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(title)
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(CassiniTheme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("meeting-inline-title")
+                InlineEditableTitle(
+                    title: title,
+                    fontSize: 24,
+                    weight: .bold,
+                    singleLine: false,
+                    canRename: rename.canRename(meeting),
+                    identifier: "meeting-inline-title",
+                    editorIdentifier: "meeting-inline-title-editor",
+                    editing: $editingTitle,
+                    onCommit: { newTitle in rename.renameInline(meeting, to: newTitle) }
+                )
                 Text(subtitle)
                     .font(.system(size: 13))
                     .foregroundStyle(CassiniTheme.ink2)
                     .fixedSize(horizontal: false, vertical: true)
+                    .opacity(editingTitle ? 0 : 1)
+                    .accessibilityHidden(editingTitle)
                     .accessibilityIdentifier("meeting-inline-subtitle")
             }
             if let badge = LibraryBadgeCatalog.presentation(for: meeting),
@@ -59,6 +67,7 @@ struct MeetingPaneHeader: View {
         .foregroundStyle(CassiniTheme.ink)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("meeting-heading")
+        .onChange(of: meeting.libraryKey) { _, _ in editingTitle = false }
     }
 
     private func inlineSpeaker(_ speaker: MeetingSpeaker) -> some View {
@@ -111,6 +120,245 @@ struct MeetingPaneHeader: View {
         }
         .accessibilityAction(named: Text(UXText.text(listening ? "common.stop" : "speakers.listen"))) {
             if canListen { model.toggleSpeakerListening(speaker.id) }
+        }
+    }
+}
+
+/// Shared click-to-rename title control used in the meeting toolbar, inline meeting header,
+/// and recording screen (D-1172): fits the title plus 4 pt on each side, uses macOS system
+/// blue focus ring and text selection, hides the date line while editing, saves on Return
+/// or any click outside the field, and restores the old name on Esc.
+struct InlineEditableTitle: View {
+    let title: String
+    let fontSize: CGFloat
+    let weight: Font.Weight
+    let singleLine: Bool
+    let canRename: Bool
+    let identifier: String
+    let editorIdentifier: String
+    var maxWidth: CGFloat? = nil
+    @Binding var editing: Bool
+    let onCommit: (String) -> Void
+    @State private var draft = ""
+    @State private var hovering = false
+
+    private var nsWeight: NSFont.Weight {
+        switch weight {
+        case .bold: return .bold
+        case .semibold: return .semibold
+        default: return .regular
+        }
+    }
+
+    var body: some View {
+        Group {
+            if editing && canRename {
+                ZStack(alignment: .leading) {
+                    Text(draft.isEmpty ? " " : draft)
+                        .font(.system(size: fontSize, weight: weight))
+                        .lineLimit(singleLine ? 1 : nil)
+                        .fixedSize(horizontal: singleLine, vertical: !singleLine)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .opacity(0)
+                        .accessibilityHidden(true)
+                    InlineTitleTextField(
+                        text: $draft,
+                        font: NSFont.systemFont(ofSize: fontSize, weight: nsWeight),
+                        singleLine: singleLine,
+                        identifier: editorIdentifier,
+                        onCommit: { value in
+                            editing = false
+                            onCommit(value)
+                        },
+                        onCancel: {
+                            editing = false
+                        }
+                    )
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                }
+                .background(CassiniTheme.surface, in: RoundedRectangle(cornerRadius: 4))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Color(nsColor: .controlAccentColor), lineWidth: 2)
+                        .allowsHitTesting(false)
+                )
+                .frame(maxWidth: maxWidth, alignment: .leading)
+                .padding(.horizontal, -4)
+            } else if canRename {
+                Text(title)
+                    .font(.system(size: fontSize, weight: weight))
+                    .foregroundStyle(CassiniTheme.ink)
+                    .lineLimit(singleLine ? 1 : nil)
+                    .fixedSize(horizontal: false, vertical: !singleLine)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(hovering ? CassiniTheme.ink.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+                    .contentShape(Rectangle())
+                    .padding(.horizontal, -4)
+                    .onHover { hovering = $0 }
+                    .onTapGesture {
+                        draft = title
+                        editing = true
+                    }
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier(identifier)
+            } else {
+                Text(title)
+                    .font(.system(size: fontSize, weight: weight))
+                    .foregroundStyle(CassiniTheme.ink)
+                    .lineLimit(singleLine ? 1 : nil)
+                    .fixedSize(horizontal: false, vertical: !singleLine)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier(identifier)
+            }
+        }
+        .onChange(of: title) { _, newValue in
+            if !editing { draft = newValue }
+        }
+        .onChange(of: canRename) { _, allowed in
+            if !allowed { editing = false }
+        }
+    }
+}
+
+private struct InlineTitleTextField: NSViewRepresentable {
+    @Binding var text: String
+    let font: NSFont
+    let singleLine: Bool
+    let identifier: String
+    let onCommit: (String) -> Void
+    let onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text, onCommit: onCommit, onCancel: onCancel)
+    }
+
+    func makeNSView(context: Context) -> FocusableInlineField {
+        let field = FocusableInlineField()
+        field.stringValue = text
+        field.font = font
+        field.textColor = CassiniTheme.nsInk
+        field.isBezeled = false
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.isEditable = true
+        field.isSelectable = true
+        field.usesSingleLineMode = singleLine
+        field.lineBreakMode = singleLine ? .byTruncatingTail : .byWordWrapping
+        field.cell?.wraps = !singleLine
+        field.cell?.isScrollable = singleLine
+        field.delegate = context.coordinator
+        field.setAccessibilityIdentifier(identifier)
+        return field
+    }
+
+    func updateNSView(_ view: FocusableInlineField, context: Context) {
+        context.coordinator.text = $text
+        context.coordinator.onCommit = onCommit
+        context.coordinator.onCancel = onCancel
+        if view.stringValue != text { view.stringValue = text }
+        view.font = font
+        view.textColor = CassiniTheme.nsInk
+    }
+
+    final class FocusableInlineField: NSTextField {
+        private var didFocus = false
+        private var outsideClickMonitor: Any?
+
+        deinit {
+            if let monitor = outsideClickMonitor {
+                NSEvent.removeMonitor(monitor)
+            }
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window == nil {
+                removeMonitor()
+                return
+            }
+            guard !didFocus, let window else { return }
+            didFocus = true
+            DispatchQueue.main.async { [weak self, weak window] in
+                guard let self, let window else { return }
+                if window.makeFirstResponder(self) {
+                    if let editor = self.currentEditor() as? NSTextView {
+                        editor.selectedTextAttributes = [
+                            .backgroundColor: NSColor.selectedTextBackgroundColor,
+                            .foregroundColor: NSColor.selectedTextColor,
+                        ]
+                        editor.selectAll(nil)
+                    }
+                    self.installMonitor()
+                }
+            }
+        }
+
+        private func installMonitor() {
+            removeMonitor()
+            outsideClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+                guard let self, let window = self.window, event.window === window else { return event }
+                let point = self.convert(event.locationInWindow, from: nil)
+                if !self.bounds.contains(point) {
+                    self.removeMonitor()
+                    window.makeFirstResponder(nil)
+                }
+                return event
+            }
+        }
+
+        func removeMonitor() {
+            if let monitor = outsideClickMonitor {
+                NSEvent.removeMonitor(monitor)
+                outsideClickMonitor = nil
+            }
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var text: Binding<String>
+        var onCommit: (String) -> Void
+        var onCancel: () -> Void
+        private var finished = false
+
+        init(text: Binding<String>, onCommit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+            self.text = text
+            self.onCommit = onCommit
+            self.onCancel = onCancel
+        }
+
+        func controlTextDidChange(_ obj: Notification) {
+            if let field = obj.object as? NSTextField {
+                text.wrappedValue = field.stringValue
+            }
+        }
+
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+                guard !finished else { return true }
+                finished = true
+                (control as? FocusableInlineField)?.removeMonitor()
+                onCommit(control.stringValue)
+                return true
+            }
+            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+                guard !finished else { return true }
+                finished = true
+                (control as? FocusableInlineField)?.removeMonitor()
+                onCancel()
+                return true
+            }
+            return false
+        }
+
+        func controlTextDidEndEditing(_ obj: Notification) {
+            guard !finished, let field = obj.object as? NSTextField else { return }
+            finished = true
+            (field as? FocusableInlineField)?.removeMonitor()
+            onCommit(field.stringValue)
         }
     }
 }

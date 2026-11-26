@@ -1183,123 +1183,32 @@ private struct MeetingWindowTitleView: View {
     var maxWidth: CGFloat = 280
     let onCommit: (String) -> Void
     @State private var editing = false
-    @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            if editing && canRename {
-                InlineToolbarTitleField(
-                    initialText: title,
-                    onCommit: { newValue in
-                        editing = false
-                        onCommit(newValue)
-                    },
-                    onCancel: {
-                        editing = false
-                    }
-                )
-                .frame(minWidth: 120, idealWidth: min(220, maxWidth), maxWidth: maxWidth, minHeight: 20, maxHeight: 20)
-            } else if canRename {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(CassiniTheme.ink)
+            InlineEditableTitle(
+                title: title,
+                fontSize: 13,
+                weight: .semibold,
+                singleLine: true,
+                canRename: canRename,
+                identifier: "meeting-window-title",
+                editorIdentifier: "meeting-window-title-editor",
+                maxWidth: maxWidth,
+                editing: $editing,
+                onCommit: onCommit
+            )
+            if !editing {
+                Text(subtitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(CassiniTheme.secondaryInk)
                     .lineLimit(1)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(hovering ? CassiniTheme.ink.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
-                    .contentShape(Rectangle())
-                    .onHover { hovering = $0 }
-                    .onTapGesture { editing = true }
-                    .accessibilityIdentifier("meeting-window-title")
-            } else {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(CassiniTheme.ink)
-                    .lineLimit(1)
-                    .accessibilityIdentifier("meeting-window-title")
+                    .accessibilityIdentifier("meeting-window-subtitle")
             }
-            Text(subtitle)
-                .font(.system(size: 11))
-                .foregroundStyle(CassiniTheme.secondaryInk)
-                .lineLimit(1)
-                .padding(.horizontal, canRename ? 4 : 0)
-                .accessibilityIdentifier("meeting-window-subtitle")
         }
-        .frame(minWidth: 60, maxWidth: maxWidth, alignment: .leading)
+        .frame(maxWidth: maxWidth, alignment: .leading)
         .onChange(of: title) { _, _ in editing = false }
         .onChange(of: canRename) { _, allowed in if !allowed { editing = false } }
-    }
-}
-
-private struct InlineToolbarTitleField: NSViewRepresentable {
-    let initialText: String
-    let onCommit: (String) -> Void
-    let onCancel: () -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(onCommit: onCommit, onCancel: onCancel) }
-
-    func makeNSView(context: Context) -> FocusableTitleField {
-        let field = FocusableTitleField()
-        field.stringValue = initialText
-        field.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        field.isBezeled = true
-        field.bezelStyle = .roundedBezel
-        field.isEditable = true
-        field.isSelectable = true
-        field.lineBreakMode = .byTruncatingTail
-        field.delegate = context.coordinator
-        field.setAccessibilityIdentifier("meeting-window-title-editor")
-        return field
-    }
-
-    func updateNSView(_ view: FocusableTitleField, context: Context) {
-        context.coordinator.onCommit = onCommit
-        context.coordinator.onCancel = onCancel
-    }
-
-    final class FocusableTitleField: NSTextField {
-        private var didFocus = false
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            guard !didFocus, let window else { return }
-            didFocus = true
-            DispatchQueue.main.async { [weak self, weak window] in
-                guard let self, let window else { return }
-                if window.makeFirstResponder(self) {
-                    self.currentEditor()?.selectAll(nil)
-                }
-            }
-        }
-    }
-
-    final class Coordinator: NSObject, NSTextFieldDelegate {
-        var onCommit: (String) -> Void
-        var onCancel: () -> Void
-        private var finished = false
-        init(onCommit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
-            self.onCommit = onCommit
-            self.onCancel = onCancel
-        }
-        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-            if commandSelector == #selector(NSResponder.insertNewline(_:)) {
-                guard !finished else { return true }
-                finished = true
-                onCommit(control.stringValue)
-                return true
-            }
-            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-                guard !finished else { return true }
-                finished = true
-                onCancel()
-                return true
-            }
-            return false
-        }
-        func controlTextDidEndEditing(_ obj: Notification) {
-            guard !finished, let field = obj.object as? NSTextField else { return }
-            finished = true
-            onCommit(field.stringValue)
-        }
     }
 }
 
