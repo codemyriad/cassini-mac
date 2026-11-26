@@ -628,6 +628,16 @@ struct LibraryView: View {
 
     @ToolbarContentBuilder
     private var detailToolbar: some ToolbarContent {
+        let target = detailToolbarTarget
+        detailSidebarCollapsedToolbarItem
+        detailCompactHeaderToolbarItem(for: target)
+        detailToolbarSpacer
+        detailFindToolbarItem(for: target)
+        detailActionToolbarItem(for: target)
+    }
+
+    @ToolbarContentBuilder
+    private var detailSidebarCollapsedToolbarItem: some ToolbarContent {
         if columnVisibility == .detailOnly {
             #if compiler(>=6.2)
             if #available(macOS 26.0, *) {
@@ -658,7 +668,11 @@ struct LibraryView: View {
             }
             #endif
         }
-        if detailToolbarTarget.showsCompactHeader, let detail = navigation.savedDetail, detail.compactHeader {
+    }
+
+    @ToolbarContentBuilder
+    private func detailCompactHeaderToolbarItem(for target: LibraryDetailToolbarTarget) -> some ToolbarContent {
+        if target.showsCompactHeader, let detail = navigation.savedDetail, detail.compactHeader {
             let title = detail.meeting.title ?? UXText.text("library.untitled")
             let subtitle = store.format.previewSubtitle(
                 detail.meeting.meetingTime,
@@ -706,6 +720,10 @@ struct LibraryView: View {
             }
             #endif
         }
+    }
+
+    @ToolbarContentBuilder
+    private var detailToolbarSpacer: some ToolbarContent {
         #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             ToolbarSpacer(.flexible, placement: .primaryAction)
@@ -715,7 +733,11 @@ struct LibraryView: View {
         #else
         ToolbarItem(placement: .automatic) { Spacer() }
         #endif
-        if detailToolbarTarget.showsFindAction, let detail = navigation.savedDetail {
+    }
+
+    @ToolbarContentBuilder
+    private func detailFindToolbarItem(for target: LibraryDetailToolbarTarget) -> some ToolbarContent {
+        if target.showsFindAction, let detail = navigation.savedDetail {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     if detail.find.visible { detail.find.close() }
@@ -734,15 +756,19 @@ struct LibraryView: View {
             }
             #endif
         }
-        if case .savedDetail(let meeting) = detailToolbarTarget {
+    }
+
+    @ToolbarContentBuilder
+    private func detailActionToolbarItem(for target: LibraryDetailToolbarTarget) -> some ToolbarContent {
+        if case .savedDetail(let meeting) = target {
             ToolbarItemGroup(placement: .primaryAction) {
                 detailMeetingActionButtons(for: meeting, allowTrash: true, exportDisabled: false)
             }
-        } else if case .searchPreview(let meeting) = detailToolbarTarget {
+        } else if case .searchPreview(let meeting) = target {
             ToolbarItemGroup(placement: .primaryAction) {
                 detailMeetingActionButtons(for: meeting, allowTrash: false, exportDisabled: search.searching)
             }
-        } else if case .recording(let meeting) = detailToolbarTarget {
+        } else if case .recording(let meeting) = target {
             ToolbarItem(placement: .primaryAction) {
                 LibraryToolbarAction(title: "", label: UXText.text("meeting.moreActions"), identifier: "recording-more-actions", style: .more, menu: {
                     LibraryToolbarAction.menu([
