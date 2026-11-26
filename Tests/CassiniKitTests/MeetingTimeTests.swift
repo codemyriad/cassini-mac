@@ -54,7 +54,7 @@ struct RecordingTimeReaderTests {
         var meeting=try #require(file("028-date-is-created-at").manifest?.meeting)
         meeting.createdAtUtc="2026-11-09t10:47:02z";meeting.recordedAtLocal=nil
         #expect(MeetingTime.resolve(meeting:meeting,dateTag:tag)==nil)
-        #expect(MeetingTime.dateTag(recordedAtUtc:nil,createdAtUtc:meeting.createdAtUtc,legacy:tag)==meeting.createdAtUtc)
+        #expect(MeetingTime.dateTag(recordedAtUtc:nil,createdAtUtc:meeting.createdAtUtc,legacy:tag)==nil)
     }
 
 }
@@ -79,7 +79,7 @@ extension RecordingTimeReaderTests {
         #expect(MeetingTime.dateTag(recordedAtUtc:nil,createdAtUtc:meeting.createdAtUtc,legacy:distinct)==distinct)
         for equivalent in ["2026-11-09T09:31:48.0001000Z","2026-11-09T10:31:48.000100+01:00"] {
             #expect(MeetingTime.resolve(meeting:meeting,dateTag:equivalent)==nil)
-            #expect(MeetingTime.dateTag(recordedAtUtc:nil,createdAtUtc:meeting.createdAtUtc,legacy:equivalent)==meeting.createdAtUtc)
+            #expect(MeetingTime.dateTag(recordedAtUtc:nil,createdAtUtc:meeting.createdAtUtc,legacy:equivalent)==nil)
         }
     }
     @Test(arguments:["2026-11-09 10:31:48+01:00"," \t2026-11-09t10:31:48+01:00\r\n","2026-11-09 09:31:48z"])

@@ -241,7 +241,7 @@ public enum MeetingFileExporter {
         return matching == [Comment(name:name,value:expected)]
     }
     private static func timestampsMatchOriginal(_ file: CassiniFile?, created: (value: String, exportTime: Bool),
-                                                startedAt: String?, recordedUtc: String?, recordedLocal: String?, mirrorDate: String) -> Bool {
+                                                startedAt: String?, recordedUtc: String?, recordedLocal: String?, mirrorDate: String?) -> Bool {
         guard let file, file.state == .ok, let rawMeeting = file.manifest?.raw["meeting"] else { return false }
         return !created.exportTime
             && rawMeeting["createdAtUtc"] == .string(created.value)
@@ -254,10 +254,8 @@ public enum MeetingFileExporter {
             && singleTag(file.tags,"DATE",equals:mirrorDate)
     }
     private static func excludesLegacyImportTime(file: CassiniFile?, stored: JSON?) -> Bool {
-        if let foreign = file?.manifest?.raw["x"]?[CodemyriadNamespace.key] {
-            return foreign["namePrefixSource"]?.string == "import-time"
-        }
-        return stored?["namePrefixSource"]?.string == "import-time"
+        stored?["namePrefixSource"]?.string == "import-time"
+            || file?.manifest?.raw["x"]?[CodemyriadNamespace.key]?["namePrefixSource"]?.string == "import-time"
     }
     private static func exportedStartedAt(_ meeting: LibraryMeeting, original file: CassiniFile?, excludeLegacyImportTime: Bool) -> String? {
         if let userStartedAt = meeting.userStartedAt, MeetingTime.isValidStartedAt(userStartedAt) {
@@ -325,7 +323,7 @@ public enum MeetingFileExporter {
         let created = createdAtUtc(meeting,original:file?.manifest,dateTag:dateTag,recordedUtc:recordedUtc,exportTime:exportTime)
         let recordedLocal = exportedRecordedLocal(meeting,original:file,excludeLegacyImportTime:excludeLegacyImportTime)
         let mirrorDate = MeetingTime.dateTag(startedAt:startedAt,recordedAtUtc:recordedUtc,createdAtUtc:created.value,legacy:dateTag)
-        let revisionDate = created.exportTime ? "" : mirrorDate
+        let revisionDate = created.exportTime ? "" : (mirrorDate ?? "")
         let dated = [created.exportTime ? "" : created.value,revisionDate,startedAt ?? "",recordedUtc ?? "",recordedLocal ?? ""].joined(separator:"\u{0}")
         let timestampsUnchanged = timestampsMatchOriginal(file,created:created,startedAt:startedAt,recordedUtc:recordedUtc,recordedLocal:recordedLocal,mirrorDate:mirrorDate)
         // `damaged`: Mac's own words (a recording's, or a received file's Write down) were read as

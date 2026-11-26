@@ -120,7 +120,9 @@ public enum PortableMeetingTags {
         if let utc = model.meeting.recordedAtUtc { scalarTags.append(("CASSINI_RECORDED_AT_UTC",utc)) }
         if let local = model.meeting.recordedAtLocal { scalarTags.append(("CASSINI_RECORDED_AT_LOCAL",local)) }
         let legacyDate = carriedTags.first { $0.name.uppercased() == "DATE" }?.value
-        scalarTags.append(("DATE",MeetingTime.dateTag(startedAt:model.meeting.startedAt,recordedAtUtc:model.meeting.recordedAtUtc,createdAtUtc:model.meeting.createdAtUtc,legacy:legacyDate)))
+        if let dateTag = MeetingTime.dateTag(startedAt:model.meeting.startedAt,recordedAtUtc:model.meeting.recordedAtUtc,createdAtUtc:model.meeting.createdAtUtc,legacy:legacyDate) {
+            scalarTags.append(("DATE",dateTag))
+        }
         for (name,value) in scalarTags { comments.append(.init(name:name,value:value)) }
         comments += carriedTags.filter { !["DATE","CASSINI_RECORDED_AT_UTC","CASSINI_RECORDED_AT_LOCAL"].contains($0.name.uppercased()) }
         return try packet(comments:comments)

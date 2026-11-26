@@ -153,7 +153,7 @@ struct MeetingExportTests {
         #expect(file.state == .ok && file.manifest?.audio.sampleCount == 48000)
         #expect(file.manifest?.meeting.recordedAtLocal == nil)
         #expect(file.manifest?.meeting.recordedAtUtc == nil)
-        #expect(file.tags?["DATE"] == file.manifest?.meeting.createdAtUtc)
+        #expect(file.tags?["DATE"] == nil)
         #expect(file.manifest?.raw["meeting"]?["recordedAtUtc"] == nil)
         #expect(file.manifest?.raw["x"]?["gocassini.com"]?["recovery"]?["offsetsAssumedZero"] == .bool(true))
         #expect(file.manifest?.meeting.createdAtUtc == expected)
@@ -282,7 +282,7 @@ struct MeetingExportTests {
         for (index,m) in [direct,imported].enumerated() {
             let artifact=try MeetingFileExporter.cassini(m,assets:nil,temporaryRoot:root)
             let result=try CassiniReader.read(contentsOf:artifact.url)
-            #expect(result.tags?["DATE"]==(equivalent ? created : date))
+            #expect(result.tags?["DATE"]==(equivalent ? nil : date))
             #expect(result.manifest?.meeting.createdAtUtc==created)
             #expect(result.meetingTime?.value==(equivalent ? nil : date))
             let again=try LibraryImport.copy(artifact.url,into:root.appendingPathComponent("Again-"+String(index)))
@@ -370,8 +370,8 @@ struct MeetingExportTests {
             #expect(result.manifest?.raw["meeting"]?["recordedAtUtc"] == nil)
             #expect(result.tags?["CASSINI_RECORDED_AT_UTC"] == nil)
             #expect(result.manifest?.meeting.recordedAtLocal == local)
-            // An offset DATE supplied by the original remains a legitimate legacy instant.
-            let expectedDate = recorded == .string("2001-02-03T04:05:06+01:00") ? recorded.string : created
+            // An offset DATE supplied by the original remains a legitimate legacy instant; unknown starts omit DATE (D112).
+            let expectedDate: String? = recorded == .string("2001-02-03T04:05:06+01:00") ? recorded.string : nil
             #expect(result.tags?["DATE"] == expectedDate)
             #expect(result.manifest?.meeting.createdAtUtc == created)
             #expect(result.manifest?.meeting.id == file.manifest?.meeting.id)

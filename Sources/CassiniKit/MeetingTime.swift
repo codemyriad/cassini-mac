@@ -113,11 +113,12 @@ public struct MeetingTime: Sendable, Equatable {
         var calendar=Calendar(identifier:.gregorian);calendar.timeZone=TimeZone(secondsFromGMT:0)!
         return DateComponents(calendar:calendar,year:n[0],month:n[1],day:n[2],hour:n[3],minute:n[4],second:n[5])
     }
-    public static func dateTag(startedAt:String? = nil,recordedAtUtc:String?,createdAtUtc:String,legacy:String?) -> String {
+    /// D112: omit DATE when start is unknown (never mirror createdAtUtc as DATE).
+    public static func dateTag(startedAt:String? = nil,recordedAtUtc:String?,createdAtUtc:String,legacy:String?) -> String? {
         if let startedAt, isValidStartedAt(startedAt) {return startedAt}
         if let recordedAtUtc {return recordedAtUtc}
         if let legacy,let date=parsed(legacy),date.key != parsed(createdAtUtc)?.key {return legacy}
-        return createdAtUtc
+        return nil
     }
     private struct Stamp {
         let seconds:Int64
