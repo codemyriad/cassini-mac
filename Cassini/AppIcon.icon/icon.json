@@ -1,0 +1,28 @@
+{
+  "fill" : {
+    "solid" : "srgb:0.05098,0.06275,0.08235,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "image-name" : "cassini-icon-foreground-1024.svg",
+          "name" : "Saturn"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}

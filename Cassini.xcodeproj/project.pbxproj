@@ -157,6 +157,7 @@
 		D8A1037C9E49E4B62FD090F1 /* MeetingTranscriptText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DEEE9B7ECB69C54C0B2D9DB /* MeetingTranscriptText.swift */; };
 		DA28439058DB6791E960157B /* ListeningBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FD1CB695C71500E69641ABD /* ListeningBar.swift */; };
 		DAC9053F510941A335654DF9 /* CassiniBrowserSetup in Frameworks */ = {isa = PBXBuildFile; productRef = 55A344505230DCDE22F61882 /* CassiniBrowserSetup */; };
+		DB3A13E18D7EAAF1EB00345F /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 85BE5D6170D2153509667ADF /* AppIcon.icon */; };
 		DCB14460A988FBEB731D578E /* IdleStatusMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = B55A10D9DBC9E3EA0C329FC4 /* IdleStatusMenu.swift */; };
 		DE00F0F9AA375C8A07856830 /* MeetingDateTimeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11AB76C2E01F49B09A3D57AA /* MeetingDateTimeCoordinator.swift */; };
 		DFC84D8E8256FA87A1CB3A51 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = C970A893030751577FFB2ABC /* InfoPlist.strings */; };
@@ -296,6 +297,7 @@
 		24D2DFA78E17F21F6A7785E1 /* RecordingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingController.swift; sourceTree = "<group>"; };
 		250F63FE808D64851D185A62 /* MeetingPositionSlider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingPositionSlider.swift; sourceTree = "<group>"; };
 		26BC2FFC5C2A6E0C555FEBC1 /* MeetingPreparationSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingPreparationSelfTest.swift; sourceTree = "<group>"; };
+		2835CEFA0195001100AD712B /* cassini-mac-d-1174 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac-d-1174"; path = .; sourceTree = SOURCE_ROOT; };
 		2B5159D754BE1761575F1A63 /* TestRecordingSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestRecordingSelfTest.swift; sourceTree = "<group>"; };
 		2EAC82AC94B942EF58DB6679 /* Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Commands.swift; sourceTree = "<group>"; };
 		33FBCB636E5DA2360918642A /* MeetingTitleAlignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingTitleAlignment.swift; sourceTree = "<group>"; };
@@ -346,6 +348,7 @@
 		84F9E1CAC4B07C1D07ADD0CE /* TranscriptionQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionQueue.swift; sourceTree = "<group>"; };
 		858A17B830285C2819946691 /* RecordingSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingSelfTest.swift; sourceTree = "<group>"; };
 		85AB63CED296253A35A37DFE /* RecordingConfirmation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingConfirmation.swift; sourceTree = "<group>"; };
+		85BE5D6170D2153509667ADF /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		878FF5450C13E86819770336 /* RecordingSpectrogram.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingSpectrogram.swift; sourceTree = "<group>"; };
 		8820D0C27F6927A51DB80E9E /* LibraryToolbarAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryToolbarAction.swift; sourceTree = "<group>"; };
 		884DDBCFE2CA6B77E53BCC76 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
@@ -426,7 +429,6 @@
 		F8BF0ACED41A65493BF24B94 /* ListeningSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningSelfTest.swift; sourceTree = "<group>"; };
 		FADD93CD5EFB25348FD278A4 /* BadgeLabelPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeLabelPresenter.swift; sourceTree = "<group>"; };
 		FC7EB5ED8D02011D731C1976 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
-		FC93F6C25E5FA576A092EC5D /* cassini-mac-d-1165 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cassini-mac-d-1165"; path = .; sourceTree = SOURCE_ROOT; };
 		FD983E49204B3A8B5C9E4266 /* Service.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Service.swift; sourceTree = "<group>"; };
 		FDC2D28CF9C48F3E7198A41F /* Quartz.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Quartz.framework; path = System/Library/Frameworks/Quartz.framework; sourceTree = SDKROOT; };
 		FFDAA113CF52CBA710233AC3 /* UX */ = {isa = PBXFileReference; lastKnownFileType = folder; name = UX; path = Cassini/Resources/UX; sourceTree = SOURCE_ROOT; };
@@ -591,6 +593,7 @@
 			isa = PBXGroup;
 			children = (
 				52CCD520AEB3FB56F74F1B43 /* AppDelegate.swift */,
+				85BE5D6170D2153509667ADF /* AppIcon.icon */,
 				506E918B34C0727F130585B5 /* ApplicationWindows.swift */,
 				4A2328A25C9E4B5E0E8EDF6B /* Assets.xcassets */,
 				F6CC5AF01F2B185E4E45B0DF /* CassiniApp.swift */,
@@ -925,7 +928,7 @@
 		F04E817D85F11D039AFB3A19 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				FC93F6C25E5FA576A092EC5D /* cassini-mac-d-1165 */,
+				2835CEFA0195001100AD712B /* cassini-mac-d-1174 */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -1229,6 +1232,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DB3A13E18D7EAAF1EB00345F /* AppIcon.icon in Resources */,
 				29F5BCCF6F54A4CEF61E131E /* Assets.xcassets in Resources */,
 				B0B667760F5908817913BB2A /* Brand in Resources */,
 				90072894377A325E3C29E094 /* COPYING in Resources */,
