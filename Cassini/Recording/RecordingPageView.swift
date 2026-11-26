@@ -11,7 +11,7 @@ struct RecordingPageView: View {
     let format: LibraryFormat
     @State private var model: RecordingPageModel
     @State private var recorder = RecordingController.shared
-    @FocusState private var titleFocused: Bool
+    @State private var editingTitle = false
     init(meeting: LibraryMeeting, format: LibraryFormat) {
         self.meeting = meeting; self.format = format
         _model = State(initialValue: RecordingPageModel.editor(for: meeting))
@@ -20,14 +20,25 @@ struct RecordingPageView: View {
         ScrollView {
             VStack(alignment:.leading,spacing:22) {
                 VStack(alignment:.leading,spacing:6) {
-                    TextField(UXText.text("recording.title.label"),text:Binding(get:{ model.title },set:{ value in
-                        model.title = value; model.changeTitle()
-                    })).textFieldStyle(.plain).font(.system(size:24,weight:.bold))
-                        .focused($titleFocused).accessibilityLabel(UXText.text("recording.title.label"))
-                        .accessibilityIdentifier("recording-title")
-                        .disabled(meeting.metadataReadOnly).allowsHitTesting(!model.frozen)
+                    InlineEditableTitle(
+                        title: model.title,
+                        fontSize: 24,
+                        weight: .bold,
+                        singleLine: false,
+                        canRename: !meeting.metadataReadOnly && !model.frozen,
+                        identifier: "recording-title",
+                        editorIdentifier: "recording-title-editor",
+                        editing: $editingTitle,
+                        onCommit: { value in
+                            model.title = value
+                            model.changeTitle()
+                            model.flush()
+                        }
+                    )
                     Text(format.previewSubtitle(meeting.meetingTime,durationMs:nil))
                         .font(.system(size:13)).foregroundStyle(CassiniTheme.ink2)
+                        .opacity(editingTitle ? 0 : 1)
+                        .accessibilityHidden(editingTitle)
                         .accessibilityIdentifier("recording-date")
                 }
                 TimelineView(.periodic(from:.now,by:1)) { _ in
@@ -95,7 +106,7 @@ struct RecordingPageView: View {
                     HStack { Spacer(); Button(UXText.text("common.close")) { explainingFallback = false }.keyboardShortcut(.defaultAction) }
                 }.font(.system(size:13)).padding(26).frame(width:480).onExitCommand { explainingFallback = false }
             }
-            .onAppear { model.update(meeting,isEditing:titleFocused) }
+            .onAppear { model.update(meeting,isEditing:editingTitle) }
             // D52: the live source line comes from session.json only (GNOME live_problem).
             .task(id:"\(meeting.libraryKey)#\(LibraryStore.shared.revision)") {
                 let folder = meeting.folder
@@ -104,11 +115,11 @@ struct RecordingPageView: View {
                 }.value
                 if !Task.isCancelled { sourceProblem = problem }
             }
-            .onChange(of:titleFocused) { _,focused in if !focused { model.flush(); model.update(meeting) } }
-            .onChange(of:meeting.title) { _,_ in model.update(meeting,isEditing:titleFocused) }
-            .onChange(of:meeting.state.lifecycle) { _,_ in model.update(meeting,isEditing:titleFocused) }
-            .onChange(of:meeting.state.liveMs) { _,_ in model.update(meeting,isEditing:titleFocused) }
-            .onChange(of:meeting.audioTracks) { _,_ in model.update(meeting,isEditing:titleFocused) }
+            .onChange(of:editingTitle) { _,focused in if !focused { model.flush(); model.update(meeting) } }
+            .onChange(of:meeting.title) { _,_ in model.update(meeting,isEditing:editingTitle) }
+            .onChange(of:meeting.state.lifecycle) { _,_ in model.update(meeting,isEditing:editingTitle) }
+            .onChange(of:meeting.state.liveMs) { _,_ in model.update(meeting,isEditing:editingTitle) }
+            .onChange(of:meeting.audioTracks) { _,_ in model.update(meeting,isEditing:editingTitle) }
             .onDisappear { model.flush() }
     }
 }
