@@ -218,10 +218,17 @@ struct MeetingExportSheet: View {
                 Image(systemName:"folder").accessibilityHidden(true)
                 template("export.saveTo",token:"folder",value:Text(coordinator.directory.lastPathComponent).fontWeight(.semibold))
                 Spacer()
-                Button(UXText.text("common.choose")) { coordinator.chooseDirectory() }.buttonStyle(.plain)
-                    .fontWeight(.semibold).padding(.horizontal,14).frame(height:30).background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:6))
-                    .accessibilityIdentifier("export-choose-folder")
-                    .disabled(coordinator.working)
+                Button { coordinator.chooseDirectory() } label: {
+                    Text(UXText.text("common.choose"))
+                        .fontWeight(.semibold)
+                        .padding(.horizontal,14)
+                        .frame(height:30)
+                        .background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:6))
+                        .contentShape(RoundedRectangle(cornerRadius:6))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("export-choose-folder")
+                .disabled(coordinator.working)
             }.padding(.horizontal,12).padding(.vertical,10)
                 .background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:10))
                 .overlay { RoundedRectangle(cornerRadius:10).stroke(CassiniTheme.cardStroke) }
@@ -240,12 +247,29 @@ struct MeetingExportSheet: View {
             HStack(spacing:10) {
                 Spacer()
                 if coordinator.working { ProgressView().controlSize(.small) }
-                Button(UXText.text("common.cancel")) { coordinator.cancel() }.keyboardShortcut(.cancelAction)
-                    .buttonStyle(.plain).fontWeight(.semibold).padding(.horizontal,18).frame(height:36).background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:6))
-                Button(UXText.text("export.exportButton")) { coordinator.perform() }.keyboardShortcut(.defaultAction)
-                    .buttonStyle(.plain).fontWeight(.semibold).padding(.horizontal,18).frame(height:36)
-                    .foregroundStyle(CassiniTheme.onAccent).background(CassiniTheme.accentStrong,in:RoundedRectangle(cornerRadius:6))
-                    .disabled(coordinator.working).accessibilityIdentifier("export-confirm")
+                Button { coordinator.cancel() } label: {
+                    Text(UXText.text("common.cancel"))
+                        .fontWeight(.semibold)
+                        .padding(.horizontal,18)
+                        .frame(height:36)
+                        .background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:6))
+                        .contentShape(RoundedRectangle(cornerRadius:6))
+                }
+                .keyboardShortcut(.cancelAction)
+                .buttonStyle(.plain)
+                Button { coordinator.perform() } label: {
+                    Text(UXText.text("export.exportButton"))
+                        .fontWeight(.semibold)
+                        .padding(.horizontal,18)
+                        .frame(height:36)
+                        .foregroundStyle(CassiniTheme.onAccent)
+                        .background(CassiniTheme.accentStrong,in:RoundedRectangle(cornerRadius:6))
+                        .contentShape(RoundedRectangle(cornerRadius:6))
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.plain)
+                .disabled(coordinator.working)
+                .accessibilityIdentifier("export-confirm")
             }
         }.font(.system(size:13)).padding(26).frame(width:540)
             .accessibilityElement(children:.contain).accessibilityIdentifier("meeting-export-sheet")
