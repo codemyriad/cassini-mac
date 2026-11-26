@@ -30,20 +30,19 @@ enum StatusBadgeKind: String, CaseIterable {
         switch self {
         case .recording: return CassiniTokens.recordTintEntry
         case .attention, .interrupted: return CassiniTokens.warnTintEntry
-        case .received: return nil
         default: return CassiniTokens.inkEntry
         }
     }
     /// L-46 / L-54: neutral pills composite ink at 10% over whatever is behind.
     var fillOpacity: Double {
         switch self {
-        case .importing, .saving, .transcribing: return 0.1
+        case .importing, .saving, .transcribing, .received: return 0.1
         default: return 1
         }
     }
 }
 
-/// Shared status badge (L-26, L-45, L-46, L-54): 22px tall, 12px weight-600, 8px horizontal pad, 4px gap.
+/// Shared status badge (L-26, L-45, L-46, L-54, D-1172): 20px tall, 11.5px weight-600, 7px horizontal pad, 4px gap.
 struct MeetingStatusBadge: View {
     let kind: StatusBadgeKind
     let label: String
@@ -52,13 +51,13 @@ struct MeetingStatusBadge: View {
     @Environment(\.colorScheme) private var scheme
 
     enum Metrics {
-        static let height = 22.0
-        static let font = 12.0
-        static let horizontalPadding = 8.0
+        static let height = 20.0
+        static let font = 11.5
+        static let horizontalPadding = 7.0
         static let gap = 4.0
-        static let dotSize = 6.0
+        static let dotSize = 5.0
         static let spinnerSize = 10.0
-        static let symbolSize = 11.0
+        static let symbolSize = 10.5
         static let outlineWidth = 1.0
     }
 
@@ -93,14 +92,6 @@ struct MeetingStatusBadge: View {
                 Capsule().fill(color(CassiniTokens.onAccentEntry).opacity(0.16))
             } else if let fill = kind.fill {
                 Capsule().fill(color(fill).opacity(kind.fillOpacity))
-            }
-        }
-        .overlay {
-            if kind == .received {
-                Capsule().strokeBorder(
-                    adaptsToAccent ? color(CassiniTokens.onAccentEntry).opacity(0.45) : color(CassiniTokens.lineEntry),
-                    lineWidth: Metrics.outlineWidth
-                )
             }
         }
         .accessibilityElement(children: .ignore)

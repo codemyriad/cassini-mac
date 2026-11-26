@@ -22,6 +22,7 @@ struct LibraryView: View {
     @State private var userHidSidebar = false
     @State private var autoCollapsedSidebar = false
     @State private var floatingSidebarOpen = false
+    @State private var contextMenuMeetingKey: String?
     @State private var sidebarSearchPresented = false
     @State private var sidebarWidth: CGFloat = 390
     private var isNarrowWindow: Bool { toolbarWidth < Self.narrowSidebarThreshold }
@@ -655,7 +656,7 @@ struct LibraryView: View {
                     store.toggleStar(detail.meeting)
                 } label: {
                     Image(systemName: starred ? "star.fill" : "star")
-                        .foregroundStyle(starred ? CassiniTheme.warnInk : CassiniTheme.ink)
+                        .foregroundStyle(starred ? CassiniTheme.accentInk : CassiniTheme.ink)
                 }
                 .help(UXText.text(starred ? "meeting.unstar" : "meeting.star"))
                 .accessibilityLabel(UXText.text(starred ? "meeting.unstar" : "meeting.star"))
@@ -735,7 +736,10 @@ struct LibraryView: View {
                                 }
                             } header: {
                                 Text(todayTitle).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2).textCase(nil)
-                                    .padding(.horizontal, 10)
+                                    .padding(.leading, 20)
+                                    .padding(.trailing, 10)
+                                    .padding(.top, 10)
+                                    .padding(.bottom, 4)
                                     .accessibilityIdentifier("library-day-header-importing")
                             }
                         }
@@ -773,6 +777,8 @@ struct LibraryView: View {
                                         .contextMenu {
                                             Button(UXText.text(store.isStarred(meeting) ? "meeting.unstar" : "meeting.star")) { store.toggleStar(meeting) }
                                                 .accessibilityIdentifier("library-star")
+                                                .onAppear { contextMenuMeetingKey = meeting.libraryKey }
+                                                .onDisappear { if contextMenuMeetingKey == meeting.libraryKey { contextMenuMeetingKey = nil } }
                                             Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = meeting.libraryKey; rename.show(meeting) }
                                                 .disabled(store.selectedKeys.count > 1 || !rename.canRename(meeting)).accessibilityIdentifier("library-rename")
                                             Button(UXText.text("meeting.setDateTimeEllipsis")) { store.selectedKey = meeting.libraryKey; dateTime.show(meeting) }
@@ -801,16 +807,21 @@ struct LibraryView: View {
                                 }
                             } header: {
                                 Text(group.title).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2).textCase(nil)
-                                    .padding(.horizontal, 10)
+                                    .padding(.leading, 20)
+                                    .padding(.trailing, 10)
+                                    .padding(.top, 10)
+                                    .padding(.bottom, 4)
                                     .accessibilityIdentifier("library-day-header-" + (group.meetings.first?.libraryKey ?? "empty"))
                             }
                         }
                         if !store.meetings.isEmpty, store.meetings.allSatisfy({ $0.state.origin == .received }) {
                             Text(UXText.text("received.libraryHint")).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.ink2)
+                                .padding(.horizontal, 10)
                                 .listRowBackground(Color.clear).listRowSeparator(.hidden)
                         }
                     }
-                    .listStyle(.sidebar)
+                    .listStyle(.plain)
+                    .contentMargins(.horizontal, 0, for: .scrollContent)
                     .scrollContentBackground(.hidden)
                     .modifier(SidebarBottomScrollEdgeModifier())
                     .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -953,21 +964,21 @@ struct LibraryView: View {
         let presentation = LibraryBadgeCatalog.presentation(for: meeting)
         let showDuration = meeting.durationMs != nil && presentation?.kind != "recording" && presentation?.kind != "saving"
         let trailingMeta = rowTrailingMeta(meeting, badgeKind: presentation?.kind)
-        return MeetingCard(isSelected: selected) {
+        return MeetingCard(isSelected: selected, isContextMenuTarget: contextMenuMeetingKey == meeting.libraryKey) {
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 10) {
-                    if store.isStarred(meeting) {
-                        Image(systemName:"star.fill")
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(CassiniTheme.warnInk)
-                            .accessibilityLabel(UXText.text("library.row.starred.a11y"))
-                            .accessibilityIdentifier("library-starred-" + meeting.libraryKey)
-                    }
+                HStack(spacing: 6) {
                     Text(meeting.title ?? UXText.text("library.untitled"))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(CassiniTheme.ink)
                         .lineLimit(1)
                     Spacer(minLength: 2)
+                    if store.isStarred(meeting) {
+                        Image(systemName:"star.fill")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(CassiniTheme.accentInk)
+                            .accessibilityLabel(UXText.text("library.row.starred.a11y"))
+                            .accessibilityIdentifier("library-starred-" + meeting.libraryKey)
+                    }
                     if showDuration, let durationMs = meeting.durationMs {
                         Text(LibraryFormat.meetingDuration(durationMs))
                             .font(.system(size: 11.5))
