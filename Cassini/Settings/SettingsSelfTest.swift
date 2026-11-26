@@ -183,7 +183,7 @@ import Sparkle
             try check(LibraryLocationModel.shared.location.pendingMoves.filter { $0.phase == .pending }.count == 2,"capture and inference remain pending while busy")
             search.query = "relocation"; search.open()
             try await waitForState { !search.searching && search.hits.count == 1 }
-            try check(search.selected.flatMap { search.meeting($0) }?.folder.deletingLastPathComponent().path == target.path,"search reindexed to destination")
+            try check(search.hits.first.flatMap { search.meeting($0) }?.folder.deletingLastPathComponent().path == target.path,"search reindexed to destination")
             search.close()
             func send(_ fields: [String:Any]) throws -> [String:String] { try host.receive(JSONSerialization.data(withJSONObject:fields)) }
             let started = try send(["type":"start","version":1,"title":"Synthetic browser"])

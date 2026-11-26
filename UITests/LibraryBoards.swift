@@ -162,9 +162,9 @@ final class LibraryBoards: XCTestCase {
         let starredChoice = window.descendants(matching:.any)["library-filters"].radioButtons["Starred"]
         XCTAssertTrue(starredChoice.waitForExistence(timeout:20),relaunched.debugDescription)
         XCTAssertTrue(selected(starredChoice),starredChoice.debugDescription)
-        window.searchFields.firstMatch.click()
-        let activeSearch = window.searchFields["library-search-field"]
+        let activeSearch = window.searchFields.firstMatch
         XCTAssertTrue(activeSearch.waitForExistence(timeout:5),relaunched.debugDescription)
+        activeSearch.click()
         activeSearch.typeText("budget")
         let starred = window.buttons["search-starred"]
         XCTAssertTrue(starred.waitForExistence(timeout:5),relaunched.debugDescription)
@@ -174,12 +174,15 @@ final class LibraryBoards: XCTestCase {
         let count = window.staticTexts["search-count"]
         let ready = NSPredicate { _,_ in self.visibleText(count) == "2 places in 1 meeting" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:ready,object:nil)],timeout:10),.completed)
-        XCTAssertTrue(window.buttons["search-play"].exists)
+        let firstHit = window.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@","search-hit-")).firstMatch
+        XCTAssertTrue(firstHit.waitForExistence(timeout:5),relaunched.debugDescription)
+        firstHit.click()
+        XCTAssertTrue(window.buttons["search-play"].waitForExistence(timeout:5),relaunched.debugDescription)
         capture(window,name:"search-starred")
         relaunched.typeKey(.escape,modifierFlags:[])
         XCTAssertTrue(window.descendants(matching:.any)["library-filters"].waitForExistence(timeout:5),"Escape closes Search before reopening it")
-        window.searchFields.firstMatch.click()
         XCTAssertTrue(activeSearch.waitForExistence(timeout:5),relaunched.debugDescription)
+        activeSearch.click()
         activeSearch.typeText("b")
         XCTAssertTrue(window.buttons["search-starred"].waitForExistence(timeout:5))
         XCTAssertTrue(selected(window.buttons["search-starred"]))
@@ -217,7 +220,7 @@ final class LibraryBoards: XCTestCase {
             XCTAssertEqual(window.buttons["meeting-stop-transcription"].firstMatch.label,"Stop")
             XCTAssertTrue(window.buttons["meeting-play"].isEnabled)
             XCTAssertTrue(window.buttons["meeting-find-button"].firstMatch.isHittable)
-            XCTAssertEqual(window.descendants(matching:.any).matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-turn-")).count,0)
+            XCTAssertGreaterThan(window.descendants(matching:.any).matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-turn-")).count,0,"Active transcription keeps showing partial transcript turns")
             if !usePopover { capture(window,name:"transcribing") }
             window.buttons["transcribing-details"].click()
             let stop = app.buttons["transcribing-stop-keep-progress"]
@@ -1236,18 +1239,16 @@ final class LibraryBoards: XCTestCase {
     @MainActor func testSearchClickOpensSidebarBeforeTyping() throws {
         let app = try launch("library",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
-        let field = window.searchFields.firstMatch
-        XCTAssertTrue(field.waitForExistence(timeout:20),app.debugDescription)
-        field.click()
-        let searchField = window.searchFields["library-search-field"]
-        XCTAssertTrue(searchField.waitForExistence(timeout:5),app.debugDescription)
+        let searchField = window.searchFields.firstMatch
+        XCTAssertTrue(searchField.waitForExistence(timeout:20),app.debugDescription)
+        searchField.click()
         app.typeText("budget")
         let count = window.staticTexts["search-count"]
         XCTAssertTrue(count.waitForExistence(timeout:5),app.debugDescription)
         let value = NSPredicate { _,_ in searchField.value as? String == "budget" }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:value,object:nil)],timeout:5),.completed,app.debugDescription)
         // Move focus away from the active global search field, then verify both
-        // ⌘F and ⌥⌘F refocus library-search-field while LibrarySearchView is visible.
+        // ⌘F and ⌥⌘F refocus the sidebar search field while search is visible.
         let hit = window.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@","search-hit-")).firstMatch
         XCTAssertTrue(hit.waitForExistence(timeout:10),app.debugDescription)
         hit.click()
@@ -1267,8 +1268,8 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:refocusedOptCmdF,object:nil)],timeout:5),.completed,"Opt-Cmd-F must refocus active global search: " + app.debugDescription)
         app.typeKey(.escape,modifierFlags:[])
         XCTAssertTrue(window.buttons["meeting-find-button"].firstMatch.waitForExistence(timeout:5))
-        window.searchFields.firstMatch.click()
         XCTAssertTrue(searchField.waitForExistence(timeout:5),app.debugDescription)
+        searchField.click()
         app.typeText("Daniel")
         XCTAssertEqual(searchField.value as? String,"Daniel",app.debugDescription)
         app.typeKey(.escape,modifierFlags:[])
@@ -1339,9 +1340,9 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(localFind.waitForExistence(timeout:5))
         app.typeText("budget")
         XCTAssertEqual(localFind.value as? String,"budget","Cmd-F after opening a hit searches the meeting")
-        window.searchFields.firstMatch.click()
-        let activeSearch = window.searchFields["library-search-field"]
+        let activeSearch = window.searchFields.firstMatch
         XCTAssertTrue(activeSearch.waitForExistence(timeout:5),window.debugDescription)
+        activeSearch.click()
         app.typeText("budget")
         XCTAssertEqual(activeSearch.value as? String,"budget")
         app.typeKey(.escape,modifierFlags:[])

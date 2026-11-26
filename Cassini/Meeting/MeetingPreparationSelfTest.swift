@@ -36,11 +36,25 @@ import Observation
         meeting.transcriptItems = (0..<10_000).map {
             .init(speaker:$0 % 2 == 0 ? "a" : "b",startMs:Int64($0) * 1500,endMs:Int64($0) * 1500 + 1000,text:"Word \($0).")
         }
+        final class Gate: @unchecked Sendable {
+            private let lock = NSLock()
+            private var waiters: [DispatchSemaphore] = []
+            func enqueue() -> DispatchSemaphore {
+                let semaphore = DispatchSemaphore(value: 0)
+                lock.lock(); waiters.append(semaphore); lock.unlock()
+                return semaphore
+            }
+            func signalFirst() {
+                lock.lock(); let semaphore = waiters.removeFirst(); lock.unlock()
+                semaphore.signal()
+            }
+        }
         let (events,emit) = AsyncStream<Event>.makeStream()
-        let release = DispatchSemaphore(value:0)
+        let release = Gate()
         MeetingDetailModel.preparerForSelfTest = { items, gaps in
+            let semaphore = release.enqueue()
             emit.yield(.started(onMain:Thread.isMainThread))
-            release.wait()
+            semaphore.wait()
             if Task.isCancelled { emit.yield(.cancelled); throw CancellationError() }
             let turns = try MeetingPresentation.turns(items,gaps:gaps,cancellable:true)
             emit.yield(.finished); return turns
@@ -53,19 +67,30 @@ import Observation
         active.state.transcript = .queued
         navigation.open(active)
         guard let activeDetail = navigation.detail else { fail("no queued meeting page") }
-        report["queuedSkipsTranscriptPresentation"] = activeDetail.turns.isEmpty && activeDetail.shares.isEmpty && activeDetail.timelineReadout.speaker(at:0) == nil
+        guard case .started(let queuedOnMain)? = await next.next() else { fail("queued preparation did not start") }
+        report["queuedPreparesTranscriptPresentation"] = !queuedOnMain && activeDetail.shares.count == 2 && activeDetail.turns.isEmpty
         active.state.transcript = .running
         active.transcriptItems.append(.init(speaker:"a",startMs:15_000_000,endMs:15_001_000,text:"Partial."))
         navigation.update([active],offline:false)
-        report["runningSkipsTranscriptPresentation"] = activeDetail.turns.isEmpty && activeDetail.shares.isEmpty && activeDetail.listeningTurns.isEmpty
-        // Completion without changed words must still start preparation.
+        release.signalFirst()
+        var cancelledQueued = false
+        var runningOnMain: Bool?
+        for _ in 0..<2 {
+            switch await next.next() {
+            case .cancelled?: cancelledQueued = true
+            case .started(let flag)?: runningOnMain = flag
+            default: fail("unexpected event during running update")
+            }
+        }
+        guard cancelledQueued, let onMain = runningOnMain else { fail("running update did not replace queued preparation") }
+        report["runningUpdatesTranscriptPresentation"] = !onMain && activeDetail.turns.isEmpty
+        // Completion without changed words keeps the in-flight preparation running.
         meeting = active
         meeting.state.transcript = .done
         navigation.update([meeting],offline:false)
         guard let detail = navigation.detail else { fail("no meeting page") }
 
         // 1. Preparation started, off the main thread, and the page has no turns yet.
-        guard case .started(let onMain)? = await next.next() else { fail("preparation did not start") }
         report["preparedOffMain"] = !onMain
         // 2. The main actor runs while the worker is held.
         var progressed = false
@@ -74,7 +99,7 @@ import Observation
 
         // 3. A Library outage cancels the preparation; the held worker sees it and delivers nothing.
         navigation.update([],offline:true)
-        release.signal()
+        release.signalFirst()
         guard case .cancelled? = await next.next() else { fail("the outage did not cancel the preparation") }
         await Task { @MainActor in }.value
         report["outageCancelled"] = detail.turns.isEmpty && navigation.detail === detail
@@ -83,7 +108,7 @@ import Observation
         let delivered = Task { @MainActor in await changed { _ = detail.turns } }
         navigation.update([meeting],offline:false)
         guard case .started? = await next.next() else { fail("recovery did not restart the preparation") }
-        release.signal()
+        release.signalFirst()
         guard case .finished? = await next.next() else { fail("the restarted preparation did not finish") }
         await delivered.value
         report["recoveryDelivered"] = detail.turns.count == 10_001
@@ -109,7 +134,7 @@ import Observation
         detail.listen.preview("a")
         // Cancellation must not make rendering depend on a later delivery.
         detail.suspend()
-        release.signal()
+        release.signalFirst()
         guard case .cancelled? = await next.next() else { fail("outage did not cancel the merge preparation") }
         report["suspendedMergeResolvesReadoutAndHeaders"] = staleSnapshotsRenderTarget() && !detail.listen.active
         let unknown = TimelineReadout(items:[.init(speaker:"unlisted",startMs:0,endMs:1000,text:"Yes.")])
@@ -119,7 +144,7 @@ import Observation
         let mergedDelivered = Task { @MainActor in await changed { _ = detail.turns } }
         detail.resumePreparation()
         guard case .started? = await next.next() else { fail("merge preparation did not resume") }
-        release.signal()
+        release.signalFirst()
         guard case .finished? = await next.next() else { fail("merge preparation did not finish") }
         await mergedDelivered.value
         report["mergedPreparationRecovers"] = detail.turns.allSatisfy { $0.speaker == "b" } && detail.timelineReadout.speaker(at:0) == "b" && detail.speakerName("b") == "Marta Cole"
@@ -182,7 +207,7 @@ import Observation
         let findRevision = cached.turnsRevision
         refreshed.state.transcript = .running
         cached.meeting = refreshed
-        report["activeInvalidatesFind"] = cached.turns.isEmpty && cached.turnsRevision > findRevision
+        report["activeKeepsTranscriptPresentation"] = !cached.turns.isEmpty && cached.turnsRevision == findRevision
         let skippedKeys = ScrollEdgeChrome.nativeCoverageKeys
         let reportValid = report.filter({ $0.key != "audioDevicesOpened" }).allSatisfy { key, value in
             if key == "scrollEdgeNativeMacOS26Available" {

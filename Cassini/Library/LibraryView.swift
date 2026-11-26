@@ -96,14 +96,17 @@ struct LibraryView: View {
             if !query.isEmpty {
                 if !search.visible { search.open() }
                 else { search.refresh() }
-            } else if search.visible && !search.hasActiveFilters {
+            } else if search.visible && !search.hasActiveFilters && !search.openedWithEmptyQuery {
                 search.close()
             } else if search.visible {
                 search.refresh()
             }
         }
+        .onChange(of: search.visible) { _, visible in
+            if !visible { sidebarSearchPresented = false }
+        }
         .onChange(of: sidebarSearchPresented) { _, presented in
-            if !presented && search.visible && search.query.isEmpty && !search.hasActiveFilters {
+            if !presented && search.visible && search.query.isEmpty && !search.hasActiveFilters && !search.openedWithEmptyQuery {
                 search.close()
             }
         }
@@ -323,17 +326,17 @@ struct LibraryView: View {
                 detailToolbar
             }
         }
-        .overlay(alignment: .leading) {
-            if isNarrowWindow && floatingSidebarOpen {
-                floatingSidebarOverlay
-            }
-        }
         .searchable(
             text: $search.query,
             isPresented: $sidebarSearchPresented,
             placement: .sidebar,
             prompt: UXText.text("search.field.placeholder")
         )
+        .overlay(alignment: .leading) {
+            if isNarrowWindow && floatingSidebarOpen {
+                floatingSidebarOverlay
+            }
+        }
     }
 
     private func handleSidebarSearchFocusRequest() {
