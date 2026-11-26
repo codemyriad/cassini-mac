@@ -21,7 +21,8 @@ import CassiniLibrary
         var talkTime: Int64 = 0
         var quote: String?
         var sampleRange: Range<Int64>?
-        var prepared = false
+        var excerptPrepared = false
+        var voicePrepared = false
     }
     struct UndoToast: Identifiable {
         let id = UUID()
@@ -209,7 +210,7 @@ import CassiniLibrary
         if let detail = MeetingNavigation.shared.detail, detail.meeting.folder == meeting.folder {
             detail.namingSpeakerID = id
         }
-        if speakerDrafts[id]?.prepared == true {
+        if let draft = speakerDrafts[id], draft.excerptPrepared, draft.voicePrepared {
             stopSpeakerPreparation()
         } else {
             prepareSpeaker(id, in: meeting)
@@ -268,22 +269,35 @@ import CassiniLibrary
     }
 
     private func prepareSpeaker(_ id: String, in meeting: LibraryMeeting) {
-        stopSpeakerPreparation(); speakerPreparing = true
+        stopSpeakerPreparation()
+        let needsExcerpt = speakerDrafts[id]?.excerptPrepared != true
+        let needsVoice = speakerDrafts[id]?.voicePrepared != true
+        guard needsExcerpt || needsVoice else { return }
+        speakerPreparing = needsExcerpt
         let preparationID = UUID()
         speakerPreparationID = preparationID
         speakerPreparation = Task {
-            defer { if speakerPreparationID == preparationID { speakerPreparation = nil } }
-            let facts = await Task.detached(priority: .userInitiated) {
-                (SpeakerEdits.talkTime(meeting, speaker: id), SpeakerEdits.sample(meeting, speaker: id), SpeakerEdits.quote(meeting, speaker: id))
-            }.value
-            guard !Task.isCancelled, !closing, presentation == .speakers, speakerID == id else { return }
-            speakerDrafts[id]?.talkTime = facts.0
-            speakerDrafts[id]?.sampleRange = facts.1
-            speakerDrafts[id]?.quote = facts.2
-            speakerDrafts[id]?.prepared = true
-            speakerPreparing = false
+            defer {
+                if speakerPreparationID == preparationID {
+                    speakerPreparation = nil
+                    speakerPreparing = false
+                }
+            }
+            if needsExcerpt {
+                let facts = await Task.detached(priority: .userInitiated) {
+                    (SpeakerEdits.talkTime(meeting, speaker: id), SpeakerEdits.sample(meeting, speaker: id), SpeakerEdits.quote(meeting, speaker: id))
+                }.value
+                guard !Task.isCancelled, !closing, presentation == .speakers, speakerID == id, speakerPreparationID == preparationID else { return }
+                speakerDrafts[id]?.talkTime = facts.0
+                speakerDrafts[id]?.sampleRange = facts.1
+                speakerDrafts[id]?.quote = facts.2
+                speakerDrafts[id]?.excerptPrepared = true
+                speakerPreparing = false
+            }
+            guard needsVoice else { return }
+            speakerDrafts[id]?.voicePreparationFailed = false
             await SavedVoicesController.shared.refresh()
-            guard !Task.isCancelled, presentation == .speakers, speakerID == id else { return }
+            guard !Task.isCancelled, !closing, presentation == .speakers, speakerID == id, speakerPreparationID == preparationID else { return }
             if speakerDrafts[id]?.voiceChoice.userChanged == false {
                 let existing = SavedVoicesController.shared.snapshot?.voiceID(meeting: meeting.folder.lastPathComponent, speaker: id)
                 speakerDrafts[id]?.voiceChoice = VoicePreferences.shared.choice(existing: existing != nil)
@@ -291,21 +305,31 @@ import CassiniLibrary
             }
             do {
                 let prepared = try await SavedVoicesController.shared.prepare(meeting, speaker: id)
-                guard !Task.isCancelled, presentation == .speakers, speakerID == id else { return }
-                speakerDrafts[id]?.voiceEnrollment = prepared
+                guard !Task.isCancelled, !closing, presentation == .speakers, speakerID == id, speakerPreparationID == preparationID else { return }
                 let profiles = SavedVoicesController.shared.voices
                 let ranked = await Task.detached(priority: .userInitiated) {
                     VoiceMatcher.ranked(prepared?.embedding ?? [], voices: profiles).map { VoiceCandidate(voice: $0.voice, score: $0.score) }
                 }.value
-                guard !Task.isCancelled, presentation == .speakers, speakerID == id else { return }
+                guard !Task.isCancelled, !closing, presentation == .speakers, speakerID == id, speakerPreparationID == preparationID else { return }
+                speakerDrafts[id]?.voiceEnrollment = prepared
                 speakerDrafts[id]?.voiceCandidates = ranked
+                speakerDrafts[id]?.voicePrepared = true
+            } catch is CancellationError {
+                return
             } catch {
-                if !Task.isCancelled { speakerDrafts[id]?.voicePreparationFailed = true }
+                guard !Task.isCancelled, !closing, presentation == .speakers, speakerID == id, speakerPreparationID == preparationID else { return }
+                speakerDrafts[id]?.voicePreparationFailed = true
+                speakerDrafts[id]?.voicePrepared = true
             }
         }
     }
 
-    private func stopSpeakerPreparation() { speakerPreparation?.cancel(); speakerPreparation = nil; speakerPreparing = false }
+    private func stopSpeakerPreparation() {
+        speakerPreparationID = UUID()
+        speakerPreparation?.cancel()
+        speakerPreparation = nil
+        speakerPreparing = false
+    }
 
     func mergeSpeaker(_ meeting: LibraryMeeting, from id: String, into target: String) {
         guard canEditSpeakers(meeting), presentation == nil else { return }

@@ -425,4 +425,113 @@ import CassiniRecording
         #expect(restored.voices.count == 1 && restored.voices[0].id == voiceA)
         #expect(restored.voiceID(meeting: meeting.folder.lastPathComponent, speaker: "a") == voiceA)
     }
+
+    @MainActor private final class PrepareCounter { var count = 0 }
+
+    @Test(.timeLimit(.minutes(1)))
+    func revisitingSpeakerRestartsCanceledVoicePreparation() async throws {
+        let (root, meeting) = try await makeThreeSpeakerFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let voices = SavedVoicesController.shared
+        let store = SavedVoicesStore(directory: root.appendingPathComponent("voices"))
+        voices.store = store
+        LibraryLocationModel.shared.location = LibraryLocation(primary: root)
+        let suite = "io.codemyriad.cassini.speaker-revisit." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        let previousPreferences = VoicePreferences.shared
+        VoicePreferences.shared = VoicePreferences(defaults: defaults)
+        VoicePreferences.shared.remember = true
+
+        let firstPrepareGate = RefreshGate()
+        let (firstPrepareCanceled, markFirstPrepareCanceled) = AsyncStream<Void>.makeStream()
+        let aPrepareAttempts = PrepareCounter()
+        let coordinator = MeetingRenameCoordinator()
+        defer {
+            firstPrepareGate.resume()
+            markFirstPrepareCanceled.finish()
+            coordinator.cancel()
+            voices.refreshAction = nil; voices.prepareAction = nil; voices.enrollAction = nil
+            voices.prepared = nil; voices.snapshot = nil
+            VoicePreferences.shared = previousPreferences
+            defaults.removePersistentDomain(forName: suite)
+        }
+
+        // Seed an existing saved voice from an earlier meeting so VoiceMatcher produces a ranked candidate for A.
+        let embeddingA = [Float](repeating: 1, count: 512)
+        let clipA = VoiceClip(meeting: meeting.folder.lastPathComponent, speaker: "a", startMs: 0, endMs: 5000)
+        let initialGen = try await store.snapshot().generation
+        let existingVoiceID = try await store.enroll(
+            name: "Alice Prior",
+            embedding: embeddingA,
+            seconds: 5,
+            generation: initialGen,
+            clip: VoiceClip(meeting: "earlier-meeting", speaker: "a", startMs: 0, endMs: 5000)
+        )
+        let seededSnapshot = try await store.snapshot()
+        voices.snapshot = seededSnapshot
+        voices.refreshAction = { voices.snapshot = try? await store.snapshot() }
+        voices.prepareAction = { _, id in
+            guard id == "a" else { return nil }
+            aPrepareAttempts.count += 1
+            if aPrepareAttempts.count == 1 {
+                await firstPrepareGate.pause()
+                if Task.isCancelled {
+                    markFirstPrepareCanceled.yield(())
+                    markFirstPrepareCanceled.finish()
+                    throw CancellationError()
+                }
+            }
+            return .init(embedding: embeddingA, seconds: 5, generation: seededSnapshot.generation, clip: clipA)
+        }
+        voices.enrollAction = { prepared, name, id in
+            let res = try await store.enrollReturningBackup(
+                name: name,
+                embedding: prepared.embedding,
+                seconds: prepared.seconds,
+                generation: prepared.generation,
+                into: id,
+                clip: prepared.clip
+            )
+            voices.snapshot = try await store.snapshot()
+            return res.backup
+        }
+
+        // 1. Open speaker A; wait until excerpt prep finishes and voice prep suspends in prepare().
+        coordinator.showSpeaker(meeting, id: "a")
+        await firstPrepareGate.waitUntilEntered()
+        #expect(coordinator.speakerDrafts["a"]?.excerptPrepared == true)
+        #expect(coordinator.speakerDrafts["a"]?.voicePrepared == false)
+        #expect(!coordinator.speakerPreparing)
+        #expect(coordinator.speakerQuote == "Hello")
+        #expect(coordinator.voiceEnrollment == nil)
+        #expect(coordinator.voiceCandidates.isEmpty)
+        #expect(!coordinator.canChangeRememberVoice)
+
+        // 2. Switch away to B while A's voice preparation is in flight -> cancels A's voice prep.
+        coordinator.selectSpeaker("b")
+        for await _ in firstPrepareCanceled { break }
+        #expect(coordinator.speakerDrafts["a"]?.excerptPrepared == true)
+        #expect(coordinator.speakerDrafts["a"]?.voicePrepared == false)
+        #expect(coordinator.speakerDrafts["a"]?.voicePreparationFailed == false)
+
+        // 3. Switch back to A -> excerpt stays prepared, canceled voice prep restarts and finishes.
+        coordinator.selectSpeaker("a")
+        #expect(!coordinator.speakerPreparing)
+        await waitForEnrollment(coordinator)
+        #expect(aPrepareAttempts.count == 2)
+        #expect(coordinator.speakerDrafts["a"]?.excerptPrepared == true)
+        #expect(coordinator.speakerDrafts["a"]?.voicePrepared == true)
+        #expect(!coordinator.voicePreparationFailed)
+        #expect(coordinator.voiceCandidates.map(\.id) == [existingVoiceID])
+        #expect(coordinator.voiceCandidates.first?.score != nil)
+        #expect(coordinator.canChangeRememberVoice)
+
+        // 4. Saving enrolls A's voice instead of silently skipping enrollment.
+        coordinator.rememberVoice = true
+        coordinator.apply()
+        await coordinator.waitForShutdown()
+        #expect(!coordinator.voiceChangeFailed)
+        let afterSave = try await store.snapshot()
+        #expect(afterSave.voiceID(meeting: meeting.folder.lastPathComponent, speaker: "a") != nil)
+    }
 }
