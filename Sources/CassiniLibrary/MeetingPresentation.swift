@@ -133,14 +133,92 @@ public enum MeetingPresentation {
     }
     /// The turns shown as paragraphs: every turn not shown inside another.
     public static func visibleTurns(_ turns: [Turn]) -> [Turn] { turns.filter { $0.host == nil } }
+    /// Foreground turns that are independently visible and searchable when `background` speakers
+    /// are hidden: top-level foreground turns plus foreground asides promoted from background hosts,
+    /// in reading order. Preserves each turn's original `id` and word/seek identities. O(N).
+    public static func foregroundTurns(in turns: [Turn], background: Set<String>) -> [Turn] {
+        guard !background.isEmpty else { return visibleTurns(turns) }
+        var result: [Turn] = []
+        result.reserveCapacity(turns.count)
+        for turn in turns where turn.host == nil {
+            if !background.contains(turn.speaker) {
+                result.append(turn)
+            } else {
+                for aside in turn.asides where turns.indices.contains(aside.turn) {
+                    let child = turns[aside.turn]
+                    if !background.contains(child.speaker) {
+                        result.append(child)
+                    }
+                }
+            }
+        }
+        return result
+    }
+    /// D112 (L-86): folded display rows for the transcript, collapsing each consecutive run of
+    /// background turns into one row counting the distinct background voices in that run, while
+    /// promoting any foreground asides from background hosts into independent `.turn` entries. O(N).
+    public enum TranscriptDisplayEntry: Identifiable, Sendable, Equatable {
+        case turn(Int)
+        case backgroundRun(id: String, turnIDs: [Int], distinctVoiceCount: Int)
+        public var id: String {
+            switch self {
+            case .turn(let id): return "turn-\(id)"
+            case .backgroundRun(let id, _, _): return id
+            }
+        }
+    }
+    public static func displayEntries(for turns: [Turn], background: Set<String>) -> [TranscriptDisplayEntry] {
+        guard !background.isEmpty else { return turns.compactMap { $0.host == nil ? .turn($0.id) : nil } }
+        var entries: [TranscriptDisplayEntry] = []
+        entries.reserveCapacity(turns.count)
+        var runTurnIDs: [Int] = []
+        var runSpeakers: Set<String> = []
+        func flush() {
+            guard let first = runTurnIDs.first else { return }
+            entries.append(.backgroundRun(id: "bg-\(first)", turnIDs: runTurnIDs, distinctVoiceCount: runSpeakers.count))
+            runTurnIDs.removeAll(keepingCapacity: true)
+            runSpeakers.removeAll(keepingCapacity: true)
+        }
+        for turn in turns where turn.host == nil {
+            if background.contains(turn.speaker) {
+                runTurnIDs.append(turn.id)
+                runSpeakers.insert(turn.speaker)
+                var promoted: [Int] = []
+                for aside in turn.asides where turns.indices.contains(aside.turn) {
+                    let child = turns[aside.turn]
+                    if background.contains(child.speaker) {
+                        runSpeakers.insert(child.speaker)
+                    } else {
+                        promoted.append(child.id)
+                    }
+                }
+                if !promoted.isEmpty {
+                    flush()
+                    for id in promoted {
+                        entries.append(.turn(id))
+                    }
+                }
+            } else {
+                flush()
+                entries.append(.turn(turn.id))
+            }
+        }
+        flush()
+        return entries
+    }
     /// Canonical reading order need not be chronological. Reveal the sounding
     /// word's visible host, then the nearest upcoming word (or final past word).
-    public static func readingTurn(at position: Int64, in turns: [Turn]) -> Int? {
+    public static func readingTurn(at position: Int64, in turns: [Turn], background: Set<String> = []) -> Int? {
         var sounding: (id: Int, start: Int64)?
         var upcoming: (id: Int, start: Int64)?
         var previous: (id: Int, start: Int64)?
         for turn in turns {
-            let id = turn.host ?? turn.id
+            let id: Int
+            if let host = turn.host, turns.indices.contains(host), !background.contains(turns[host].speaker) {
+                id = host
+            } else {
+                id = turn.id
+            }
             for item in turn.items where item.endMs > item.startMs {
                 if item.startMs <= position && position < item.endMs {
                     if sounding == nil || item.startMs > sounding!.start { sounding = (id, item.startMs) }
@@ -157,7 +235,7 @@ public enum MeetingPresentation {
         public let seeks: [Seek]
     }
     /// One copy/search/export projection; chips remain inline and every word keeps its seek anchor.
-    public static func prose(_ turn: Turn, in turns: [Turn], names: [String:String] = [:], locale: Locale = .current, language: CassiniLanguage = .system) -> Prose {
+    public static func prose(_ turn: Turn, in turns: [Turn], names: [String:String] = [:], locale: Locale = .current, language: CassiniLanguage = .system, excluding: Set<String> = []) -> Prose {
         var text = "", seeks: [Prose.Seek] = []
         func append(_ item: LibraryTranscriptItem, turnID: Int) {
             let at = text.utf16.count
@@ -169,6 +247,7 @@ public enum MeetingPresentation {
             append(item,turnID:turn.id)
             for aside in turn.asides where aside.after == i && turns.indices.contains(aside.turn) {
                 let child = turns[aside.turn]
+                if excluding.contains(child.speaker) { continue }
                 let marker = "\u{E000}"
                 let template = LibraryLocalization.shared.text("meeting.turn.aside",["name":names[child.speaker] ?? child.speaker,"text":marker],language:language,locale:locale).components(separatedBy:marker)
                 text += " (" + template[0]
@@ -189,8 +268,14 @@ public enum MeetingPresentation {
         let words = (body?.items ?? []).map { LibraryTranscriptItem(speaker: $0.speaker, startMs: Int64($0.startMs), endMs: Int64($0.endMs), text: $0.text, lowConfidenceSpeaker:$0.lowConfidenceSpeaker ? true : nil) }
         var ids: [String] = []
         for word in words.enumerated().sorted(by:{ $0.element.startMs == $1.element.startMs ? $0.offset < $1.offset : $0.element.startMs < $1.element.startMs }).map(\.element) where !ids.contains(word.speaker) { ids.append(word.speaker) }
+        var embeddedBackground: Set<String> = []
+        if trusted, let xSpeakers = file.manifest?.raw["x"]?["codemyriad.io"]?["meeting"]?["speakers"]?.array {
+            for entry in xSpeakers where entry["background"] == .bool(true) {
+                if let speakerID = entry["id"]?.string { embeddedBackground.insert(speakerID) }
+            }
+        }
         let speakers = ids.enumerated().map { index, id in
-            MeetingSpeaker(id: id, name: file.manifest?.speaker(id)?.label, provenance: nil, colourIndex: index)
+            MeetingSpeaker(id: id, name: file.manifest?.speaker(id)?.label, provenance: nil, colourIndex: index, background: embeddedBackground.contains(id))
         }
         var duration: Int64?
         if case .success(let digest)? = file.audioDigest { duration = Int64(digest.durationMs) }

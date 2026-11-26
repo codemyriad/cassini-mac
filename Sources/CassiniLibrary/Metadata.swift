@@ -21,7 +21,7 @@ struct AppMetadata: Decodable {
     /// D24/UX16: ordered merge history; resolved by SpeakerMerges when the meeting is read.
     let speakerMerges: [SpeakerMerge]?
     struct SpeakerMerge: Decodable { let from: String; let into: String }
-    struct Speaker: Decodable { let id: String; let name: String?; let provenance: NameProvenance; let colourIndex: Int; let label: String?; let nameCleared: Bool? }
+    struct Speaker: Decodable { let id: String; let name: String?; let provenance: NameProvenance; let colourIndex: Int; let label: String?; let nameCleared: Bool?; let background: Bool? }
     struct Transcript: Decodable { let status: TranscriptStatus; let reference: Reference?; let model: String?; let paused: Bool? }
     struct Reference: Decodable { let kind: String; let file: String; let format: String?; let transcriptId: String? }
     struct Received: Decodable { let originalName: String; let originalFolderName: String?; let sha256: String; let importedAtMs: Int64 }
@@ -38,6 +38,7 @@ struct AppMetadata: Decodable {
             try require(speaker.provenance == .unnamed ? speaker.name == nil : speaker.name?.isEmpty == false)
             try require((speaker.name?.unicodeScalars.count ?? 0) <= 200)
             try require(speaker.label == nil || (speaker.label?.isEmpty == false && speaker.label!.unicodeScalars.count <= 200))
+            try require(speaker.background == nil || speaker.background == true)
         }
         if ![.queued, .running].contains(transcript.status) { try require(etaMinutes == nil) }
         if let reference = transcript.reference {

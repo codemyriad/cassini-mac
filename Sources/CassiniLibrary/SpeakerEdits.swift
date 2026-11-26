@@ -4,10 +4,28 @@ import Darwin
 
 /// D24/UX16: edits only meeting.json. Stored transcript IDs and audio never change.
 public enum SpeakerEdits {
+    /// D112 (L-86): one speaker's pending changes in a batch Save from the speaker card.
+    public struct BatchChange: Sendable, Equatable {
+        public let speaker: String
+        /// nil means leave the stored name and provenance unchanged (e.g. when toggling background).
+        public let name: String?
+        /// nil means leave the stored background flag unchanged; true sets `background: true`, false removes it.
+        public let background: Bool?
+        public init(speaker: String, name: String? = nil, background: Bool? = nil) {
+            self.speaker = speaker; self.name = name; self.background = background
+        }
+    }
+    /// Exact pre-edit JSON bytes for each speaker id touched by a batch edit (nil if absent before).
+    public struct BatchSnapshot: Sendable, Equatable {
+        public let entries: [String: Data?]
+        public init(entries: [String: Data?]) { self.entries = entries }
+    }
     public enum Edit: Sendable {
         case name(speaker:String,value:String)
         case merge(from:String,into:String)
         case undoMerge
+        case batch([BatchChange])
+        case restore(BatchSnapshot)
     }
     public static func normalizedName(_ value:String) -> String? {
         let name=value.trimmingCharacters(in:.whitespacesAndNewlines)
@@ -22,11 +40,16 @@ public enum SpeakerEdits {
     /// Fresh validation runs inside the metadata transaction's directory lock.
     /// The UI supplies security-scoped Library roots and serializes against move/Trash/Quit.
     public static func apply(_ edit:Edit,to meeting:LibraryMeeting,roots:[URL],scanner:LibraryScanner? = nil) throws {
+        _ = try applyReturningSnapshot(edit,to:meeting,roots:roots,scanner:scanner)
+    }
+    /// Applies `edit` and, for `.batch`, returns the pre-edit speaker snapshot for exact Undo.
+    public static func applyReturningSnapshot(_ edit:Edit,to meeting:LibraryMeeting,roots:[URL],scanner:LibraryScanner? = nil) throws -> BatchSnapshot? {
         let directory=meeting.folder
         let parent=try physicalURL(directory.deletingLastPathComponent())
         guard let info=try pathInfo(directory),info.st_mode & S_IFMT == S_IFDIR,
               roots.contains(where:{ (try? physicalURL($0)) == parent }) else {throw POSIXError(.EACCES)}
         let scanner=scanner ?? LibraryScanner(root:directory.deletingLastPathComponent())
+        var snapshot: BatchSnapshot?
         try MeetingMetadataWriter(directory:directory,id:meeting.id).transaction(skippingUnchanged:true) { document in
             guard let fresh=scanner.meeting(at:directory),fresh.id==meeting.id,
                   fresh.metadataRevision != nil,!fresh.metadataReadOnly,fresh.state.lifecycle == .saved,
@@ -53,8 +76,62 @@ public enum SpeakerEdits {
             case .undoMerge:
                 guard var history=document["speakerMerges"] as? [[String:Any]],!history.isEmpty else {return}
                 history.removeLast();document["speakerMerges"]=history
+            case .batch(let changes):
+                guard !changes.isEmpty else { return }
+                var speakers=document["speakers"] as? [[String:Any]] ?? []
+                var captured: [String: Data?] = [:]
+                for change in changes {
+                    guard let speaker=fresh.speakers.first(where:{$0.id==change.speaker}) else {throw POSIXError(.EINVAL)}
+                    if let rawName = change.name { guard validName(rawName) else {throw POSIXError(.EINVAL)} }
+                    let index=speakers.firstIndex(where:{$0["id"] as? String == change.speaker})
+                    if captured[change.speaker] == nil {
+                        if let index {
+                            captured[change.speaker] = try JSONSerialization.data(withJSONObject: speakers[index])
+                        } else {
+                            captured[change.speaker] = .some(nil)
+                        }
+                    }
+                    var entry: [String: Any]
+                    if let index {
+                        entry = speakers[index]
+                    } else {
+                        entry = [
+                            "id": change.speaker,
+                            "name": speaker.name.map { $0 as Any } ?? NSNull(),
+                            "provenance": (speaker.provenance ?? (speaker.name == nil ? .unnamed : .user)).rawValue,
+                            "colourIndex": speaker.colourIndex
+                        ]
+                        if let label = speaker.label { entry["label"] = label }
+                    }
+                    if let rawName = change.name {
+                        let name=normalizedName(rawName)
+                        entry["name"]=name.map {$0 as Any} ?? NSNull()
+                        entry["provenance"]=name == nil ? "unnamed" : "user"
+                        if name == nil {entry["nameCleared"]=true}
+                        else {entry.removeValue(forKey:"nameCleared")}
+                    }
+                    if let background = change.background {
+                        if background { entry["background"] = true }
+                        else { entry.removeValue(forKey: "background") }
+                    }
+                    if let index {speakers[index]=entry} else {speakers.append(entry)}
+                }
+                document["speakers"]=speakers
+                snapshot = BatchSnapshot(entries: captured)
+            case .restore(let previous):
+                var speakers=document["speakers"] as? [[String:Any]] ?? []
+                for (id, data) in previous.entries {
+                    let index=speakers.firstIndex(where:{$0["id"] as? String == id})
+                    if let data, let restored = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        if let index { speakers[index] = restored } else { speakers.append(restored) }
+                    } else if let index {
+                        speakers.remove(at: index)
+                    }
+                }
+                document["speakers"]=speakers
             }
         }
+        return snapshot
     }
     /// A bounded excerpt from the longest audible turn, including chip-only speakers.
     /// Derived off the main actor alongside sample preparation, never while rendering.

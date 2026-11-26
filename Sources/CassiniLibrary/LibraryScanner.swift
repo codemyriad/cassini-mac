@@ -129,6 +129,7 @@ public struct LibraryScanner: Sendable {
         var file: CassiniFile?
         var original: URL?
         var embeddedNames: [String: String] = [:]
+        var embeddedBackground: Set<String> = []
         if received, let receivedMetadata = metadata?.received {
             do {
                 let url = try safeFile(receivedMetadata.originalName, in: folder); original = url; seen.insert(url)
@@ -149,6 +150,11 @@ public struct LibraryScanner: Sendable {
                     if file.state == .ok {
                         meeting.summaryMarkdown = file.manifest?.summaryMarkdown
                         for speaker in file.manifest?.speakers ?? [] { embeddedNames[speaker.id] = speaker.label }
+                        if let xSpeakers = file.manifest?.raw["x"]?["codemyriad.io"]?["meeting"]?["speakers"]?.array {
+                            for entry in xSpeakers where entry["background"] == .bool(true) {
+                                if let speakerID = entry["id"]?.string { embeddedBackground.insert(speakerID) }
+                            }
+                        }
                     }
                 }
             } catch { meeting.issues.append(.invalidAudio) }
@@ -267,7 +273,8 @@ public struct LibraryScanner: Sendable {
             let classification = storedLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
             let embedded = classification.flatMap { $0.isEmpty || $0.range(of: "^Speaker [0-9]+$", options: .regularExpression) != nil ? nil : storedLabel }
             let name = override != nil ? override?.name : embedded
-            return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: override?.colourIndex ?? firstSpeechColourIndex[id] ?? index, label: override?.label ?? (override?.nameCleared == true ? nil : storedLabel), speakingOrder: index)
+            let background = override != nil ? (override?.background == true) : embeddedBackground.contains(id)
+            return .init(id: id, name: name, provenance: override?.name != nil ? override?.provenance : (name == nil ? .unnamed : nil), colourIndex: override?.colourIndex ?? firstSpeechColourIndex[id] ?? index, label: override?.label ?? (override?.nameCleared == true ? nil : storedLabel), speakingOrder: index, background: background)
         }
         if [.done, .queued, .running].contains(meeting.state.transcript) || meeting.transcriptPaused, !words.isEmpty {
             meeting.quote = normalizedOverride(metadata?.quoteOverride) ?? defaultQuote(chronological)

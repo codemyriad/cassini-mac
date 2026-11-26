@@ -237,9 +237,10 @@ import CassiniWhistle
         try Task.checkCancellation()
         return .init(embedding:result.embedding,seconds:result.seconds,generation:generation,clip:selection.clip)
     }
-    func enroll(_ prepared:TranscriptEnrollment,name:String,into id:String?) async throws {
-        _=try await store.enroll(name:name,embedding:prepared.embedding,seconds:prepared.seconds,generation:prepared.generation,into:id,clip:prepared.clip)
+    @discardableResult func enroll(_ prepared:TranscriptEnrollment,name:String,into id:String?) async throws -> SavedVoicesStore.ContributionBackup? {
+        let result=try await store.enrollReturningBackup(name:name,embedding:prepared.embedding,seconds:prepared.seconds,generation:prepared.generation,into:id,clip:prepared.clip)
         snapshot=try await store.snapshot()
+        return result.backup
     }
     struct EmbeddingResult: Decodable, Sendable { let embedding:[Float]; let seconds:Double }
     static func embedding(_ samples:[Float],guided:Bool=false) async throws -> EmbeddingResult {

@@ -68,11 +68,8 @@ import Observation
             let names = Dictionary(uniqueKeysWithValues: Set(turns.map(\.speaker)).map { id in
                 (id, meeting.speaker(for:id)?.displayName(language:language,locale:locale) ?? fallback)
             })
-            var paragraphs: [TranscriptFind.Paragraph] = []
-            for turn in MeetingPresentation.visibleTurns(turns) {
-                try Task.checkCancellation()
-                paragraphs.append(.init(id: turn.id, prose: MeetingPresentation.prose(turn, in: turns, names: names, locale: locale, language: language)))
-            }
+            let backgroundIDs = meeting.backgroundSpeakerIDs
+            let paragraphs = try TranscriptFind.paragraphs(in: turns, names: names, background: backgroundIDs, locale: locale, language: language)
             let found = try TranscriptFind.matches(in: paragraphs, query: requestedQuery, locale: locale)
             try Task.checkCancellation()
             return (matches: found, ranges: Dictionary(grouping: found, by: \.paragraph).mapValues { $0.map(\.range) })

@@ -124,12 +124,22 @@ struct AppCommands: Commands {
             Button(UXText.text("listen.nextTurn")) { if listeningMeeting?.canUseListeningShortcuts == true { listeningMeeting?.stepListeningTurn(1) } }
                 .keyboardShortcut(.downArrow,modifiers:[.option,.command])
                 .disabled(speakerDialog || listeningMeeting?.canUseListeningCommands != true || listeningMeeting?.canStepListeningTurn(1) != true)
-            Button(UXText.text("listen.previousSpeaker")) { if listeningMeeting?.canUseListeningShortcuts == true { listeningMeeting?.stepListeningSpeaker(-1) } }
+            Button(UXText.text("listen.previousSpeaker")) {
+                if speakerDialog { MeetingRenameCoordinator.shared.stepSpeaker(-1) }
+                else if listeningMeeting?.canUseListeningShortcuts == true { listeningMeeting?.stepListeningSpeaker(-1) }
+            }
                 .keyboardShortcut(.upArrow,modifiers:[.option,.shift,.command])
-                .disabled(speakerDialog || listeningMeeting?.canUseListeningCommands != true || listeningMeeting?.canStepListeningSpeaker(-1) != true)
-            Button(UXText.text("listen.nextSpeaker")) { if listeningMeeting?.canUseListeningShortcuts == true { listeningMeeting?.stepListeningSpeaker(1) } }
+                .disabled(speakerDialog
+                    ? !MeetingRenameCoordinator.shared.canStepSpeaker(-1)
+                    : (listeningMeeting?.canUseListeningCommands != true || listeningMeeting?.canStepListeningSpeaker(-1) != true))
+            Button(UXText.text("listen.nextSpeaker")) {
+                if speakerDialog { MeetingRenameCoordinator.shared.stepSpeaker(1) }
+                else if listeningMeeting?.canUseListeningShortcuts == true { listeningMeeting?.stepListeningSpeaker(1) }
+            }
                 .keyboardShortcut(.downArrow,modifiers:[.option,.shift,.command])
-                .disabled(speakerDialog || listeningMeeting?.canUseListeningCommands != true || listeningMeeting?.canStepListeningSpeaker(1) != true)
+                .disabled(speakerDialog
+                    ? !MeetingRenameCoordinator.shared.canStepSpeaker(1)
+                    : (listeningMeeting?.canUseListeningCommands != true || listeningMeeting?.canStepListeningSpeaker(1) != true))
         }
     }
 }

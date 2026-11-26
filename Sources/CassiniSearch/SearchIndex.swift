@@ -94,7 +94,7 @@ public actor SearchIndex {
     public init(cache: URL) throws { database = try SearchDatabase(cache:cache) }
     public static func names(_ meetings: [LibraryMeeting]) -> [String] {
         var names: [String:String] = [:]
-        for speaker in meetings.flatMap(\.speakers) where speaker.provenance != .unnamed {
+        for speaker in meetings.flatMap(\.speakers) where speaker.provenance != .unnamed && !speaker.background {
             guard let name = speaker.name, !name.isEmpty else { continue }
             let key = name.folding(options:[.caseInsensitive],locale:Locale(identifier:"en_GB"))
             if names[key] == nil { names[key] = name }
@@ -110,19 +110,21 @@ public actor SearchIndex {
             var nextSpoken: [String:[SpokenRow]] = [:]
             for meeting in snapshot {
                 // D63 #2: the turns also follow the speakers' gap ranges, so they are in the fingerprint.
+                // D112 (L-86): background speaker flags also affect what is indexed, so include them.
                 let gaps = meeting.speakerGaps
                 let ranges = gaps.keys.sorted().map { key in [key] + gaps[key]!.map { "\($0.lowerBound)-\($0.upperBound)" } }
-                let hash = Data(SHA256.hash(data:try JSONEncoder().encode(meeting.transcriptItems) + JSONEncoder().encode(ranges) + JSONEncoder().encode(meeting.speakers.map(\.displayName)) + JSONEncoder().encode(meeting.wordEndsBoundedByAudio)))
+                let backgroundIDs = meeting.backgroundSpeakerIDs
+                let hash = Data(SHA256.hash(data:try JSONEncoder().encode(meeting.transcriptItems) + JSONEncoder().encode(ranges) + JSONEncoder().encode(meeting.speakers.map(\.displayName)) + JSONEncoder().encode(meeting.speakers.map(\.background)) + JSONEncoder().encode(meeting.wordEndsBoundedByAudio)))
                 nextFingerprints[meeting.libraryKey] = hash
                 if fingerprints[meeting.libraryKey] == hash { nextTurns[meeting.libraryKey] = turns[meeting.libraryKey]; nextProse[meeting.libraryKey] = prose[meeting.libraryKey]; nextSpoken[meeting.libraryKey] = spoken[meeting.libraryKey]; continue }
                 let all = MeetingPresentation.turns(meeting.transcriptItems,gaps:gaps,endsBoundedByAudio:meeting.wordEndsBoundedByAudio)
-                let grouped = MeetingPresentation.visibleTurns(all)
+                let grouped = MeetingPresentation.foregroundTurns(in:all,background:backgroundIDs)
                 let names = Dictionary(uniqueKeysWithValues:meeting.speakers.map { ($0.id,$0.displayName) })
-                let text = grouped.map { MeetingPresentation.prose($0,in:all,names:names) }
+                let text = grouped.map { MeetingPresentation.prose($0,in:all,names:names,excluding:backgroundIDs) }
                 try database.remove(meeting.libraryKey)
                 var rows: [SpokenRow] = []
                 for (index,turn) in grouped.enumerated() {
-                    for source in [turn] + turn.asides.map({ all[$0.turn] }) {
+                    for source in [turn] + turn.asides.map({ all[$0.turn] }) where !backgroundIDs.contains(source.speaker) {
                         // Labels and other speakers never interrupt a speaker's spoken phrase.
                         let seeks = text[index].seeks.filter { $0.turnID == source.id }
                         var offset = 0
@@ -202,7 +204,8 @@ public actor SearchIndex {
                 }
                 var hit = SearchHit(meetingKey:key,turn:index,positionMs:match.position,speaker:match.speaker,text:paragraph.text,spans:spans,occurrence:occurrence)
                 if let all = turns[key] {
-                    let range = max(0,index-1)...min(all.count-1,index+1)
+                    let backgroundIDs = meeting.backgroundSpeakerIDs
+                    let range = (max(0,index-1)...min(all.count-1,index+1)).filter { !backgroundIDs.contains(all[$0].speaker) }
                     hit.context = range.map { ($0,all[$0]) }
                     hit.contextText = Dictionary(uniqueKeysWithValues:range.map { ($0,prose[key]?[$0].text ?? "") })
                 }

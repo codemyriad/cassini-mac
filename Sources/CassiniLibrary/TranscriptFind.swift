@@ -35,6 +35,15 @@ public enum TranscriptFind {
     }
     public enum Direction { case previous, next }
 
+    public static func paragraphs(in turns: [MeetingPresentation.Turn], names: [String: String], background: Set<String>, locale: Locale, language: CassiniLanguage) throws -> [Paragraph] {
+        var result: [Paragraph] = []
+        for turn in MeetingPresentation.foregroundTurns(in: turns, background: background) {
+            try Task.checkCancellation()
+            result.append(.init(id: turn.id, prose: MeetingPresentation.prose(turn, in: turns, names: names, locale: locale, language: language, excluding: background)))
+        }
+        return result
+    }
+
     public static func matches(in paragraphs: [Paragraph], query: String, locale: Locale) throws -> [Match] {
         try Task.checkCancellation()
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)

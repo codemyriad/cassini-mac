@@ -301,10 +301,17 @@ enum CodemyriadNamespace {
             // A speaker id both writers use (a received file's track-original, D11): the label
             // Mac's Write down produced its words with replaces the other writer's (D48).
             for mine in raw["speakers"]?.array ?? [] {
-                guard let id = mine["id"]?.string, let label = mine["label"], label.string != nil,
-                      let index = speakers.firstIndex(where:{ $0["id"]?.string == id }), speakers[index]["label"] != label,
-                      let next = try? speakers[index].setting("label",to:label) else { continue }
-                speakers[index] = next; edited = true
+                guard let id = mine["id"]?.string,
+                      let index = speakers.firstIndex(where:{ $0["id"]?.string == id }) else { continue }
+                var entry = speakers[index]
+                var entryChanged = false
+                if let label = mine["label"], label.string != nil, entry["label"] != label,
+                   let next = try? entry.setting("label",to:label) { entry = next; entryChanged = true }
+                // D112 (L-86): background flag set or cleared on Mac propagates verbatim.
+                let mineBackground: JSON? = mine["background"] == .bool(true) ? .bool(true) : nil
+                if entry["background"] != mineBackground,
+                   let next = try? entry.setting("background",to:mineBackground) { entry = next; entryChanged = true }
+                if entryChanged { speakers[index] = entry; edited = true }
             }
             let known = Set(speakers.compactMap { $0["id"]?.string })
             for mine in raw["speakers"]?.array ?? [] {
