@@ -54,9 +54,9 @@ struct MeetingPaneHeader: View {
                         .buttonStyle(.plain)
                         .padding(.horizontal, -4)
                         .onHover { hoveringDate = $0 }
-                        .help(UXText.text("meeting.setDateTime"))
+                        .help(UXText.text("meeting.setDateTimeEllipsis"))
                         .accessibilityLabel(subtitleParts.date)
-                        .accessibilityHint(UXText.text("meeting.setDateTime"))
+                        .accessibilityHint(UXText.text("meeting.setDateTimeEllipsis"))
                         .accessibilityIdentifier("meeting-inline-date")
                     } else {
                         Text(subtitleParts.date)
