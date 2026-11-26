@@ -10,16 +10,20 @@ struct MeetingView: View {
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var handScrolling = false
+    @State private var expandedBackgroundRuns: Set<String> = []
+    @State private var rename = MeetingRenameCoordinator.shared
     var showsCompanionSuggestion: Bool { !suggestionDismissed && !CaptureCollection.shared.connected }
     private var meeting: LibraryMeeting { model.meeting }
     private var isTranscribing: Bool { TranscribingPresentation.isActive(meeting.state) }
     /// M11: paragraphs only; an aside is shown inside its host.
-    private var visibleTurns: [MeetingPresentation.Turn] { MeetingPresentation.visibleTurns(model.turns) }
+    private var visibleTurns: [MeetingPresentation.Turn] { model.visibleTurns }
     private func name(_ speaker: String) -> String { model.speakerName(speaker) }
-    private func asides(_ turn: MeetingPresentation.Turn) -> [MeetingTranscriptText.Aside] {
-        turn.asides.compactMap { aside in
+    private func asides(_ turn: MeetingPresentation.Turn, includeBackground: Bool = false) -> [MeetingTranscriptText.Aside] {
+        let backgroundIDs = includeBackground ? [] : meeting.backgroundSpeakerIDs
+        return turn.asides.compactMap { aside in
             guard model.turns.indices.contains(aside.turn) else { return nil }
             let asideTurn = model.turns[aside.turn]
+            if backgroundIDs.contains(asideTurn.speaker) { return nil }
             let speaker = meeting.speaker(for:asideTurn.speaker)
             return .init(id:aside.turn,listeningWords:model.transcriptListening.words(in:aside.turn,listeningTo:model.listen.turn?.index),
                          after:aside.after,name:name(asideTurn.speaker),items:asideTurn.items,
@@ -56,10 +60,10 @@ struct MeetingView: View {
         return parts.joined(separator:", ")
     }
     /// One transcript turn. Its own function so Xcode 16.4 can type-check `body`.
-    private func turnRow(_ turn: MeetingPresentation.Turn) -> some View {
+    private func turnRow(_ turn: MeetingPresentation.Turn, background: Bool = false) -> some View {
         HStack(alignment: .top, spacing: 20) {
-            turnHeader(turn)
-            turnText(turn)
+            turnHeader(turn, background: background)
+            turnText(turn, background: background)
                 .frame(maxWidth:.infinity,alignment:.leading)
         }.id(turn.id)
             .overlay(alignment:.leading) {
@@ -81,26 +85,43 @@ struct MeetingView: View {
             .accessibilityIdentifier("meeting-turn-" + String(turn.id))
             .accessibilityAction(named:Text(UXText.text("player.playFromHere"))) { model.playFrom(Int(turn.startMs)) }
     }
-    private func turnHeader(_ turn: MeetingPresentation.Turn) -> some View {
+    private func turnHeader(_ turn: MeetingPresentation.Turn, background: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
-                    Button { model.listenFromReadingTurn(turn.id) } label: {
-                        Text(name(turn.speaker)).fontWeight(.semibold)
-                            .foregroundStyle(colour(meeting.speaker(for:turn.speaker)))
-                            .lineLimit(1)
-                    }.buttonStyle(.borderless).disabled(!model.canPlay)
-                        .help(UXText.text("listen.speakerName.tooltip",["name":name(turn.speaker)]))
-                        .accessibilityLabel(UXText.text("listen.speakerName.tooltip",["name":name(turn.speaker)]))
-                        .accessibilityIdentifier("turn-listen-\(turn.id)")
-                        .focusable(isEnabled)
-                        .onKeyPress(keys:[.return,KeyEquivalent("\u{03}")],phases:.down) { event in
-                            guard event.modifiers.isEmpty, model.canUseTranscriptShortcuts else { return .ignored }
-                            model.listenFromReadingTurn(turn.id); return .handled
+                    if background {
+                        if rename.canEditSpeakers(meeting) {
+                            Button { rename.showSpeaker(meeting, id: turn.speaker) } label: {
+                                Text(name(turn.speaker)).fontWeight(.semibold)
+                                    .foregroundStyle(CassiniTheme.ink3)
+                                    .lineLimit(1)
+                            }.buttonStyle(.borderless)
+                                .help(UXText.text("meeting.nameSpeakers"))
+                                .accessibilityLabel(name(turn.speaker))
+                                .accessibilityIdentifier("background-turn-speaker-\(turn.id)")
+                        } else {
+                            Text(name(turn.speaker)).fontWeight(.semibold)
+                                .foregroundStyle(CassiniTheme.ink3)
+                                .lineLimit(1)
                         }
-                    if meeting.speaker(for:turn.speaker)?.provenance == .recognised { autoTag }
+                    } else {
+                        Button { model.listenFromReadingTurn(turn.id) } label: {
+                            Text(name(turn.speaker)).fontWeight(.semibold)
+                                .foregroundStyle(colour(meeting.speaker(for:turn.speaker)))
+                                .lineLimit(1)
+                        }.buttonStyle(.borderless).disabled(!model.canPlay)
+                            .help(UXText.text("listen.speakerName.tooltip",["name":name(turn.speaker)]))
+                            .accessibilityLabel(UXText.text("listen.speakerName.tooltip",["name":name(turn.speaker)]))
+                            .accessibilityIdentifier("turn-listen-\(turn.id)")
+                            .focusable(isEnabled)
+                            .onKeyPress(keys:[.return,KeyEquivalent("\u{03}")],phases:.down) { event in
+                                guard event.modifiers.isEmpty, model.canUseTranscriptShortcuts else { return .ignored }
+                                model.listenFromReadingTurn(turn.id); return .handled
+                            }
+                        if meeting.speaker(for:turn.speaker)?.provenance == .recognised { autoTag }
+                    }
                 }.fixedSize(horizontal: false, vertical: true)
                 Button { model.playFrom(Int(turn.startMs)) } label: {
-                    Text(LibraryFormat.position(turn.startMs)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk).monospacedDigit()
+                    Text(LibraryFormat.position(turn.startMs)).font(.system(size:11.5)).foregroundStyle(background ? CassiniTheme.ink3 : CassiniTheme.secondaryInk).monospacedDigit()
                 }.buttonStyle(.borderless).disabled(!model.canPlay)
                     .help(UXText.text("player.playFromHere"))
                     .accessibilityLabel(UXText.text("player.playFromHere") + ", " + LibraryFormat.position(turn.startMs))
@@ -110,20 +131,54 @@ struct MeetingView: View {
                         guard event.modifiers.isEmpty, model.canUseTranscriptShortcuts else { return .ignored }
                         model.playFrom(Int(turn.startMs)); return .handled
                     }
-                if let over = over(turn) {
+                if !background, let over = over(turn) {
                     Text(over).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.secondaryInk)
                         .help(UXText.text("meeting.turn.over.tooltip"))
                 }
             }.frame(width: 110, alignment: .leading)
     }
-    private func turnText(_ turn: MeetingPresentation.Turn) -> MeetingTranscriptText {
-        MeetingTranscriptText(items:turn.items,asides:asides(turn),positionMs:model.positionMs,seek:model.seek,
+    private func turnText(_ turn: MeetingPresentation.Turn, background: Bool = false) -> MeetingTranscriptText {
+        MeetingTranscriptText(items:turn.items,asides:asides(turn, includeBackground: background),positionMs:model.positionMs,seek:model.seek,
                                   listeningWords:model.transcriptListening.words(in:turn.id,listeningTo:model.listen.turn?.index),
-                                  canPlay:model.canPlay,findRanges:model.find.ranges[turn.id,default:[]],
-                                  selectedFindRange:model.find.selected?.paragraph == turn.id ? model.find.selected?.range : nil,
-                                  dark:colorScheme == .dark,listen:model.listenFromReadingTurn,playFromHere:{
+                                  canPlay:model.canPlay,findRanges:background ? [] : model.find.ranges[turn.id,default:[]],
+                                  selectedFindRange:(!background && model.find.selected?.paragraph == turn.id) ? model.find.selected?.range : nil,
+                                  dark:colorScheme == .dark,muted:background,listen:model.listenFromReadingTurn,playFromHere:{
                                       if model.canUseTranscriptShortcuts { model.playFrom(Int(turn.startMs)) }
                                   })
+    }
+    /// D112 (L-86): folded background run indented to the transcript text column (110 pt name + 20 pt gap).
+    private func backgroundRunSection(id: String, turnIDs: [Int], distinctVoiceCount: Int) -> some View {
+        let expanded = expandedBackgroundRuns.contains(id)
+        let label = UXText.text("speakers.backgroundVoice.hidden", ["n": String(distinctVoiceCount)])
+        return VStack(alignment: .leading, spacing: 14) {
+            Button {
+                if expanded { expandedBackgroundRuns.remove(id) } else { expandedBackgroundRuns.insert(id) }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(label)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(CassiniTheme.ink3)
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(CassiniTheme.ink3)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 130)
+            .accessibilityIdentifier("background-run-\(id)")
+            .accessibilityLabel(label)
+            .accessibilityValue(expanded ? "1" : "0")
+
+            if expanded {
+                ForEach(turnIDs, id: \.self) { turnID in
+                    if model.turns.indices.contains(turnID) {
+                        turnRow(model.turns[turnID], background: true)
+                    }
+                }
+            }
+        }
     }
     private var meetingNotices: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -142,7 +197,14 @@ struct MeetingView: View {
                 NoSpeechTranscriptLine(action:meeting.canWriteDown ? { TranscriptionQueue.shared.writeDown(model) } : nil,meeting:meeting)
             }
             if !isTranscribing, showsCompanionSuggestion { companionCard }
-            ForEach(visibleTurns) { turn in turnRow(turn) }
+            ForEach(model.displayEntries) { entry in
+                switch entry {
+                case .turn(let turnID):
+                    if model.turns.indices.contains(turnID) { turnRow(model.turns[turnID]) }
+                case .backgroundRun(let id, let turnIDs, let distinctVoiceCount):
+                    backgroundRunSection(id: id, turnIDs: turnIDs, distinctVoiceCount: distinctVoiceCount)
+                }
+            }
         }
     }
     private var bottomPlayerBar: some View {
@@ -238,9 +300,11 @@ struct MeetingView: View {
         .focusedSceneValue(\.listeningMeeting,model)
         .task(id: FindRequest(query: model.find.query, revision: model.turnsRevision,
                               language: UXText.language.rawValue, locale: UXText.locale.identifier,
-                              names: meeting.speakerDisplayNames, mergedInto: meeting.mergedInto)) {
+                              names: meeting.speakerDisplayNames, mergedInto: meeting.mergedInto,
+                              background: meeting.backgroundSpeakerIDs)) {
             await model.find.search(turns: model.turns, meeting: meeting, language: UXText.language, locale: UXText.locale)
         }
+        .onChange(of: meeting.libraryKey) { _, _ in expandedBackgroundRuns = [] }
     }
     private func revealSearchHit(in proxy: ScrollViewProxy) {
         guard model.tab == .transcript else { return }
@@ -264,6 +328,7 @@ struct MeetingView: View {
         let locale: String
         let names: [String:String]
         let mergedInto: [String:String]
+        let background: Set<String>
     }
 
     private var autoTag: some View {

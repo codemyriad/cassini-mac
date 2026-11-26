@@ -88,6 +88,8 @@ import Observation
             } else if TranscribingPresentation.isActive(oldValue.state) || MeetingPresentation.turnInputsChanged(from:oldValue,to:meeting) {
                 prepareTurns()
                 shares = MeetingPresentation.shares(meeting)
+            } else if meeting.backgroundSpeakerIDs != oldValue.backgroundSpeakerIDs {
+                refreshDisplayEntries()
             }
         }
     }
@@ -101,6 +103,8 @@ import Observation
     var revealPositionMs: Int64?
     var revealTurnID: Int?
     private(set) var turns: [MeetingPresentation.Turn] = []
+    private(set) var visibleTurns: [MeetingPresentation.Turn] = []
+    private(set) var displayEntries: [MeetingPresentation.TranscriptDisplayEntry] = []
     private(set) var listeningTurns: [SpeakerTurn] = []
     private(set) var timelineReadout = TimelineReadout()
     private(set) var transcriptListening = TranscriptListening()
@@ -141,17 +145,22 @@ import Observation
     }
     private func clearTranscriptPresentation() {
         preparation?.cancel(); preparation = nil
-        turns = []; listeningTurns = []; shares = [:]
+        turns = []; visibleTurns = []; displayEntries = []; listeningTurns = []; shares = [:]
         turnsRevision &+= 1
         listen.setTurns([])
         timelineReadout = TimelineReadout()
         transcriptListening = TranscriptListening()
+    }
+    private func refreshDisplayEntries() {
+        visibleTurns = MeetingPresentation.visibleTurns(turns)
+        displayEntries = MeetingPresentation.displayEntries(for: visibleTurns, background: meeting.backgroundSpeakerIDs)
     }
     private func prepareTurns() {
         guard !TranscribingPresentation.isActive(meeting.state) else { return }
         // Screenshot and self-test fixtures render a fixed frame: prepared in place.
         if frozen {
             turns = MeetingPresentation.turns(meeting.transcriptItems,gaps:meeting.speakerGaps,endsBoundedByAudio:meeting.wordEndsBoundedByAudio)
+            refreshDisplayEntries()
             turnsRevision &+= 1
             listeningTurns = meeting.speakerTurns; listen.setTurns(listeningTurns)
             timelineReadout = TimelineReadout(items:meeting.transcriptItems)
@@ -177,6 +186,7 @@ import Observation
     }
     private func acceptTurns(_ turns: [MeetingPresentation.Turn]) {
         self.turns = turns
+        refreshDisplayEntries()
         turnsRevision &+= 1
         if let preparation {
             listeningTurns = preparation.speakerTurns; listen.setTurns(listeningTurns)

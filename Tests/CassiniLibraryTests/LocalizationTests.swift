@@ -57,9 +57,15 @@ import Testing
                     if let mac=translated.mac {#expect(placeholders(mac) == macSource,"\(entry.id) \(language.rawValue) mac")}
                     if let plural=entry.plural {
                         let forms=try #require(translated.plural)
-                        // Upstream cassini-ux 160fb92 (D106) omits `many` on `savedVoices.stale.title` for `it`;
-                        // lines 70-75 still verify `n = "1000000"` resolves cleanly via fallback.
-                        let expectedCategories: Set<String> = (entry.id == "savedVoices.stale.title" && language == .it)
+                        // Upstream cassini-ux 160fb92 (D106) omits `many` on `savedVoices.stale.title` for `it`,
+                        // and 60ac93d (D112) uses `one`/`other` with literal "1" (counts are always >= 1) on
+                        // the three background-voice plural entries; lines 74-79 still verify `n = "1000000"` resolves cleanly.
+                        let d112BackgroundPlurals: Set<String> = [
+                            "speakers.backgroundVoice.hidden",
+                            "speakers.backgroundVoice.toast.namedAndBackground",
+                            "speakers.backgroundVoice.toast.count",
+                        ]
+                        let expectedCategories: Set<String> = ((entry.id == "savedVoices.stale.title" && language == .it) || d112BackgroundPlurals.contains(entry.id))
                             ? ["one","other"] : language.pluralCategories
                         #expect(Set(forms.keys) == expectedCategories,"\(entry.id) \(language.rawValue)")
                         for (category,text) in forms {
@@ -67,7 +73,9 @@ import Testing
                             #expect(tokens.isSubset(of:source),"Unexpected placeholder: \(entry.id) \(language) \(category)")
                             #expect(source.subtracting(["n","m"]).isSubset(of:tokens),"Lost non-count placeholder: \(entry.id)")
                             if category != "one" {#expect(tokens == placeholders(plural["other"]!),"\(entry.id) \(language) \(category)")}
-                            if category == "one" && (language == .fr || language == .ptBR) {#expect(tokens.contains(source.contains("count") ? "count" : "n"),"Zero/one must preserve the actual count")}
+                            if category == "one" && (language == .fr || language == .ptBR) && !d112BackgroundPlurals.contains(entry.id) {
+                                #expect(tokens.contains(source.contains("count") ? "count" : "n"),"Zero/one must preserve the actual count")
+                            }
                         }
                     }
                 }

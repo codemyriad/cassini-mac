@@ -46,7 +46,11 @@ import CassiniLibrary
     }
     final class Sample { func cancel() {} }
 }
-@MainActor enum UXText { static func text(_ key:String)->String {key} }
+@MainActor enum UXText {
+    static var locale: Locale { Locale(identifier: "en_GB") }
+    static var language: CassiniLanguage { .en }
+    static func text(_ key:String)->String {key}
+}
 @MainActor enum MeetingRenameFixture { static let enabled=false }
 @MainActor final class SavedVoicesController {
     static let shared=SavedVoicesController()

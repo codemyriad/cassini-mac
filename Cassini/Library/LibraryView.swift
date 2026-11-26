@@ -146,6 +146,7 @@ struct LibraryView: View {
         .sheet(isPresented:$recordingDetails.showing) { RecordingDetailsSheet() }
         .overlay(alignment:.bottom) { MeetingExportNotice() }
         .overlay(alignment:.bottom) { SpeakerEditFailureNotice() }
+        .overlay(alignment:.bottom) { SpeakerEditToastView() }
         #if DEBUG
         .overlay(alignment:.topLeading) {
             if RecordingFixture.enabled {

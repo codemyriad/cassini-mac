@@ -26,6 +26,7 @@ struct MeetingTranscriptText: NSViewRepresentable {
     var findRanges: [NSRange] = []
     var selectedFindRange: NSRange? = nil
     var dark = false
+    var muted = false
     var listen: (Int) -> Void = { _ in }
     var playFromHere: () -> Void = {}
 
@@ -46,7 +47,7 @@ struct MeetingTranscriptText: NSViewRepresentable {
     func update(_ view: MeetingTurnTextView,isEnabled:Bool = true) {
         let canPlay = canPlay && isEnabled
         view.seek = seek; view.listen = listen; view.playFromHere = playFromHere; view.canPlay = canPlay
-        let input = MeetingTurnTextView.Input(items:items,asides:asides,words:listeningWords,canPlay:canPlay,language:UXText.language.rawValue,findRanges:findRanges,selectedFindRange:selectedFindRange,dark:dark)
+        let input = MeetingTurnTextView.Input(items:items,asides:asides,words:listeningWords,canPlay:canPlay,language:UXText.language.rawValue,findRanges:findRanges,selectedFindRange:selectedFindRange,dark:dark,muted:muted)
         if view.input != input {
             view.input = input
             view.boundaries = Array(Set((items+asides.flatMap(\.items)).flatMap { [$0.startMs,$0.endMs] }
@@ -75,7 +76,7 @@ struct MeetingTranscriptText: NSViewRepresentable {
         func word(_ item: LibraryTranscriptItem, size: CGFloat, chip: NSColor? = nil, listening: Bool = false) -> NSAttributedString {
             var attributes: [NSAttributedString.Key:Any] = [
                 .font: NSFont.systemFont(ofSize: size), .paragraphStyle: paragraph,
-                .foregroundColor: item.startMs > positionMs ? CassiniTheme.nsUpcomingWordInk : CassiniTheme.nsInk,
+                .foregroundColor: muted ? CassiniTheme.nsInk3 : (item.startMs > positionMs ? CassiniTheme.nsUpcomingWordInk : CassiniTheme.nsInk),
                 .cassiniSeek: Int(item.startMs), .cursor: NSCursor.pointingHand
             ]
             if let chip { attributes[.backgroundColor] = chip }
@@ -177,6 +178,7 @@ final class MeetingTurnTextView: NSTextView {
         let findRanges: [NSRange]
         let selectedFindRange: NSRange?
         let dark: Bool
+        let muted: Bool
     }
     var input: Input?
     var boundaries: [Int64] = []

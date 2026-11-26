@@ -166,4 +166,71 @@ import CassiniRecording
         #expect(restored.title == "Call")
     }
 
+    @Test func speakerRowBatchEditToastAndUndoWithSevenSpeakers() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("SpeakerRowBatch-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let session = try RecordingSession(parent: root, title: "Busy cafe", source: "macos")
+        try session.addTrack(id: "mic", label: "Mic", kind: "microphone", sampleRate: 16000, channels: 1)
+        try session.append(id: "mic", pcm: Data(repeating: 1, count: 32000), offsetMs: 0)
+        try session.finish()
+        try MeetingMetadataWriter(directory: session.directory, id: session.manifest.id).transaction {
+            $0["transcript"] = ["status": "done", "reference": ["kind": "sidecar", "file": "transcript.json", "format": "cassini.words.v1"]]
+            $0["speakers"] = (1...7).map { i -> [String: Any] in
+                let nameValue: Any = i == 1 ? ("Silvio" as Any) : (i == 2 ? ("Ruurd" as Any) : NSNull())
+                let prov = i <= 2 ? "user" : "unnamed"
+                return ["id": "spk-\(i)", "name": nameValue, "provenance": prov, "colourIndex": i - 1]
+            }
+        }
+        let items = (1...7).map { i -> [String: Any] in
+            ["speaker": "spk-\(i)", "startMs": (i - 1) * 500, "endMs": i * 500, "text": "Word\(i)"]
+        }
+        try JSONSerialization.data(withJSONObject: ["language": "en", "items": items])
+            .write(to: session.directory.appendingPathComponent("transcript.json"))
+        let meeting = try #require(LibraryScanner(root: root).meeting(at: session.directory))
+        LibraryLocationModel.shared.location = LibraryLocation(primary: root)
+
+        let coordinator = MeetingRenameCoordinator()
+        coordinator.showSpeaker(meeting, id: "spk-3")
+        #expect(coordinator.presentation == .speakers)
+        #expect(coordinator.canStepSpeaker(-1) && coordinator.canStepSpeaker(1))
+
+        // Name spk-3 as Marta, then move to spk-4 and spk-5 without closing.
+        coordinator.name = "Marta"
+        coordinator.stepSpeaker(1)
+        #expect(coordinator.speakerID == "spk-4")
+        coordinator.isBackgroundVoice = true
+        coordinator.selectSpeaker("spk-5")
+        #expect(coordinator.speakerID == "spk-5")
+        coordinator.isBackgroundVoice = true
+        // Move back to spk-3: draft name is preserved.
+        coordinator.selectSpeaker("spk-3")
+        #expect(coordinator.name == "Marta")
+        #expect(coordinator.canApply)
+
+        // Save once: applies all changes and shows one summary toast with Undo.
+        coordinator.apply()
+        await coordinator.waitForShutdown()
+        #expect(coordinator.presentation == nil)
+        let saved = try #require(LibraryScanner(root: root).meeting(at: session.directory))
+        #expect(saved.speaker(for: "spk-3")?.name == "Marta")
+        #expect(saved.speaker(for: "spk-4")?.background == true)
+        #expect(saved.speaker(for: "spk-5")?.background == true)
+        #expect(coordinator.speakerEditToast?.message == "Named Marta · 2 background voices")
+
+        // Undo puts everything back.
+        coordinator.undoLastSpeakerEdit()
+        await coordinator.waitForShutdown()
+        #expect(coordinator.speakerEditToast == nil)
+        let undone = try #require(LibraryScanner(root: root).meeting(at: session.directory))
+        #expect(undone.speaker(for: "spk-3")?.name == nil)
+        #expect(undone.speaker(for: "spk-4")?.background == false)
+        #expect(undone.speaker(for: "spk-5")?.background == false)
+    }
+
+    @Test func backgroundVoiceToastFormatsSingleAndMultiple() {
+        #expect(MeetingRenameCoordinator.toastMessage(named: [], newlyBackground: ["Speaker 5"], unbackgroundedCount: 0, locale: Locale(identifier: "en_GB"), language: .en) == "Speaker 5 is now a background voice")
+        #expect(MeetingRenameCoordinator.toastMessage(named: ["Marta"], newlyBackground: ["Speaker 4", "Speaker 5", "Speaker 6", "Speaker 7"], unbackgroundedCount: 0, locale: Locale(identifier: "en_GB"), language: .en) == "Named Marta · 4 background voices")
+        #expect(MeetingRenameCoordinator.toastMessage(named: [], newlyBackground: ["Speaker 4", "Speaker 5", "Speaker 6", "Speaker 7"], unbackgroundedCount: 0, locale: Locale(identifier: "en_GB"), language: .en) == "4 background voices")
+        #expect(MeetingRenameCoordinator.toastMessage(named: ["Marta"], newlyBackground: [], unbackgroundedCount: 0, locale: Locale(identifier: "en_GB"), language: .en) == nil)
+    }
 }

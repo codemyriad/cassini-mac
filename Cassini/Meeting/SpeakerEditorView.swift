@@ -10,11 +10,15 @@ struct SpeakerEditorView:View {
     var body:some View {
         VStack(alignment:.leading,spacing:18) {
             if let meeting=edit.meeting,let speaker=edit.selectedSpeaker {
+                if meeting.speakers.count > 1 {
+                    speakerRow(meeting, selected: speaker.id)
+                }
                 header(speaker)
                 if let quote=edit.speakerQuote {excerpt(quote)}
                 nameEntry
+                backgroundVoice
                 savedVoices
-                rememberVoice
+                if !edit.isBackgroundVoice { rememberVoice }
                 if edit.speakerChangeFailed {failure}
                 footer(meeting,speaker)
             }
@@ -25,13 +29,67 @@ struct SpeakerEditorView:View {
             .shadow(color:CassiniTheme.shadow,radius:24,y:12)
             .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("speakers.dialog.a11y"))
             .accessibilityAddTraits(.isModal).accessibilityIdentifier("speaker-editor")
-                        .onAppear {SpeakerEditorChrome.setVoiceIDs(edit.voiceCandidates.map(\.id));SpeakerEditorChrome.focusName()}
+            .onAppear {SpeakerEditorChrome.setVoiceIDs(edit.voiceCandidates.map(\.id));SpeakerEditorChrome.focusName()}
             .onChange(of:edit.voiceCandidates.map(\.id)) { _,ids in SpeakerEditorChrome.setVoiceIDs(ids) }
             .onChange(of:edit.name) { _,new in
                 if let id=edit.savedVoiceID,
                    SavedVoicesController.shared.voices.first(where:{$0.id == id})?.name != new { edit.savedVoiceID=nil }
             }
             .onDisappear {SpeakerEditorChrome.dismiss();detail?.speakerSample.cancel()}
+    }
+    /// D112 (L-86): every speaker across the top, in the order of the names row.
+    /// Background voices show a hollow dot and grey name.
+    private func speakerRow(_ meeting: LibraryMeeting, selected: String) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(meeting.speakers, id: \.id) { speaker in
+                    let isSelected = speaker.id == selected
+                    let isBackground = edit.draftIsBackground(for: speaker.id)
+                    let label = edit.draftDisplayName(for: speaker)
+                    Button { edit.selectSpeaker(speaker.id) } label: {
+                        HStack(spacing: 6) {
+                            if isBackground {
+                                Circle()
+                                    .stroke(CassiniTheme.ink3, lineWidth: 1.5)
+                                    .frame(width: 8, height: 8)
+                                    .accessibilityHidden(true)
+                            } else {
+                                Circle()
+                                    .fill(CassiniTheme.speakerInk(speaker))
+                                    .frame(width: 8, height: 8)
+                                    .accessibilityHidden(true)
+                            }
+                            Text(label)
+                                .font(.system(size: 12.5, weight: isSelected ? .semibold : .regular))
+                                .foregroundStyle(isBackground ? CassiniTheme.ink3 : CassiniTheme.ink)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7)
+                                .fill(isSelected ? CassiniTheme.neutralPillFill : .clear)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(isSelected ? CassiniTheme.lineSoft : .clear, lineWidth: 1)
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(edit.working)
+                    .accessibilityIdentifier("speaker-tab-" + speaker.id)
+                    .accessibilityLabel(label)
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                }
+            }
+            .padding(.bottom, 10)
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(CassiniTheme.lineSoft).frame(height: 0.5)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("speaker-editor-row")
     }
     private func header(_ speaker:MeetingSpeaker)->some View {
         HStack(spacing:12) {
@@ -69,13 +127,33 @@ struct SpeakerEditorView:View {
     }
     private var nameEntry:some View {
         VStack(alignment:.leading,spacing:7) {
-            Text(UXText.text("speakers.nameLabel")).fontWeight(.semibold).foregroundStyle(CassiniTheme.ink)
-            SpeakerNameField(text:$edit.name,enabled:!edit.working,
+            Text(UXText.text("speakers.nameLabel")).fontWeight(.semibold)
+                .foregroundStyle(edit.isBackgroundVoice ? CassiniTheme.ink3 : CassiniTheme.ink)
+            SpeakerNameField(text:edit.isBackgroundVoice ? .constant("") : $edit.name,
+                             placeholder:edit.isBackgroundVoice ? UXText.text("speakers.backgroundVoice.namePlaceholder") : "",
+                             enabled:!edit.working && !edit.isBackgroundVoice,
                              focusChanged:{nameFocused=$0},submit:{if edit.canApply {edit.apply()}})
                 .frame(maxWidth:.infinity).padding(10)
                 .background(CassiniTheme.field,in:RoundedRectangle(cornerRadius:6))
-                .overlay(RoundedRectangle(cornerRadius:6).stroke(nameFocused ? CassiniTheme.accent : CassiniTheme.fieldLine,lineWidth:1))
+                .overlay(RoundedRectangle(cornerRadius:6).stroke(nameFocused && !edit.isBackgroundVoice ? CassiniTheme.accent : CassiniTheme.fieldLine,lineWidth:1))
+                .opacity(edit.isBackgroundVoice ? 0.65 : 1)
         }
+    }
+    private var backgroundVoice:some View {
+        HStack(alignment:.top,spacing:12) {
+            VStack(alignment:.leading,spacing:5) {
+                Text(UXText.text("speakers.backgroundVoice"))
+                Text(UXText.text("speakers.backgroundVoice.description"))
+                    .accessibilityIdentifier("speaker-background-description")
+                    .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
+                    .fixedSize(horizontal:false,vertical:true)
+            }
+            Spacer(minLength:0)
+            SpeakerBackgroundSwitch(isOn:$edit.isBackgroundVoice,enabled:!edit.working)
+                .frame(width:38,height:22)
+                .accessibilityIdentifier("speaker-background-voice")
+        }.padding(14).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
+            .overlay(RoundedRectangle(cornerRadius:12).stroke(CassiniTheme.lineSoft,lineWidth:1))
     }
     private var savedVoices:some View {
         VStack(alignment:.leading,spacing:8) {
@@ -87,7 +165,7 @@ struct SpeakerEditorView:View {
                     VStack(alignment:.leading,spacing:8) {
                         ForEach(edit.voiceCandidates) { candidate in
                             HStack {
-                                SpeakerActionButton(control:.voice(candidate.id),title:candidate.voice.name,enabled:!edit.working) {
+                                SpeakerActionButton(control:.voice(candidate.id),title:candidate.voice.name,enabled:!edit.working && !edit.isBackgroundVoice) {
                                     edit.name=candidate.voice.name;edit.savedVoiceID=candidate.id
                                 }
                                 Spacer()
@@ -101,7 +179,8 @@ struct SpeakerEditorView:View {
                 }.frame(maxHeight:100)
                 Text(UXText.text("speakers.savedVoices.closestFirst")).font(.system(size:11)).foregroundStyle(CassiniTheme.ink2)
             }
-            if let duplicate=VoiceSelection.matchingName(edit.name,voices:SavedVoicesController.shared.voices).first,
+            if !edit.isBackgroundVoice,
+               let duplicate=VoiceSelection.matchingName(edit.name,voices:SavedVoicesController.shared.voices).first,
                edit.savedVoiceID == nil {
                 Text(UXText.text("speakers.duplicate.notice",["name":duplicate.name]))
                 HStack {
@@ -110,6 +189,8 @@ struct SpeakerEditorView:View {
                 }
             }
         }.padding(12).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
+            .opacity(edit.isBackgroundVoice ? 0.45 : 1)
+            .disabled(edit.isBackgroundVoice)
     }
     private var rememberVoice:some View {
         VStack(alignment:.leading,spacing:8) {
@@ -139,7 +220,7 @@ struct SpeakerEditorView:View {
     private func footer(_ meeting:LibraryMeeting,_ speaker:MeetingSpeaker)->some View {
         HStack {
             SpeakerMergeMenu(speakers:meeting.speakers.filter {$0.id != speaker.id},
-                             enabled:!edit.working && meeting.speakers.count>1,
+                             enabled:!edit.working && !edit.isBackgroundVoice && meeting.speakers.count>1,
                              merge:{edit.mergeSpeaker(into:$0)})
                 .fixedSize()
             Spacer(minLength:0)
@@ -149,6 +230,42 @@ struct SpeakerEditorView:View {
         }
     }
 
+}
+/// D112 (L-86): post-Save summary toast with Undo, reusing the inverse toast card style.
+struct SpeakerEditToastView: View {
+    @State private var edit = MeetingRenameCoordinator.shared
+    var body: some View {
+        if let toast = edit.speakerEditToast, edit.presentation == nil {
+            HStack(spacing: 12) {
+                Text(toast.message)
+                    .lineLimit(2)
+                    .accessibilityIdentifier("speaker-edit-toast-message")
+                Button(UXText.text("common.undo")) { edit.undoLastSpeakerEdit() }
+                    .disabled(edit.working || !edit.canEditSpeakers(toast.meeting))
+                    .accessibilityIdentifier("speaker-edit-toast-undo")
+                Button { edit.dismissToast() } label: { Image(systemName: "xmark") }
+                    .accessibilityLabel(UXText.text("common.close"))
+                    .accessibilityIdentifier("speaker-edit-toast-close")
+            }
+            .font(.system(size: 13))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .foregroundStyle(CassiniTheme.toastUsesInverse ? CassiniTheme.onInverse : CassiniTheme.ink)
+            .buttonStyle(ToastButtonStyle(warning: false))
+            .background {
+                if CassiniTheme.toastUsesInverse {
+                    RoundedRectangle(cornerRadius: 8).fill(CassiniTheme.inverse)
+                        .shadow(color: CassiniTheme.shadow, radius: 6, y: 2)
+                } else {
+                    RoundedRectangle(cornerRadius: 8).fill(.regularMaterial)
+                }
+            }
+            .tint(CassiniTheme.toastUsesInverse ? CassiniTheme.inverseAccent : nil)
+            .padding()
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("speaker-edit-toast")
+        }
+    }
 }
 struct SpeakerEditFailureNotice:View {
     @State private var edit=MeetingRenameCoordinator.shared
@@ -204,7 +321,7 @@ struct SpeakerEditFailureNotice:View {
         return responder === control || responder === control.currentEditor()
     }
     static func advanceFocus(reverse:Bool,in window:NSWindow) {
-        let order:[SpeakerEditorControl] = [.sample,.name]+voiceIDs.map { .voice($0) }+[.samePerson,.someoneElse,.remember,.merge,.retry,.cancel,.save]
+        let order:[SpeakerEditorControl] = [.sample,.name,.background]+voiceIDs.map { .voice($0) }+[.samePerson,.someoneElse,.remember,.merge,.retry,.cancel,.save]
         let available=order.compactMap {controls[$0]?.value}.filter {
             $0.window === window && $0.isEnabled && $0.canBecomeKeyView
         }
@@ -390,12 +507,13 @@ private struct SpeakerMergeMenu:NSViewRepresentable {
 
 /// Every dialog control participates in this one native responder cycle.
 enum SpeakerEditorControl:Hashable {
-    case sample,name,samePerson,someoneElse,remember,merge,retry,cancel,save
+    case sample,name,background,samePerson,someoneElse,remember,merge,retry,cancel,save
     case voice(String)
     var identifier:String {
         switch self {
         case .sample:return "speaker-play-sample"
         case .name:return "speaker-name-field"
+        case .background:return "speaker-background-voice"
         case .voice(let id):return "speaker-saved-voice-"+id
         case .samePerson:return "speaker-same-person"
         case .someoneElse:return "speaker-someone-else"
@@ -449,13 +567,15 @@ private struct SpeakerActionButton:NSViewRepresentable {
 
 private struct SpeakerNameField:NSViewRepresentable {
     @Binding var text:String
+    var placeholder:String = ""
     let enabled:Bool
     let focusChanged:(Bool)->Void
     let submit:()->Void
     func makeCoordinator()->Coordinator {Coordinator(text:$text,focusChanged:focusChanged,submit:submit)}
     func makeNSView(context:Context)->Field {
         let field=Field(frame:.zero)
-        field.stringValue=text;field.font = .systemFont(ofSize:13)
+        field.stringValue=text;field.placeholderString=placeholder.isEmpty ? nil : placeholder
+        field.font = .systemFont(ofSize:13)
         field.isBordered=false;field.isBezeled=false;field.drawsBackground=false
         field.focusRingType = .none;field.usesSingleLineMode=true
         field.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
@@ -469,6 +589,7 @@ private struct SpeakerNameField:NSViewRepresentable {
         context.coordinator.text=$text
         context.coordinator.focusChanged=focusChanged;context.coordinator.submit=submit
         if field.stringValue != text {field.stringValue=text}
+        field.placeholderString=placeholder.isEmpty ? nil : placeholder
         field.isEnabled=enabled && context.environment.isEnabled
         field.textColor=CassiniTheme.nsInk
         SpeakerEditorChrome.register(field,as:.name)
@@ -524,5 +645,22 @@ private struct SpeakerRememberSwitch:NSViewRepresentable {
         override var acceptsFirstResponder:Bool {isEnabled}
         override var canBecomeKeyView:Bool {isEnabled && !isHiddenOrHasHiddenAncestor}
         @objc func change(_ sender:Any?) {if isEnabled {changed?(state == .on)}}
+    }
+}
+
+private struct SpeakerBackgroundSwitch:NSViewRepresentable {
+    @Binding var isOn:Bool
+    let enabled:Bool
+    func makeNSView(context:Context)->SpeakerRememberSwitch.Switch {
+        let view=SpeakerRememberSwitch.Switch(frame:.zero)
+        view.target=view;view.action=#selector(SpeakerRememberSwitch.Switch.change(_:));view.controlSize = .small
+        view.setAccessibilityIdentifier(SpeakerEditorControl.background.identifier)
+        view.setAccessibilityLabel(UXText.text("speakers.backgroundVoice"))
+        SpeakerEditorChrome.register(view,as:.background)
+        return view
+    }
+    func updateNSView(_ view:SpeakerRememberSwitch.Switch,context:Context) {
+        view.state=isOn ? .on:.off;view.isEnabled=enabled && context.environment.isEnabled
+        view.changed={isOn=$0};SpeakerEditorChrome.register(view,as:.background)
     }
 }

@@ -6,9 +6,11 @@ import CassiniKit
 /// voiceprints. Dates are absolute and never use the Library's Today/Yesterday.
 public enum MeetingMarkdown {
     public static func render(_ meeting: LibraryMeeting, timeZone: TimeZone, locale: Locale = .current, language: CassiniLanguage = .system) -> String {
-        render(title:meeting.title ?? LibraryLocalization.shared.text("library.untitled",language:language,locale:locale),start:meeting.start,durationMs:meeting.durationMs,
+        let background = meeting.backgroundSpeakerIDs
+        let items = meeting.state.transcript == .done ? meeting.transcriptItems.filter { !background.contains($0.speaker) } : []
+        return render(title:meeting.title ?? LibraryLocalization.shared.text("library.untitled",language:language,locale:locale),start:meeting.start,durationMs:meeting.durationMs,
             timeZone:timeZone,names:Dictionary(uniqueKeysWithValues:meeting.speakers.map { ($0.id,$0.displayName) }),
-            items:meeting.state.transcript == .done ? meeting.transcriptItems : [],notes:meeting.notes,gaps:meeting.speakerGaps,endsBoundedByAudio:meeting.wordEndsBoundedByAudio,locale:locale,language:language,recordingTime:meeting.meetingTime)
+            items:items,notes:meeting.notes,gaps:meeting.speakerGaps,endsBoundedByAudio:meeting.wordEndsBoundedByAudio,locale:locale,language:language,recordingTime:meeting.meetingTime)
     }
     public static func render(title: String, start: Date?, durationMs: Int64?, timeZone: TimeZone,
                               names: [String:String], items: [LibraryTranscriptItem], notes: [MeetingNote], gaps: SpeakerGapRanges.Ranges = [:], endsBoundedByAudio: Bool = false,

@@ -16,10 +16,11 @@ public enum MeetingTextExport {
         guard meeting.state.transcript == .done, [.plainText, .srt, .vtt].contains(kind) else {
             throw MeetingExportError.invalidSource
         }
+        let background = meeting.backgroundSpeakerIDs
         let names = meeting.speakerDisplayNames.mapValues { $0.split(whereSeparator: \.isWhitespace).joined(separator: " ") }
         var fallback: [String: String] = [:]
         var segments: [Segment] = []
-        for word in meeting.transcriptItems {
+        for word in meeting.transcriptItems where !background.contains(word.speaker) {
             if names[word.speaker] == nil && fallback[word.speaker] == nil {
                 fallback[word.speaker] = LibraryLocalization.shared.text("common.speaker.unnamed", ["n": String(fallback.count + names.count + 1)])
             }

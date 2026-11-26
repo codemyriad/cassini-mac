@@ -72,6 +72,8 @@ public struct MeetingSpeaker: Sendable, Equatable {
     public var colourIndex: Int
     public var label: String? = nil
     public var speakingOrder: Int? = nil
+    /// D112 (L-86): background voice picked up by the microphone, not part of the conversation.
+    public var background: Bool = false
     public var displayName:String { displayName(language:.system) }
     public func displayName(language:CassiniLanguage,locale:Locale = .current) -> String {
         name ?? label ?? LibraryLocalization.shared.text("common.speaker.unnamed",["n":String((speakingOrder ?? colourIndex)+1)],language:language,locale:locale)
@@ -250,8 +252,12 @@ public struct LibraryMeeting: Sendable {
     public var canWriteDown: Bool { state.canWriteDown || (hasNoSpeech && !metadataReadOnly) }
     /// D52 M12: people, not devices. "The others" is a mixed capture of system sound,
     /// so it is left out of row names and people counts (it still has its own speaker
-    /// row and transcript turns).
-    public var people: [MeetingSpeaker] { speakers.filter { $0.id != MeetingSpeaker.mixedOthersID } }
+    /// row and transcript turns). D112 (L-86): background voices are also left out.
+    public var people: [MeetingSpeaker] { speakers.filter { $0.id != MeetingSpeaker.mixedOthersID && !$0.background } }
+    /// D112 (L-86): speakers shown in the header names row above the transcript.
+    public var visibleSpeakers: [MeetingSpeaker] { speakers.filter { !$0.background } }
+    /// D112 (L-86): speaker ids marked as background voices.
+    public var backgroundSpeakerIDs: Set<String> { Set(speakers.filter(\.background).map(\.id)) }
     public var speakerNames: [String] { people.map(\.displayName) }
 }
 public struct LibraryTranscriptTurn: Equatable, Sendable {

@@ -13,7 +13,8 @@ struct MeetingPaneHeader: View {
 
     var body: some View {
         let showBadge = LibraryBadgeCatalog.presentation(for: meeting).map { ["needsAttention", "interrupted"].contains($0.kind) } ?? false
-        let showSpeakers = !TranscribingPresentation.isActive(meeting.state) && !meeting.speakers.isEmpty
+        let visibleSpeakers = meeting.visibleSpeakers
+        let showSpeakers = !TranscribingPresentation.isActive(meeting.state) && !visibleSpeakers.isEmpty
         if showBadge || showSpeakers {
             VStack(alignment: .leading, spacing: 10) {
                 if let badge = LibraryBadgeCatalog.presentation(for: meeting),
@@ -23,7 +24,7 @@ struct MeetingPaneHeader: View {
                 }
                 if showSpeakers {
                     SpeakerFlowLayout(horizontalSpacing: 18, verticalSpacing: 8) {
-                        ForEach(meeting.speakers, id: \.id) { speaker in
+                        ForEach(visibleSpeakers, id: \.id) { speaker in
                             inlineSpeaker(speaker)
                         }
                     }
