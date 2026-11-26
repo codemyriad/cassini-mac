@@ -50,7 +50,6 @@ struct LibraryView: View {
         GeometryReader { geometry in
             Group {
                 if navigation.loading { ProgressView() }
-                else if search.visible { LibrarySearchView(format:store.format) }
                 else if showsFirstRun { firstRun }
                 else { split }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -101,14 +100,18 @@ struct LibraryView: View {
             }
         }
         .onChange(of: search.query) { _, query in
-            if !query.isEmpty && !search.visible {
-                search.open()
+            if !query.isEmpty {
+                if !search.visible { search.open() }
+                else { search.refresh() }
+            } else if search.visible && !search.hasActiveFilters {
+                search.close()
+            } else if search.visible {
+                search.refresh()
             }
         }
         .onChange(of: sidebarSearchPresented) { _, presented in
-            if presented && !search.visible {
-                sidebarSearchPresented = false
-                search.open()
+            if !presented && search.visible && search.query.isEmpty && !search.hasActiveFilters {
+                search.close()
             }
         }
         .frame(minWidth: 560, minHeight: 480)
@@ -119,18 +122,9 @@ struct LibraryView: View {
             format: store.format
         ))
         .toolbar {
-            if showsFirstRun && !search.visible {
+            if showsFirstRun {
                 ToolbarItem(placement:.automatic) { Spacer() }
                 ToolbarItem(id:"first-run-actions",placement:.primaryAction) { toolbarControl }
-            } else if search.visible {
-                ToolbarItem(placement: .navigation) {
-                    HStack(spacing: 0) {
-                        toolbarControl
-                            .padding(.trailing,10)
-                            .frame(width: 388, alignment: .trailing)
-                        toolbarTitle
-                    }
-                }
             }
         }
         .cassiniUnifiedToolbarChrome()
@@ -397,6 +391,18 @@ struct LibraryView: View {
                 .padding(.trailing, 10)
                 .padding(.top, 10)
                 .padding(.bottom, 6)
+                if !search.visible {
+                    LibrarySearchField(
+                        text: $search.query,
+                        large: false,
+                        focusRequest: search.focusRequest,
+                        onChange: { search.refresh() },
+                        onCancel: { search.close() }
+                    )
+                    .frame(height: 28)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 6)
+                }
                 sidebarColumn
             }
             .frame(width: overlayWidth)
@@ -705,7 +711,22 @@ struct LibraryView: View {
         }
     }
 
+    @ViewBuilder
     private var sidebarColumn: some View {
+        if search.visible {
+            LibrarySearchSidebarContent(
+                format: store.format,
+                showEmbeddedField: isNarrowWindow && floatingSidebarOpen,
+                onPickResult: {
+                    if floatingSidebarOpen { floatingSidebarOpen = false }
+                }
+            )
+        } else {
+            libraryListSidebarColumn
+        }
+    }
+
+    private var libraryListSidebarColumn: some View {
         let todayTitle = UXText.text("format.today")
         let firstGroupIsToday = store.groups.first?.title == todayTitle
         return VStack(spacing: 0) {
@@ -854,7 +875,9 @@ struct LibraryView: View {
 
     @ViewBuilder
     private var detailColumn: some View {
-        if let detail = navigation.savedDetail {
+        if search.visible, let hit = search.selected, let meeting = search.meeting(hit) {
+            LibrarySearchPreviewPane(hit: hit, meeting: meeting, format: store.format)
+        } else if let detail = navigation.savedDetail {
             MeetingView(model: detail, format: store.format).id(ObjectIdentifier(detail))
         } else if let meeting = store.selected, meeting.state.lifecycle != .saved {
             RecordingPageView(meeting: meeting, format: store.format).id(meeting.libraryKey)

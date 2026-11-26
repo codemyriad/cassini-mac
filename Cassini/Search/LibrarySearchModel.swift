@@ -30,6 +30,7 @@ import CassiniSearch
         self.makeIndex = makeIndex; self.reportFailure = reportFailure
     }
     var selected: SearchHit? { hits.first { $0.id == selectedID } }
+    var hasActiveFilters: Bool { speaker != nil || date != .any || starred || own }
     var names: [String] { SearchIndex.names(meetings) }
     var count: String { LibraryFormat.searchCount(places:Int64(hits.count),meetings:Int64(Set(hits.map(\.meetingKey)).count)) }
     func meeting(_ hit: SearchHit) -> LibraryMeeting? { meetings.first { $0.libraryKey == hit.meetingKey } }
@@ -45,7 +46,7 @@ import CassiniSearch
     func open() {
         guard !LibraryMoveCoordinator.shared.busy else { return }
         if !visible { starred = LibraryStore.shared.preferences.filter == .starred }
-        MeetingNavigation.shared.back(); visible = true; focusRequest &+= 1
+        visible = true; focusRequest &+= 1
         MeetingNavigation.shared.openLibrary?(); update(LibraryStore.shared.meetings)
     }
     func close() {
@@ -75,10 +76,12 @@ import CassiniSearch
                 let results = try await index.search(query,filter:filter,now:now,timeZone:zone)
                 guard !Task.isCancelled, revision == generation else { return }
                 hits = results
-                if selectedID == nil || !results.contains(where:{ $0.id == selectedID }) { selectedID = results.first?.id }
+                if let selectedID, !results.contains(where: { $0.id == selectedID }) {
+                    self.selectedID = nil
+                }
                 #if DEBUG
                 if context.screenshot, LibraryLaunchContext.argument("-CassiniScreenshot") == "search", !fixtureSelectionDone {
-                    selectedID = results.first(where:{ $0.positionMs == 872000 })?.id ?? selectedID; fixtureSelectionDone = true
+                    selectedID = results.first(where:{ $0.positionMs == 872000 })?.id ?? results.first?.id; fixtureSelectionDone = true
                 }
                 #endif
                 searching = false; errorShown = false

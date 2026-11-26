@@ -8,26 +8,81 @@ struct LibrarySearchView: View {
     let format: LibraryFormat
     var body: some View {
         HStack(spacing:0) {
-            ScrollView {
-                LazyVStack(spacing:MeetingCard<EmptyView>.Metrics.interCardGap) {
-                    ForEach(model.hits) { hit in if let meeting = model.meeting(hit) { row(hit,meeting:meeting) } }
-                }.padding(.horizontal,10).padding(.vertical,4)
-            }
-            .cassiniTopScrollEdge()
-            .cassiniPinnedTopBar(alignment: .leading) {
-                searchHeader
-            }
-            .frame(width:460).cassiniSidebarBackground()
+            LibrarySearchSidebarContent(format: format, showEmbeddedField: true)
+                .frame(width:390).cassiniSidebarBackground()
                 .accessibilityElement(children:.contain).accessibilityLabel(UXText.text("search.results.a11y"))
             CassiniColumnDivider()
-            if let hit = model.selected, let meeting = model.meeting(hit) { context(hit,meeting:meeting) }
-            else { CassiniTheme.paneGround }
+            if let hit = model.selected, let meeting = model.meeting(hit) {
+                LibrarySearchPreviewPane(hit: hit, meeting: meeting, format: format)
+            } else {
+                CassiniTheme.paneGround
+            }
         }.onChange(of:model.query) { _,_ in model.refresh() }
     }
+}
+
+/// In-sidebar search results list (D-1172): swaps in place of the meeting list while keeping
+/// the sidebar width, toolbar, and open meeting still until a result is picked.
+struct LibrarySearchSidebarContent: View {
+    @State private var model = LibrarySearchModel.shared
+    let format: LibraryFormat
+    var showEmbeddedField: Bool = false
+    var onPickResult: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            searchHeader
+            ScrollView {
+                LazyVStack(spacing: MeetingCard<EmptyView>.Metrics.interCardGap) {
+                    ForEach(model.hits) { hit in
+                        if let meeting = model.meeting(hit) {
+                            row(hit, meeting: meeting)
+                        }
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+            }
+            .cassiniTopScrollEdge()
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(UXText.text("search.results.a11y"))
+        .onKeyPress(.downArrow) {
+            stepSelection(1)
+            return .handled
+        }
+        .onKeyPress(.upArrow) {
+            stepSelection(-1)
+            return .handled
+        }
+        .onKeyPress(.return) {
+            if model.selected != nil {
+                onPickResult?()
+                return .handled
+            }
+            return .ignored
+        }
+        .onExitCommand {
+            model.close()
+        }
+    }
+
+    private func stepSelection(_ delta: Int) {
+        guard !model.hits.isEmpty else { return }
+        if let current = model.selectedID, let idx = model.hits.firstIndex(where: { $0.id == current }) {
+            let next = max(0, min(model.hits.count - 1, idx + delta))
+            model.selectedID = model.hits[next].id
+        } else {
+            model.selectedID = delta > 0 ? model.hits.first?.id : model.hits.last?.id
+        }
+    }
+
     private var searchHeader: some View {
         VStack(alignment:.leading,spacing:0) {
-            LibrarySearchField(text:$model.query,large:false,focusRequest:model.focusRequest,onChange:{ model.refresh() },onCancel:{ model.close() })
-                .frame(height:28).padding(.horizontal,10).padding(.top,6).padding(.bottom,8)
+            if showEmbeddedField {
+                LibrarySearchField(text:$model.query,large:false,focusRequest:model.focusRequest,onChange:{ model.refresh() },onCancel:{ model.close() })
+                    .frame(height:28).padding(.horizontal,10).padding(.top,6).padding(.bottom,8)
+            }
             ScrollView(.horizontal,showsIndicators:false) {
                 HStack(spacing:6) {
                     Button(UXText.text("search.filter.starred")) { model.starred.toggle(); model.refresh() }.buttonStyle(.plain)
@@ -52,16 +107,21 @@ struct LibrarySearchView: View {
                     Button(UXText.text("search.filter.recordedByMe")) { model.own.toggle(); model.refresh() }.buttonStyle(.plain)
                         .modifier(SearchChip(active:model.own)).accessibilityAddTraits(model.own ? .isSelected : [])
                         .accessibilityIdentifier("search-own")
-                }.padding(.horizontal,10).padding(.bottom,10)
-            }.frame(height:38)
+                }.padding(.horizontal,10).padding(.bottom,8)
+            }.frame(height:36)
             Text(model.count).font(.system(size:12,weight:.semibold)).foregroundStyle(CassiniTheme.ink2)
                 .padding(.horizontal,18).padding(.bottom,6).accessibilityIdentifier("search-count")
         }.frame(maxWidth:.infinity,alignment:.leading)
     }
+
     private func row(_ hit: SearchHit, meeting: LibraryMeeting) -> some View {
         let selected = model.selectedID == hit.id
         let excerpt = hit.excerpt
-        return Button { model.selectedID = hit.id } label: {
+        let compactTime = LibraryFormat.compactPosition(hit.positionMs, durationMs: meeting.durationMs, padMinutes: false, locale: UXText.locale)
+        return Button {
+            model.selectedID = hit.id
+            onPickResult?()
+        } label: {
             MeetingCard(isSelected: selected) {
                 VStack(alignment:.leading,spacing:4) {
                     HStack(spacing:10) {
@@ -80,7 +140,7 @@ struct LibrarySearchView: View {
                         .foregroundStyle(CassiniTheme.ink)
                         .lineSpacing(3)
                         .fixedSize(horizontal:false,vertical:true)
-                    Text(UXText.text("search.result.meta",["name":name(hit.speaker,meeting:meeting),"position":LibraryFormat.position(hit.positionMs)]))
+                    Text(UXText.text("search.result.meta",["name":name(hit.speaker,meeting:meeting),"position":compactTime]))
                         .font(.system(size:11.5))
                         .monospacedDigit()
                         .foregroundStyle(CassiniTheme.ink2)
@@ -90,9 +150,36 @@ struct LibrarySearchView: View {
         }.buttonStyle(.plain).disabled(model.searching).accessibilityIdentifier("search-hit-" + hit.id)
             .accessibilityAddTraits(selected ? .isSelected : [])
     }
-    private func context(_ hit: SearchHit, meeting: LibraryMeeting) -> some View {
+
+    private func name(_ id: String, meeting: LibraryMeeting) -> String { meeting.speaker(for:id)?.displayName ?? UXText.text("common.speaker.unnamed",["n":"1"]) }
+    private func dateText(_ value: SearchDate) -> String {
+        UXText.text(value == .any ? "search.filter.anyDate" : value == .today ? "search.filter.date.today" : value == .week ? "search.filter.date.week" : value == .month ? "search.filter.date.month" : "search.filter.date.year")
+    }
+    private func marked(_ text: String, spans: [SearchSpan], selected: Bool = false) -> Text {
+        let value = NSMutableAttributedString(string:text)
+        for span in spans where span.start >= 0 && span.length > 0 && span.start + span.length <= value.length {
+            var attrs: [NSAttributedString.Key: Any] = [
+                .backgroundColor: selected ? CassiniTheme.nsSelectedSearchHighlight : CassiniTheme.nsSearchHighlight,
+                .font: NSFont.systemFont(ofSize:13,weight:.semibold),
+            ]
+            if !selected, let highlightInk = CassiniTheme.nsHighlightInk {
+                attrs[.foregroundColor] = highlightInk
+            }
+            value.addAttributes(attrs,range:NSRange(location:span.start,length:span.length))
+        }
+        return Text(AttributedString(value))
+    }
+}
+
+struct LibrarySearchPreviewPane: View {
+    @State private var model = LibrarySearchModel.shared
+    let hit: SearchHit
+    let meeting: LibraryMeeting
+    let format: LibraryFormat
+
+    var body: some View {
         // The index prepared these turns off the main actor (#118 review).
-        return ScrollView {
+        ScrollView {
             VStack(alignment:.leading,spacing:22) {
                 VStack(alignment:.leading,spacing:6) {
                     Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size:22,weight:.bold))
@@ -144,9 +231,6 @@ struct LibrarySearchView: View {
             .disabled(model.searching).accessibilityIdentifier("search-open-meeting")
     }
     private func name(_ id: String, meeting: LibraryMeeting) -> String { meeting.speaker(for:id)?.displayName ?? UXText.text("common.speaker.unnamed",["n":"1"]) }
-    private func dateText(_ value: SearchDate) -> String {
-        UXText.text(value == .any ? "search.filter.anyDate" : value == .today ? "search.filter.date.today" : value == .week ? "search.filter.date.week" : value == .month ? "search.filter.date.month" : "search.filter.date.year")
-    }
     private func marked(_ text: String, spans: [SearchSpan], selected: Bool = false) -> Text {
         let value = NSMutableAttributedString(string:text)
         for span in spans where span.start >= 0 && span.length > 0 && span.start + span.length <= value.length {
