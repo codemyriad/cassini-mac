@@ -17,7 +17,9 @@ struct SpeakerEditorView:View {
                 if let quote=edit.speakerQuote {excerpt(quote)}
                 nameEntry
                 backgroundVoice
-                savedVoices
+                if !SavedVoicesController.shared.voices.isEmpty {
+                    savedVoices
+                }
                 if !edit.isBackgroundVoice { rememberVoice }
                 if edit.speakerChangeFailed {failure}
                 footer(meeting,speaker)
@@ -99,7 +101,10 @@ struct SpeakerEditorView:View {
                     .accessibilityAddTraits(.isHeader)
                 if edit.speakerPreparing {ProgressView().controlSize(.small)}
                 else {
-                    Text(UXText.text("speakers.talkTime",["talkTime":LibraryFormat.talkTime(edit.speakerTalkTime,locale:UXText.locale,language:UXText.language)]))
+                    let talkDuration = edit.speakerTalkTime < 1000
+                        ? UXText.mac("speakers.underSecond")
+                        : LibraryFormat.talkTime(edit.speakerTalkTime,locale:UXText.locale,language:UXText.language)
+                    Text(UXText.text("speakers.talkTime",["talkTime":talkDuration]))
                         .foregroundStyle(CassiniTheme.ink2)
                 }
             }
@@ -152,33 +157,29 @@ struct SpeakerEditorView:View {
             SpeakerBackgroundSwitch(isOn:$edit.isBackgroundVoice,enabled:!edit.working)
                 .frame(width:38,height:22)
                 .accessibilityIdentifier("speaker-background-voice")
-        }.padding(14).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
-            .overlay(RoundedRectangle(cornerRadius:12).stroke(CassiniTheme.lineSoft,lineWidth:1))
+        }.padding(14).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:10))
+            .overlay(RoundedRectangle(cornerRadius:10).stroke(CassiniTheme.cardStroke,lineWidth:1))
     }
     private var savedVoices:some View {
         VStack(alignment:.leading,spacing:8) {
             Text(UXText.text("common.savedVoices")).fontWeight(.semibold)
-            if SavedVoicesController.shared.voices.isEmpty {
-                Text(UXText.text("savedVoices.empty")).foregroundStyle(CassiniTheme.ink2)
-            } else {
-                ScrollView {
-                    VStack(alignment:.leading,spacing:8) {
-                        ForEach(edit.voiceCandidates) { candidate in
-                            HStack {
-                                SpeakerActionButton(control:.voice(candidate.id),title:candidate.voice.name,enabled:!edit.working && !edit.isBackgroundVoice) {
-                                    edit.name=candidate.voice.name;edit.savedVoiceID=candidate.id
-                                }
-                                Spacer()
-                                if candidate.id == edit.voiceCandidates.first?.id, (candidate.score ?? 0) >= 0.5 {
-                                    Text(UXText.text("speakers.savedVoices.likely")).font(.system(size:11))
-                                        .padding(.horizontal,6).background(CassiniTheme.neutralPillFill,in:RoundedRectangle(cornerRadius:5))
-                                }
+            ScrollView {
+                VStack(alignment:.leading,spacing:8) {
+                    ForEach(edit.voiceCandidates) { candidate in
+                        HStack {
+                            SpeakerActionButton(control:.voice(candidate.id),title:candidate.voice.name,enabled:!edit.working && !edit.isBackgroundVoice) {
+                                edit.name=candidate.voice.name;edit.savedVoiceID=candidate.id
+                            }
+                            Spacer()
+                            if candidate.id == edit.voiceCandidates.first?.id, (candidate.score ?? 0) >= 0.5 {
+                                Text(UXText.text("speakers.savedVoices.likely")).font(.system(size:11))
+                                    .padding(.horizontal,6).background(CassiniTheme.neutralPillFill,in:RoundedRectangle(cornerRadius:5))
                             }
                         }
-                    }.frame(maxWidth:.infinity,alignment:.leading)
-                }.frame(maxHeight:100)
-                Text(UXText.text("speakers.savedVoices.closestFirst")).font(.system(size:11)).foregroundStyle(CassiniTheme.ink2)
-            }
+                    }
+                }.frame(maxWidth:.infinity,alignment:.leading)
+            }.frame(maxHeight:100)
+            Text(UXText.text("speakers.savedVoices.closestFirst")).font(.system(size:11)).foregroundStyle(CassiniTheme.ink2)
             if !edit.isBackgroundVoice,
                let duplicate=VoiceSelection.matchingName(edit.name,voices:SavedVoicesController.shared.voices).first,
                edit.savedVoiceID == nil {
@@ -188,27 +189,34 @@ struct SpeakerEditorView:View {
                     SpeakerActionButton(control:.someoneElse,title:UXText.text("speakers.duplicate.someoneElse"),enabled:!edit.working) { edit.savedVoiceID=nil }
                 }
             }
-        }.padding(12).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
+        }.padding(12).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:10))
+            .overlay(RoundedRectangle(cornerRadius:10).stroke(CassiniTheme.cardStroke,lineWidth:1))
             .opacity(edit.isBackgroundVoice ? 0.45 : 1)
             .disabled(edit.isBackgroundVoice)
     }
     private var rememberVoice:some View {
-        VStack(alignment:.leading,spacing:8) {
+        let canUseRemember = edit.canChangeRememberVoice
+        return VStack(alignment:.leading,spacing:8) {
             HStack(alignment:.top,spacing:12) {
                 VStack(alignment:.leading,spacing:5) {
                     Text(UXText.text("speakers.rememberVoice.title"))
+                        .foregroundStyle(canUseRemember ? CassiniTheme.ink : CassiniTheme.ink3)
                     Text(UXText.text(edit.voiceEnrollment == nil ? "speakers.rememberVoice.notPrepared":"savedVoices.privacy.mac"))
                         .accessibilityIdentifier("speaker-remember-explanation")
                         .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
                         .fixedSize(horizontal:false,vertical:true)
                 }
                 Spacer(minLength:0)
-                SpeakerRememberSwitch(isOn:$edit.rememberVoice,enabled:edit.canChangeRememberVoice)
+                SpeakerRememberSwitch(
+                    isOn: Binding(get: { canUseRemember ? edit.rememberVoice : false }, set: { if canUseRemember { edit.rememberVoice = $0 } }),
+                    enabled: canUseRemember
+                )
                     .frame(width:38,height:22)
+                    .opacity(canUseRemember ? 1 : 0.45)
                     .accessibilityIdentifier("speaker-remember-voice")
             }
-        }.padding(14).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:12))
-                .overlay(RoundedRectangle(cornerRadius:12).stroke(CassiniTheme.lineSoft,lineWidth:1))
+        }.padding(14).background(CassiniTheme.surface,in:RoundedRectangle(cornerRadius:10))
+                .overlay(RoundedRectangle(cornerRadius:10).stroke(CassiniTheme.cardStroke,lineWidth:1))
     }
     private var failure:some View {
         HStack(spacing:10) {
@@ -467,6 +475,7 @@ private struct SpeakerMergeMenu:NSViewRepresentable {
     func makeNSView(context:Context)->Popup {
         let button=Popup(frame:.zero,pullsDown:true)
         button.font = .systemFont(ofSize:13)
+        button.addItem(withTitle:UXText.text("speakers.mergeInto"))
         button.setAccessibilityIdentifier("speaker-merge-menu")
         SpeakerEditorChrome.register(button,as:.merge)
         return button
@@ -475,7 +484,7 @@ private struct SpeakerMergeMenu:NSViewRepresentable {
         button.merge=merge
         SpeakerEditorChrome.register(button,as:.merge)
         let entries=speakers.map {Popup.Entry(id:$0.id,title:$0.displayName)}
-        if button.entries != entries {
+        if button.entries != entries || button.numberOfItems == 0 {
             button.entries=entries;button.removeAllItems()
             button.addItem(withTitle:UXText.text("speakers.mergeInto"))
             for entry in entries {
@@ -484,6 +493,8 @@ private struct SpeakerMergeMenu:NSViewRepresentable {
                 item.setAccessibilityIdentifier("speaker-merge-into-"+entry.id)
                 button.menu?.addItem(item)
             }
+            button.sizeToFit()
+            button.invalidateIntrinsicContentSize()
         }
         button.isEnabled=enabled && context.environment.isEnabled
     }

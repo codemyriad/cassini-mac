@@ -568,6 +568,27 @@
           "text": "Não selecionado para gravação."
         }
       }
+    },
+    {
+      "id": "mac.speakers.underSecond",
+      "en": "under 1 s",
+      "l10n": {
+        "it": {
+          "text": "meno di 1 s"
+        },
+        "fr": {
+          "text": "moins d’1 s"
+        },
+        "es": {
+          "text": "menos de 1 s"
+        },
+        "pt-BR": {
+          "text": "menos de 1 s"
+        },
+        "pt-PT": {
+          "text": "menos de 1 s"
+        }
+      }
     }
   ]
 }
