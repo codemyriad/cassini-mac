@@ -59,7 +59,7 @@ struct MeetingView: View {
         CassiniTheme.speakerInk(speaker)
     }
     private func turnLabel(_ turn: MeetingPresentation.Turn) -> String {
-        var parts: [String] = [name(turn.speaker), LibraryFormat.position(turn.startMs)]
+        var parts: [String] = [name(turn.speaker), LibraryFormat.compactPosition(turn.startMs, durationMs: meeting.durationMs, locale: UXText.locale)]
         if let over = over(turn) { parts.append(over) }
         parts.append(spoken(turn))
         return parts.joined(separator:", ")
@@ -125,11 +125,12 @@ struct MeetingView: View {
                         if meeting.speaker(for:turn.speaker)?.provenance == .recognised { autoTag }
                     }
                 }.fixedSize(horizontal: false, vertical: true)
+                let turnTime = LibraryFormat.compactPosition(turn.startMs, durationMs: meeting.durationMs, locale: UXText.locale)
                 Button { model.playFrom(Int(turn.startMs)) } label: {
-                    Text(LibraryFormat.position(turn.startMs)).font(.system(size:11.5)).foregroundStyle(background ? CassiniTheme.ink3 : CassiniTheme.secondaryInk).monospacedDigit()
+                    Text(turnTime).font(.system(size:11.5)).foregroundStyle(background ? CassiniTheme.ink3 : CassiniTheme.secondaryInk).monospacedDigit()
                 }.buttonStyle(.borderless).disabled(!model.canPlay)
                     .help(UXText.text("player.playFromHere"))
-                    .accessibilityLabel(UXText.text("player.playFromHere") + ", " + LibraryFormat.position(turn.startMs))
+                    .accessibilityLabel(UXText.text("player.playFromHere") + ", " + turnTime)
                     .accessibilityIdentifier("turn-play-\(turn.id)")
                     .focusable(isEnabled)
                     .onKeyPress(keys:[.return,KeyEquivalent("\u{03}")],phases:.down) { event in
@@ -185,6 +186,9 @@ struct MeetingView: View {
             }
         }
     }
+    private var hasMeetingNotices: Bool {
+        RecordingOverview.libraryDiskLine != nil || isTranscribing || issueLine != nil
+    }
     private var meetingNotices: some View {
         VStack(alignment: .leading, spacing: 22) {
             if let line = RecordingOverview.libraryDiskLine { Text(line).foregroundStyle(CassiniTheme.warningNotice) }
@@ -228,13 +232,16 @@ struct MeetingView: View {
             let scroll = ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     MeetingPaneHeader(model: model, format: format)
-                    meetingNotices
+                    if hasMeetingNotices {
+                        meetingNotices
+                    }
                     transcriptContent
                 }
                 .padding(.horizontal, 44)
                 .padding(.top, 12)
                 .padding(.bottom, 16)
             }
+            .cassiniTopScrollEdge()
             .modifier(MeetingScrollEdgeModifier())
             .accessibilityIdentifier("meeting-transcript")
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -245,7 +252,11 @@ struct MeetingView: View {
             .onScrollPhaseChange { _,phase in
                 handScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
             }
-            .onScrollGeometryChange(for:CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, _ in
+            .onScrollGeometryChange(for:CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
+                let shouldShowCompact = offset > 60
+                if model.compactHeader != shouldShowCompact {
+                    model.compactHeader = shouldShowCompact
+                }
                 if handScrolling { model.handScrolledTranscript() }
             }
             .onChange(of: model.find.selected) { _, match in
@@ -309,7 +320,10 @@ struct MeetingView: View {
                               background: meeting.backgroundSpeakerIDs)) {
             await model.find.search(turns: model.turns, meeting: meeting, language: UXText.language, locale: UXText.locale)
         }
-        .onChange(of: meeting.libraryKey) { _, _ in expandedBackgroundRuns = [] }
+        .onChange(of: meeting.libraryKey) { _, _ in
+            expandedBackgroundRuns = []
+            model.compactHeader = false
+        }
     }
     private func revealSearchHit(in proxy: ScrollViewProxy) {
         guard model.tab == .transcript else { return }
@@ -446,7 +460,6 @@ private struct MeetingScrollEdgeModifier: ViewModifier {
         #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             content
-                .scrollEdgeEffectStyle(.soft, for: .top)
                 .scrollEdgeEffectStyle(.soft, for: .bottom)
         } else {
             content

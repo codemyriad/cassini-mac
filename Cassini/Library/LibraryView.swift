@@ -578,7 +578,7 @@ struct LibraryView: View {
             }
             #endif
         }
-        if let detail = navigation.savedDetail {
+        if let detail = navigation.savedDetail, detail.compactHeader {
             let title = detail.meeting.title ?? UXText.text("library.untitled")
             let subtitle = store.format.previewSubtitle(
                 detail.meeting.meetingTime,
@@ -586,7 +586,8 @@ struct LibraryView: View {
                 received: detail.meeting.state.origin == .received,
                 transcribedOnAnotherDevice: detail.meeting.transcribedOnAnotherDevice
             )
-            let titleMaxWidth: CGFloat = toolbarWidth < 860 ? 140 : 280
+            let titleMaxWidth: CGFloat = toolbarWidth < 860 ? 180 : 320
+            let leadingInset: CGFloat = columnVisibility == .detailOnly ? 0 : 22
             #if compiler(>=6.2)
             if #available(macOS 26.0, *) {
                 ToolbarItem(placement: .navigation) {
@@ -597,6 +598,7 @@ struct LibraryView: View {
                         maxWidth: titleMaxWidth,
                         onCommit: { newTitle in rename.renameInline(detail.meeting, to: newTitle) }
                     )
+                    .padding(.leading, leadingInset)
                 }
                 .sharedBackgroundVisibility(.hidden)
             } else {
@@ -608,6 +610,7 @@ struct LibraryView: View {
                         maxWidth: titleMaxWidth,
                         onCommit: { newTitle in rename.renameInline(detail.meeting, to: newTitle) }
                     )
+                    .padding(.leading, leadingInset)
                 }
             }
             #else
@@ -619,12 +622,19 @@ struct LibraryView: View {
                     maxWidth: titleMaxWidth,
                     onCommit: { newTitle in rename.renameInline(detail.meeting, to: newTitle) }
                 )
+                .padding(.leading, leadingInset)
             }
             #endif
         }
-        if navigation.savedDetail == nil {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            ToolbarSpacer(.flexible, placement: .primaryAction)
+        } else {
             ToolbarItem(placement: .automatic) { Spacer() }
         }
+        #else
+        ToolbarItem(placement: .automatic) { Spacer() }
+        #endif
         if let detail = navigation.savedDetail {
             if let spec = meetingTranscriptionToolbarSpec(detail) {
                 ToolbarItem(placement: .primaryAction) {

@@ -32,6 +32,15 @@ public struct LibraryFormat: Sendable {
         let s=max(0,ms)/1000
         return text("format.position",["hh":number(s/3600,locale:locale,padding:2),"mm":number((s/60)%60,locale:locale,padding:2),"ss":number(s%60,locale:locale,padding:2)],locale:locale,language:language)
     }
+    /// D-1172: compact timestamp dropping hours under an hour (`00:12` / `0:12`), keeping `h:mm:ss` (`1:02:15`) at or above an hour.
+    public static func compactPosition(_ ms: Int64, durationMs: Int64? = nil, padMinutes: Bool = true, locale: Locale = .current) -> String {
+        let s = max(0, ms) / 1000
+        let totalSeconds = max(s, max(0, durationMs ?? 0) / 1000)
+        if totalSeconds >= 3600 {
+            return [number(s / 3600, locale: locale), number((s / 60) % 60, locale: locale, padding: 2), number(s % 60, locale: locale, padding: 2)].joined(separator: ":")
+        }
+        return [number(s / 60, locale: locale, padding: padMinutes ? 2 : 1), number(s % 60, locale: locale, padding: 2)].joined(separator: ":")
+    }
     /// D108 §10 (Mac player only): `m:ss` (unpadded minutes) for meetings under an hour;
     /// `h:mm:ss` (unpadded hours, 2-digit minutes and seconds) for meetings of an hour or longer.
     public static func playerTime(_ ms:Int64,durationMs:Int64,locale:Locale = .current)->String {

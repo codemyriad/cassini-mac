@@ -2,9 +2,9 @@
 import CassiniLibrary
 import SwiftUI
 
-/// D108 §7: One line of speaker names at the top of the transcript, above the first turn,
-/// scrolling away with it. Each name has its colour dot (18 px apart); unnamed speakers carry
-/// a dotted underline and clicking names them. A hairline separates the names from the transcript.
+/// Inline meeting header (D-1172): title (24 pt bold), date and length, optional status badge,
+/// and speaker names as one block closed by a hairline on every meeting. Scrolls away with the
+/// transcript while the compact title and date appear in the toolbar.
 struct MeetingPaneHeader: View {
     @Bindable var model: MeetingDetailModel
     let format: LibraryFormat
@@ -12,34 +12,53 @@ struct MeetingPaneHeader: View {
     private var meeting: LibraryMeeting { model.meeting }
 
     var body: some View {
-        let showBadge = LibraryBadgeCatalog.presentation(for: meeting).map { ["needsAttention", "interrupted"].contains($0.kind) } ?? false
+        let title = meeting.title ?? UXText.text("library.untitled")
+        let subtitle = format.previewSubtitle(
+            meeting.meetingTime,
+            durationMs: meeting.durationMs,
+            received: meeting.state.origin == .received,
+            transcribedOnAnotherDevice: meeting.transcribedOnAnotherDevice
+        )
         let visibleSpeakers = meeting.visibleSpeakers
         let showSpeakers = !TranscribingPresentation.isActive(meeting.state) && !visibleSpeakers.isEmpty
-        if showBadge || showSpeakers {
-            VStack(alignment: .leading, spacing: 10) {
-                if let badge = LibraryBadgeCatalog.presentation(for: meeting),
-                   ["needsAttention", "interrupted"].contains(badge.kind) {
-                    CatalogStatusBadge(presentation: badge, isAnimating: false)
-                        .accessibilityIdentifier("meeting-status-badge")
-                }
-                if showSpeakers {
-                    SpeakerFlowLayout(horizontalSpacing: 18, verticalSpacing: 8) {
-                        ForEach(visibleSpeakers, id: \.id) { speaker in
-                            inlineSpeaker(speaker)
-                        }
-                    }
-                    .padding(.bottom, 14)
-                    .overlay(alignment: .bottom) {
-                        Rectangle().fill(CassiniTheme.cardStroke).frame(height: 0.5)
-                    }
-                    .padding(.bottom, 6)
-                }
+
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(CassiniTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("meeting-inline-title")
+                Text(subtitle)
+                    .font(.system(size: 13))
+                    .foregroundStyle(CassiniTheme.ink2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("meeting-inline-subtitle")
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .foregroundStyle(CassiniTheme.ink)
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("meeting-heading")
+            if let badge = LibraryBadgeCatalog.presentation(for: meeting),
+               ["needsAttention", "interrupted"].contains(badge.kind) {
+                CatalogStatusBadge(presentation: badge, isAnimating: false)
+                    .accessibilityIdentifier("meeting-status-badge")
+            }
+            if showSpeakers {
+                SpeakerFlowLayout(horizontalSpacing: 18, verticalSpacing: 8) {
+                    ForEach(visibleSpeakers, id: \.id) { speaker in
+                        inlineSpeaker(speaker)
+                    }
+                }
+                .padding(.top, 2)
+            }
         }
+        .padding(.bottom, 14)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(CassiniTheme.cardStroke).frame(height: 0.5)
+        }
+        .padding(.bottom, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .foregroundStyle(CassiniTheme.ink)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("meeting-heading")
     }
 
     private func inlineSpeaker(_ speaker: MeetingSpeaker) -> some View {
