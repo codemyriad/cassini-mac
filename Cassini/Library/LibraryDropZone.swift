@@ -130,12 +130,6 @@ struct LibraryDropHintFooter: View {
         .padding(.horizontal, 10)
         .padding(.top, 10)
         .padding(.bottom, 12)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(CassiniTheme.cardStroke)
-                .frame(height: 1)
-                .padding(.horizontal, 10)
-        }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("library-drop-hint")
     }

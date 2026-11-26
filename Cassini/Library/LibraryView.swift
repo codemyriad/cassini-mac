@@ -19,7 +19,7 @@ struct LibraryView: View {
     @State private var toolbarWidth: CGFloat = 1120
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var sidebarSearchPresented = false
-    @State private var sidebarWidth: CGFloat = 340
+    @State private var sidebarWidth: CGFloat = 390
     @State private var recordCoordinator = RecordCoordinator.shared
     @State private var recorder = RecordingController.shared
     @State private var companionSetup = CompanionSetup.shared
@@ -285,8 +285,8 @@ struct LibraryView: View {
                 .toolbar {
                     sidebarToolbar
                 }
-                .frame(minWidth: 260, idealWidth: 340, maxWidth: 400)
-                .navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 400)
+                .frame(minWidth: 260, idealWidth: 390, maxWidth: 420)
+                .navigationSplitViewColumnWidth(min: 260, ideal: 390, max: 420)
         } detail: {
             VStack(spacing: 0) {
                 detailColumn
@@ -319,86 +319,124 @@ struct LibraryView: View {
             || store.meetings.contains(where: { $0.state.lifecycle == .recording })
     }
 
+    private var sidebarImportButton: some View {
+        let enabled = !LibraryMoveCoordinator.shared.busy && LibraryLocationModel.shared.available
+        return Button {
+            LegacyOpening.chooseDocuments()
+        } label: {
+            ImportTrayIcon(size: 13, strokeWidth: 1.8)
+                .foregroundStyle(enabled ? CassiniTheme.ink : CassiniTheme.ink3)
+                .frame(width: 24, height: 24)
+                .modifier(SidebarGlassCircleModifier())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .help(UXText.text("import.action"))
+        .accessibilityLabel(UXText.text("import.action"))
+        .accessibilityIdentifier("toolbar-import")
+    }
+
     @ToolbarContentBuilder
     private var sidebarToolbar: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                LegacyOpening.chooseDocuments()
-            } label: {
-                ImportTrayIcon(size: 15, strokeWidth: 1.9)
-            }
-            .disabled(LibraryMoveCoordinator.shared.busy || !LibraryLocationModel.shared.available)
-            .help(UXText.text("import.action"))
-            .accessibilityLabel(UXText.text("import.action"))
-            .accessibilityIdentifier("toolbar-import")
-        }
-        if !showsLiveToolbarPill {
-            #if compiler(>=6.2)
-            if #available(macOS 26.0, *) {
-                ToolbarSpacer(.fixed, placement: .primaryAction)
-                ToolbarItem(placement: .primaryAction) {
-                    sidebarRecordButton
-                }
-                .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .primaryAction) {
-                    sidebarRecordButton
-                }
-            }
-            #else
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
             ToolbarItem(placement: .primaryAction) {
-                sidebarRecordButton
+                sidebarImportButton
             }
-            #endif
+            .sharedBackgroundVisibility(.hidden)
+            ToolbarSpacer(.fixed, placement: .primaryAction)
+            ToolbarItem(placement: .primaryAction) {
+                if showsLiveToolbarPill {
+                    liveRecordingToolbarControl(height: 24)
+                } else {
+                    sidebarRecordButton(height: 24)
+                }
+            }
+            .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .primaryAction) {
+                sidebarImportButton
+            }
+            ToolbarItem(placement: .primaryAction) {
+                if showsLiveToolbarPill {
+                    liveRecordingToolbarControl(height: 24)
+                } else {
+                    sidebarRecordButton(height: 24)
+                }
+            }
         }
+        #else
+        ToolbarItem(placement: .primaryAction) {
+            sidebarImportButton
+        }
+        ToolbarItem(placement: .primaryAction) {
+            if showsLiveToolbarPill {
+                liveRecordingToolbarControl(height: 24)
+            } else {
+                sidebarRecordButton(height: 24)
+            }
+        }
+        #endif
     }
 
     @ViewBuilder
-    private var liveRecordingToolbarControl: some View {
+    private func liveRecordingToolbarControl(height: CGFloat) -> some View {
+        let compact = height <= 24
+        let innerHeight = max(18, height - 6)
         if RecordingOverview.active, let started = RecordingOverview.startedAt {
-            LiveRecordingPill(started: started, microphone: RecordingOverview.levels["microphone", default: 0], output: RecordingOverview.levels["output", default: 0])
+            LiveRecordingPill(started: started, microphone: RecordingOverview.levels["microphone", default: 0], output: RecordingOverview.levels["output", default: 0], height: height)
         } else if RecordingOverview.saving {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
-                Text(UXText.text("states.badge.saving")).fontWeight(.semibold).foregroundStyle(CassiniTheme.ink2)
+                Text(UXText.text("states.badge.saving"))
+                    .font(.system(size: compact ? 12 : 13, weight: .semibold))
+                    .foregroundStyle(CassiniTheme.ink2)
             }
-            .padding(.horizontal, 14)
-            .frame(height: 30)
+            .padding(.horizontal, compact ? 10 : 14)
+            .frame(height: height)
             .background(CassiniTheme.neutralPillFill, in: Capsule())
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("toolbar-saving")
         } else if let live = store.meetings.first(where: { $0.state.lifecycle == .recording }) {
-            HStack(spacing: 8) {
-                Circle().fill(CassiniTheme.recordInk).frame(width: 8, height: 8)
-                Text(LibraryFormat.liveBadge(live.state.liveMs ?? 0)).fontWeight(.semibold).monospacedDigit().foregroundStyle(CassiniTheme.recordInk)
-                VStack(spacing: 3) {
-                    Capsule().fill(CassiniTheme.recordInk.opacity(0.6)).frame(width: 24, height: 4)
-                    Capsule().fill(CassiniTheme.recordInk.opacity(0.3)).frame(width: 24, height: 4)
-                }.accessibilityHidden(true)
-                Text(UXText.text("common.stop")).font(.system(size: 12, weight: .semibold)).foregroundStyle(CassiniTheme.onRecord)
-                    .padding(.horizontal, 12).frame(height: 24).background(CassiniTheme.record, in: Capsule())
-            }.fixedSize().padding(.leading, 12).padding(.trailing, 4).frame(height: 30).background(CassiniTheme.recordTint, in: Capsule())
+            HStack(spacing: 6) {
+                Circle().fill(CassiniTheme.recordInk).frame(width: compact ? 7 : 8, height: compact ? 7 : 8)
+                Text(LibraryFormat.liveBadge(live.state.liveMs ?? 0))
+                    .font(.system(size: compact ? 12 : 13, weight: .semibold))
+                    .monospacedDigit().foregroundStyle(CassiniTheme.recordInk)
+                Text(UXText.text("common.stop"))
+                    .font(.system(size: compact ? 11 : 12, weight: .semibold))
+                    .foregroundStyle(CassiniTheme.onRecord)
+                    .padding(.horizontal, compact ? 8 : 12)
+                    .frame(height: innerHeight)
+                    .background(CassiniTheme.record, in: Capsule())
+            }
+            .fixedSize()
+            .padding(.leading, compact ? 8 : 12)
+            .padding(.trailing, 3)
+            .frame(height: height)
+            .background(CassiniTheme.recordTint, in: Capsule())
         }
     }
 
-    private var sidebarRecordButton: some View {
+    private func sidebarRecordButton(height: CGFloat) -> some View {
+        let compact = height <= 24
         let enabled = RecordingOverview.canStart
         let title = UXText.text("common.record")
         return Button {
             sessionPlayback.stop()
             RecordCoordinator.shared.request(parent: store.context.root)
         } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: compact ? 6 : 7) {
                 Circle()
                     .fill(enabled ? CassiniTheme.onRecord : CassiniTheme.ink3)
-                    .frame(width: 8, height: 8)
+                    .frame(width: compact ? 7 : 8, height: compact ? 7 : 8)
                 Text(title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: compact ? 12.5 : 13, weight: .semibold))
                     .foregroundStyle(enabled ? CassiniTheme.onRecord : CassiniTheme.ink3)
             }
-            .padding(.leading, 12)
-            .padding(.trailing, 14)
-            .frame(height: 30)
+            .padding(.horizontal, compact ? 10 : 12)
+            .frame(height: height)
             .background(enabled ? CassiniTheme.record : CassiniTheme.chipFill, in: Capsule())
             .contentShape(Capsule())
         }
@@ -411,6 +449,36 @@ struct LibraryView: View {
 
     @ToolbarContentBuilder
     private var detailToolbar: some ToolbarContent {
+        if columnVisibility == .detailOnly {
+            #if compiler(>=6.2)
+            if #available(macOS 26.0, *) {
+                ToolbarItem(placement: .navigation) {
+                    if showsLiveToolbarPill {
+                        liveRecordingToolbarControl(height: 32)
+                    } else {
+                        sidebarRecordButton(height: 32)
+                    }
+                }
+                .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .navigation) {
+                    if showsLiveToolbarPill {
+                        liveRecordingToolbarControl(height: 32)
+                    } else {
+                        sidebarRecordButton(height: 32)
+                    }
+                }
+            }
+            #else
+            ToolbarItem(placement: .navigation) {
+                if showsLiveToolbarPill {
+                    liveRecordingToolbarControl(height: 32)
+                } else {
+                    sidebarRecordButton(height: 32)
+                }
+            }
+            #endif
+        }
         if let detail = navigation.savedDetail {
             let title = detail.meeting.title ?? UXText.text("library.untitled")
             let subtitle = store.format.previewSubtitle(
@@ -457,24 +525,6 @@ struct LibraryView: View {
         }
         if navigation.savedDetail == nil {
             ToolbarItem(placement: .automatic) { Spacer() }
-        }
-        if showsLiveToolbarPill {
-            #if compiler(>=6.2)
-            if #available(macOS 26.0, *) {
-                ToolbarItem(placement: .primaryAction) {
-                    liveRecordingToolbarControl
-                }
-                .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .primaryAction) {
-                    liveRecordingToolbarControl
-                }
-            }
-            #else
-            ToolbarItem(placement: .primaryAction) {
-                liveRecordingToolbarControl
-            }
-            #endif
         }
         if let detail = navigation.savedDetail {
             if let spec = meetingTranscriptionToolbarSpec(detail) {
@@ -557,6 +607,7 @@ struct LibraryView: View {
                 }
                 .pickerStyle(.segmented)
                 .controlSize(.regular)
+                .tint(nil)
                 .labelsHidden()
                 .fixedSize()
                 .accessibilityIdentifier("library-filters")
@@ -662,6 +713,10 @@ struct LibraryView: View {
                     }
                     .listStyle(.sidebar)
                     .scrollContentBackground(.hidden)
+                    .modifier(SidebarBottomScrollEdgeModifier())
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        LibraryDropHintFooter(entered: dropState.showsWindowOutline)
+                    }
                     .opacity(dropState.dimsListContent ? 0.30 : 1.0)
                     .accessibilityLabel(UXText.text("library.listPane.a11y"))
 
@@ -674,8 +729,6 @@ struct LibraryView: View {
                     }
                 }
             }
-
-            LibraryDropHintFooter(entered: dropState.showsWindowOutline)
         }
     }
 
@@ -833,10 +886,12 @@ struct LibraryView: View {
                     }
                     if let presentation {
                         catalogStatusBadge(presentation, onAccent: false)
+                            .layoutPriority(1)
                         if let trailingMeta {
                             Text(trailingMeta)
                                 .foregroundStyle(CassiniTheme.ink2)
                                 .lineLimit(1)
+                                .truncationMode(.tail)
                         }
                     } else if let trailingMeta {
                         if meeting.meetingTime != nil {
@@ -1125,6 +1180,34 @@ private struct InlineToolbarTitleField: NSViewRepresentable {
             finished = true
             onCommit(field.stringValue)
         }
+    }
+}
+
+private struct SidebarGlassCircleModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            content.glassEffect(.regular, in: .circle)
+        } else {
+            content.background(CassiniTheme.chipFill, in: Circle())
+        }
+        #else
+        content.background(CassiniTheme.chipFill, in: Circle())
+        #endif
+    }
+}
+
+private struct SidebarBottomScrollEdgeModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            content.scrollEdgeEffectStyle(.soft, for: .bottom)
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
     }
 }
 
