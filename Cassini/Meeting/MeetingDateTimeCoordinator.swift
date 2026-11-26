@@ -6,12 +6,15 @@ import CassiniLibrary
 @MainActor @Observable final class MeetingDateTimeCoordinator {
     static let shared = MeetingDateTimeCoordinator()
     var showing = false
-    var selectedDay = Date()
-    var selectedClock = Date()
+    var selectedDay = Date() { didSet { if !applyingPrefill { userEdited = true } } }
+    var selectedClock = Date() { didSet { if !applyingPrefill { userEdited = true } } }
     private(set) var fromFileSavedTime = false
     private(set) var meeting: LibraryMeeting?
     private(set) var working = false
     @ObservationIgnored private var task: Task<Void, Never>?
+    @ObservationIgnored private let prefillLoader = MeetingDateTime.PrefillLoader()
+    @ObservationIgnored private var applyingPrefill = false
+    @ObservationIgnored private var userEdited = false
     @ObservationIgnored private var closing = false
 
     func canSetDateTime(_ meeting: LibraryMeeting?) -> Bool {
@@ -38,24 +41,33 @@ import CassiniLibrary
         guard canSetDateTime(meeting), !showing, MeetingRenameCoordinator.shared.presentation == nil else { return }
         let now = LibraryStore.shared.context.now ?? Date()
         let timeZone = LibraryStore.shared.format.timeZone
-        let prefill = MeetingDateTime.prefill(for: meeting, now: now, timeZone: timeZone)
         self.meeting = meeting
-        selectedDay = prefill.date
-        selectedClock = prefill.date
-        fromFileSavedTime = prefill.fromFileSavedTime
+        userEdited = false
         showing = true
+        prefillLoader.load(for: meeting, now: now, timeZone: timeZone) { [weak self] prefill, isPending in
+            guard let self, self.showing, self.meeting?.folder == meeting.folder else { return }
+            if !isPending && (self.userEdited || self.working) { return }
+            self.applyingPrefill = true
+            self.selectedDay = prefill.date
+            self.selectedClock = prefill.date
+            self.fromFileSavedTime = prefill.fromFileSavedTime
+            self.applyingPrefill = false
+        }
     }
 
     func cancel() {
+        prefillLoader.cancel()
         showing = false
         if !working {
             meeting = nil
             fromFileSavedTime = false
+            userEdited = false
         }
     }
 
     func apply() {
         guard !working, let meeting, canSetDateTime(meeting) else { return }
+        prefillLoader.cancel()
         working = true
         let timeZone = LibraryStore.shared.format.timeZone
         let combined = MeetingDateTime.combine(day: selectedDay, clock: selectedClock, timeZone: timeZone)
@@ -95,6 +107,7 @@ import CassiniLibrary
     }
 
     func dismissForQuit() async {
+        prefillLoader.cancel()
         let parent = NSApp.keyWindow?.sheetParent ?? NSApp.mainWindow
         showing = false
         for _ in 0..<40 {
@@ -103,6 +116,6 @@ import CassiniLibrary
         }
     }
 
-    func beginShutdown() { closing = true; showing = false }
+    func beginShutdown() { closing = true; prefillLoader.cancel(); showing = false }
     func waitForShutdown() async { await task?.value }
 }

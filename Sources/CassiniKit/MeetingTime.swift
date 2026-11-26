@@ -55,20 +55,20 @@ public struct MeetingTime: Sendable, Equatable {
         let absMin = abs(clampedOffset)
         return base + String(format:"%@%02d:%02d",sign,absMin / 60,absMin % 60)
     }
-    public static func resolve(meeting:Meeting?,dateTag:String?,x:JSON? = nil) -> Self? {
+    public static func resolve(meeting:Meeting?,dateTag:String?,x:JSON? = nil,excludeLegacyImportTime:Bool = false) -> Self? {
         if x?["meeting"]?["startedAtSource"]?.string == "user",
            let value = x?["meeting"]?["startedAt"]?.string,
            let resolved = userStartedAt(value) {
             return resolved
         }
-        let excludeLegacyImportTime = x?["namePrefixSource"]?.string == "import-time"
-        if !excludeLegacyImportTime, let value = meeting?.startedAt, let resolved = userStartedAt(value) {
+        let excludeLegacy = excludeLegacyImportTime || x?["namePrefixSource"]?.string == "import-time"
+        if !excludeLegacy, let value = meeting?.startedAt, let resolved = userStartedAt(value) {
             return resolved
         }
         if let value=meeting?.recordedAtUtc,normalizedUTC(value) != nil,let parsed=parsed(value) {
             return .init(source:.recordedAtUtc,value:trimmed(value),instant:parsed.date)
         }
-        if excludeLegacyImportTime {
+        if excludeLegacy {
             return nil
         }
         if let tag=dateTag,let date=parsed(tag),date.key != meeting.flatMap({parsed($0.createdAtUtc)?.key}) {
@@ -194,8 +194,11 @@ public struct MeetingTime: Sendable, Equatable {
 
 extension CassiniFile {
     public var meetingTime:MeetingTime? {
+        meetingTime(excludeLegacyImportTime: false)
+    }
+    public func meetingTime(excludeLegacyImportTime: Bool) -> MeetingTime? {
         guard state != .invalidCassiniMetadata,state != .unknownCassiniFormat else {return nil}
-        return MeetingTime.resolve(meeting:manifest?.meeting,dateTag:tags?["DATE"],x:manifest?.raw["x"]?["codemyriad.io"])
+        return MeetingTime.resolve(meeting:manifest?.meeting,dateTag:tags?["DATE"],x:manifest?.raw["x"]?["codemyriad.io"],excludeLegacyImportTime:excludeLegacyImportTime)
     }
     public var userStartedAt:String? {
         guard state != .invalidCassiniMetadata,state != .unknownCassiniFormat,

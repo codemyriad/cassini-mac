@@ -138,11 +138,9 @@ public struct LibraryScanner: Sendable {
                     // R6 permits these display fallbacks even when a payload is
                     // damaged; they do not authenticate its words or notes.
                     titleCandidates += [file.manifest?.meeting.title, file.tags?["TITLE"]]
-                    let excludeLegacyImportTime = metadata?.namePrefixSource == "import-time" && file.userStartedAt == nil && file.meetingTime?.source != .recordedAtUtc
-                    if !excludeLegacyImportTime {
-                        meeting.start = file.meetingTime?.instant
-                        meeting.recordedTime = file.meetingTime
-                    }
+                    let resolvedTime = file.meetingTime(excludeLegacyImportTime: metadata?.namePrefixSource == "import-time")
+                    meeting.start = resolvedTime?.instant
+                    meeting.recordedTime = resolvedTime
                     meeting.sortingFallback = file.manifest.flatMap { MeetingTime.parseInstant($0.meeting.createdAtUtc) }
                     if case .success(let digest)? = file.audioDigest {
                         meeting.durationMs = Int64(digest.durationMs); meeting.audioFiles = [url]
@@ -415,7 +413,7 @@ extension LibraryScanner {
         return body.items.count
     }
 }
-private struct LibraryWords: Decodable {
+struct LibraryWords: Decodable {
     let items: [LibraryTranscriptItem]
     let language: String?
     enum CodingKeys: CodingKey { case items, language }

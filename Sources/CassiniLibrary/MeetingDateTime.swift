@@ -15,11 +15,14 @@ public enum MeetingDateTime {
         }
     }
 
-    /// Prefill rules (D-1165):
-    /// 1. The recording time if there is one (`fromFileSavedTime == false`).
-    /// 2. Otherwise the file's last-saved time minus the length (`fromFileSavedTime == true`).
-    /// 3. Otherwise today at the current time (`fromFileSavedTime == false`).
-    public static func prefill(for meeting: LibraryMeeting, now: Date = Date(), timeZone: TimeZone = .current) -> Prefill {
+    public typealias FileModificationDateReader = @Sendable (URL) -> Date?
+
+    public static func defaultFileModificationDate(at url: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+    }
+
+    /// Pure in-memory prefill from the meeting's already-known recording time (zero filesystem I/O).
+    public static func knownPrefill(for meeting: LibraryMeeting, timeZone: TimeZone = .current) -> Prefill? {
         if let time = meeting.meetingTime {
             if let instant = time.instant {
                 return Prefill(date: instant, fromFileSavedTime: false)
@@ -39,14 +42,79 @@ public enum MeetingDateTime {
                 }
             }
         }
+        return nil
+    }
+
+    /// Prefill rules (D-1165):
+    /// 1. The recording time if there is one (`fromFileSavedTime == false`).
+    /// 2. Otherwise the file's last-saved time minus the length (`fromFileSavedTime == true`).
+    /// 3. Otherwise today at the current time (`fromFileSavedTime == false`).
+    public static func prefill(
+        for meeting: LibraryMeeting,
+        now: Date = Date(),
+        timeZone: TimeZone = .current,
+        fileModificationDate: FileModificationDateReader = defaultFileModificationDate
+    ) -> Prefill {
+        if let known = knownPrefill(for: meeting, timeZone: timeZone) {
+            return known
+        }
         if let file = meeting.audioFiles.first,
-           let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
-           let savedAt = attrs[.modificationDate] as? Date {
+           let savedAt = fileModificationDate(file) {
             let durationSeconds = Double(max(0, meeting.durationMs ?? 0)) / 1000.0
             let estimated = savedAt.addingTimeInterval(-durationSeconds)
             return Prefill(date: estimated, fromFileSavedTime: true)
         }
         return Prefill(date: now, fromFileSavedTime: false)
+    }
+
+    /// Loads `MeetingDateTime.prefill` without blocking the main actor on filesystem I/O,
+    /// protecting published state against cancellation and superseded/stale requests.
+    @MainActor
+    public final class PrefillLoader {
+        private var generation: UInt64 = 0
+        private var task: Task<Void, Never>?
+        private let readModificationDate: FileModificationDateReader
+
+        public init(readModificationDate: @escaping FileModificationDateReader = MeetingDateTime.defaultFileModificationDate) {
+            self.readModificationDate = readModificationDate
+        }
+
+        public func cancel() {
+            generation &+= 1
+            task?.cancel()
+            task = nil
+        }
+
+        @discardableResult
+        public func load(
+            for meeting: LibraryMeeting,
+            now: Date = Date(),
+            timeZone: TimeZone = .current,
+            publish: @escaping @MainActor (Prefill, Bool) -> Void
+        ) -> Task<Void, Never>? {
+            cancel()
+            if let known = MeetingDateTime.knownPrefill(for: meeting, timeZone: timeZone) {
+                publish(known, false)
+                return nil
+            }
+            guard !meeting.audioFiles.isEmpty else {
+                publish(Prefill(date: now, fromFileSavedTime: false), false)
+                return nil
+            }
+            publish(Prefill(date: now, fromFileSavedTime: false), true)
+            let token = generation
+            let reader = readModificationDate
+            let fetchTask = Task<Void, Never> { [weak self] in
+                let prefill = await Task.detached(priority: .userInitiated) {
+                    MeetingDateTime.prefill(for: meeting, now: now, timeZone: timeZone, fileModificationDate: reader)
+                }.value
+                guard let self, !Task.isCancelled, self.generation == token else { return }
+                self.task = nil
+                publish(prefill, false)
+            }
+            task = fetchTask
+            return fetchTask
+        }
     }
 
     /// Combine a calendar day from `day` with hour/minute from `clock` in `timeZone` (seconds floored to 0).
