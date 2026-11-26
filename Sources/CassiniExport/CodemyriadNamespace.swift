@@ -92,11 +92,11 @@ enum CodemyriadNamespace {
     /// D55.1: the namePrefix is chosen once, on the first export, and saved into meeting.json,
     /// so later exports keep the same name. An existing one is never recomputed. D65 (Q6b): a
     /// meeting without a title saves its untitled fallback, in the language of that export, too.
-    static func persistNamePrefix(_ meeting: LibraryMeeting, dateTag: String?, now: Date, zone: TimeZone) throws {
+    static func persistNamePrefix(_ meeting: LibraryMeeting, dateTag: String?, persistPrefix: Bool = true, now: Date, zone: TimeZone) throws {
         // Metadata this app cannot validate is never rewritten; the export still goes ahead.
         guard !meeting.metadataReadOnly, !meeting.issues.contains(.invalidMetadata) else { return }
         let stored = (try? Data(contentsOf:meeting.folder.appendingPathComponent("meeting.json"))).flatMap { try? JSONParser.parse($0) }
-        let keptPrefix = stored?["namePrefix"]?.string.map(LibraryNames.isPrefix) ?? false
+        let keptPrefix = !persistPrefix || (stored?["namePrefix"]?.string.map(LibraryNames.isPrefix) ?? false)
         let needsUntitled = meeting.titleIsUntitled && untitled(stored) == nil
         if keptPrefix && !needsUntitled { return }
         let raw = stored ?? (try? JSONParser.parse(JSONSerialization.data(withJSONObject:MeetingMetadataWriter.defaultDocument(id:meeting.id)))) ?? .object([])

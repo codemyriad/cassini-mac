@@ -103,7 +103,7 @@ public enum MeetingFileExporter {
             let candidateLocal = exportedRecordedLocal(meeting,original:file,excludeLegacyImportTime:candidateExcludeLegacy)
             let candidateMirror = MeetingTime.dateTag(startedAt:candidateStartedAt,recordedAtUtc:candidateUtc,createdAtUtc:candidateCreated.value,legacy:candidateDate)
             if !LibraryScanner.isMeetingFolder(meeting.folder),
-               timestampsMatchOriginal(file,created:candidateCreated,startedAt:candidateStartedAt,recordedUtc:candidateUtc,recordedLocal:candidateLocal,mirrorDate:candidateMirror),
+               timestampsMatchOriginal(file,created:candidateCreated,startedAt:candidateStartedAt,recordedUtc:candidateUtc,recordedLocal:candidateLocal,mirrorDate:candidateMirror,allowLegacyCreatedDate:!candidateExcludeLegacy),
                let namespace = file.manifest?.raw["x"]?[CodemyriadNamespace.key] {
                 _ = try CodemyriadNamespace.validated(namespace)
                 guard FileManager.default.createFile(atPath:artifact.url.path,contents:audio,attributes:[.posixPermissions:0o600]) else { throw MeetingExportError.invalidSource }
@@ -134,7 +134,8 @@ public enum MeetingFileExporter {
         let excludeLegacy = excludesLegacyImportTime(file:original,stored:preExistingStored)
         // D55.1: the namePrefix is saved before the first export (our own namespace checks it
         // was; another writer's copy keeps its own prefix).
-        try? CodemyriadNamespace.persistNamePrefix(meeting,dateTag:excludeLegacy ? nil : dateTag,now:Date(),zone:timeZone)
+        let hasForeignNamespace = original?.manifest?.raw["x"]?[CodemyriadNamespace.key] != nil
+        try? CodemyriadNamespace.persistNamePrefix(meeting,dateTag:excludeLegacy ? nil : dateTag,persistPrefix:!hasForeignNamespace,now:Date(),zone:timeZone)
         // #116 r3: the words, speakers, title, notes and namespace all come from one read of
         // the meeting, never the caller's snapshot (Export may have opened before a Write down
         // finished). Every change to the words bumps meeting.json's revision, and the namespace
@@ -241,8 +242,16 @@ public enum MeetingFileExporter {
         return matching == [Comment(name:name,value:expected)]
     }
     private static func timestampsMatchOriginal(_ file: CassiniFile?, created: (value: String, exportTime: Bool),
-                                                startedAt: String?, recordedUtc: String?, recordedLocal: String?, mirrorDate: String?) -> Bool {
+                                                startedAt: String?, recordedUtc: String?, recordedLocal: String?, mirrorDate: String?,
+                                                allowLegacyCreatedDate: Bool = false) -> Bool {
         guard let file, file.state == .ok, let rawMeeting = file.manifest?.raw["meeting"] else { return false }
+        let dateMatches: Bool
+        if let mirrorDate {
+            dateMatches = singleTag(file.tags,"DATE",equals:mirrorDate)
+        } else {
+            dateMatches = singleTag(file.tags,"DATE",equals:nil)
+                || (allowLegacyCreatedDate && singleTag(file.tags,"DATE",equals:created.value))
+        }
         return !created.exportTime
             && rawMeeting["createdAtUtc"] == .string(created.value)
             && rawMeeting["startedAt"] == startedAt.map(JSON.string)
@@ -251,7 +260,7 @@ public enum MeetingFileExporter {
             && singleTag(file.tags,"CASSINI_CREATED_AT",equals:created.value)
             && singleTag(file.tags,"CASSINI_RECORDED_AT_UTC",equals:recordedUtc)
             && singleTag(file.tags,"CASSINI_RECORDED_AT_LOCAL",equals:recordedLocal)
-            && singleTag(file.tags,"DATE",equals:mirrorDate)
+            && dateMatches
     }
     private static func excludesLegacyImportTime(file: CassiniFile?, stored: JSON?) -> Bool {
         stored?["namePrefixSource"]?.string == "import-time"
