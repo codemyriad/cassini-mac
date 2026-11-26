@@ -128,9 +128,13 @@ public enum MeetingFileExporter {
             digest = try OpusAudioDigest.compute(audio); original = nil; choice = selected
         }
         if shouldCancel() { throw CancellationError() }
+        // D112: check legacy import-time exclusion before persistNamePrefix can write a new
+        // import-time fallback prefix onto meeting.json during this export.
+        let preExistingStored = try? CodemyriadNamespace.current(meeting)
+        let excludeLegacy = excludesLegacyImportTime(file:original,stored:preExistingStored)
         // D55.1: the namePrefix is saved before the first export (our own namespace checks it
         // was; another writer's copy keeps its own prefix).
-        try? CodemyriadNamespace.persistNamePrefix(meeting,dateTag:excludesLegacyImportTime(file:original,stored:nil) ? nil : dateTag,now:Date(),zone:timeZone)
+        try? CodemyriadNamespace.persistNamePrefix(meeting,dateTag:excludeLegacy ? nil : dateTag,now:Date(),zone:timeZone)
         // #116 r3: the words, speakers, title, notes and namespace all come from one read of
         // the meeting, never the caller's snapshot (Export may have opened before a Write down
         // finished). Every change to the words bumps meeting.json's revision, and the namespace
@@ -163,7 +167,6 @@ public enum MeetingFileExporter {
                 // Mac's words join the file only once its own Write down finished; while it is
                 // queued, running or failed, Mac has no words and the originals go out as they are.
                 let stored = try CodemyriadNamespace.current(current)
-                let excludeLegacy = excludesLegacyImportTime(file:original,stored:stored)
                 let effectiveDateTag = excludeLegacy ? nil : dateTag
                 let writtenOnMac = original != nil && CodemyriadNamespace.transcribedOnMac(stored,importedTranscript:importedTranscript)
                 let mine = original == nil || (writtenOnMac && complete)
@@ -251,8 +254,10 @@ public enum MeetingFileExporter {
             && singleTag(file.tags,"DATE",equals:mirrorDate)
     }
     private static func excludesLegacyImportTime(file: CassiniFile?, stored: JSON?) -> Bool {
-        stored?["namePrefixSource"]?.string == "import-time"
-            || file?.manifest?.raw["x"]?[CodemyriadNamespace.key]?["namePrefixSource"]?.string == "import-time"
+        if let foreign = file?.manifest?.raw["x"]?[CodemyriadNamespace.key] {
+            return foreign["namePrefixSource"]?.string == "import-time"
+        }
+        return stored?["namePrefixSource"]?.string == "import-time"
     }
     private static func exportedStartedAt(_ meeting: LibraryMeeting, original file: CassiniFile?, excludeLegacyImportTime: Bool) -> String? {
         if let userStartedAt = meeting.userStartedAt, MeetingTime.isValidStartedAt(userStartedAt) {

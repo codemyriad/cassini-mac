@@ -193,7 +193,7 @@ import CassiniRecording
 
         try MeetingDateTime.apply(chosen, timeZone: zone, to: before)
 
-        let after = try #require(scanner.scan().meetings.first(where: { $0.folder == session.directory }))
+        let after = try #require(scanner.scan().meetings.first(where: { $0.id == before.id }))
         #expect(after.userStartedAt == "2026-11-23T14:36:00+01:00")
         #expect(after.state.transcript == .done)
         #expect(after.transcriptReferenced == true)
@@ -211,7 +211,7 @@ import CassiniRecording
 
         try MeetingDateTime.apply(chosen, timeZone: zone, to: damagedBefore)
 
-        let damagedAfter = try #require(scanner.scan().meetings.first(where: { $0.folder == damagedSession.directory }))
+        let damagedAfter = try #require(scanner.scan().meetings.first(where: { $0.id == damagedBefore.id }))
         #expect(damagedAfter.userStartedAt == "2026-11-23T14:36:00+01:00")
         #expect(damagedAfter.state.transcript == .damaged)
         #expect(damagedAfter.transcriptReferenced == true)
@@ -282,17 +282,43 @@ import CassiniRecording
         #expect(imported.meetingTime == nil)
 
         final class Gate: @unchecked Sendable {
-            let entered = DispatchSemaphore(value: 0)
             let release = DispatchSemaphore(value: 0)
             let lock = NSLock()
             var ranOffMainThread = false
+            private var didEnter = false
+            private var enteredContinuation: CheckedContinuation<Void, Never>?
+
+            func markEntered() {
+                let continuation: CheckedContinuation<Void, Never>? = lock.withLock {
+                    didEnter = true
+                    let pending = enteredContinuation
+                    enteredContinuation = nil
+                    return pending
+                }
+                continuation?.resume()
+            }
+
+            func waitForEntry() async {
+                await withCheckedContinuation { continuation in
+                    let alreadyEntered = lock.withLock {
+                        if didEnter {
+                            return true
+                        }
+                        enteredContinuation = continuation
+                        return false
+                    }
+                    if alreadyEntered {
+                        continuation.resume()
+                    }
+                }
+            }
         }
 
         // 1. Non-blocking open on MainActor + off-main-actor metadata read + publication.
         let gate1 = Gate()
         let loader1 = MeetingDateTime.PrefillLoader { _ in
             gate1.lock.withLock { gate1.ranOffMainThread = !Thread.isMainThread }
-            gate1.entered.signal()
+            gate1.markEntered()
             gate1.release.wait()
             return savedAt
         }
@@ -305,7 +331,7 @@ import CassiniRecording
         #expect(published1[0].0 == MeetingDateTime.Prefill(date: now, fromFileSavedTime: false))
         #expect(published1[0].1 == true)
 
-        await Task.detached { gate1.entered.wait() }.value
+        await gate1.waitForEntry()
         #expect(gate1.lock.withLock { gate1.ranOffMainThread })
         gate1.release.signal()
         await task1?.value
@@ -319,7 +345,7 @@ import CassiniRecording
         // 2. Cancellation and superseding drop stale in-flight results.
         let gate2 = Gate()
         let loader2 = MeetingDateTime.PrefillLoader { _ in
-            gate2.entered.signal()
+            gate2.markEntered()
             gate2.release.wait()
             return savedAt
         }
@@ -327,7 +353,7 @@ import CassiniRecording
         let staleTask = loader2.load(for: imported, now: now, timeZone: zone) { prefill, isPending in
             published2.append((prefill, isPending))
         }
-        await Task.detached { gate2.entered.wait() }.value
+        await gate2.waitForEntry()
         // Supersede with a known-date meeting (completes synchronously with no I/O) before gate2 releases.
         let knownDate = try #require(MeetingTime.parseInstant("2026-11-20T08:00:00Z"))
         var knownMeeting = imported
