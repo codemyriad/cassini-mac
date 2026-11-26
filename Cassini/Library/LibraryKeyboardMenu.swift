@@ -48,6 +48,9 @@ import CassiniLibrary
         let renameItem = ActionItem(title:UXText.text("meeting.renameEllipsis")) { if let meeting { MeetingRenameCoordinator.shared.show(meeting) } }
         renameItem.isEnabled = meeting.map { MeetingRenameCoordinator.shared.canRename($0) } ?? false
         renameItem.setAccessibilityIdentifier("library-keyboard-rename"); menu.addItem(renameItem)
+        let dateTimeItem = ActionItem(title:UXText.text("meeting.setDateTimeEllipsis")) { if let meeting { MeetingDateTimeCoordinator.shared.show(meeting) } }
+        dateTimeItem.isEnabled = meeting.map { MeetingDateTimeCoordinator.shared.canSetDateTime($0) } ?? false
+        dateTimeItem.setAccessibilityIdentifier("library-keyboard-set-date-time"); menu.addItem(dateTimeItem)
         let exportItem = ActionItem(title:UXText.text("common.exportEllipsis")) { if let meeting { MeetingExportCoordinator.shared.show(meeting) } }
         exportItem.isEnabled = MeetingExportCoordinator.canExport(meeting); menu.addItem(exportItem)
         if BulkZipExportCoordinator.shared.hasSelection {

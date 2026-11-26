@@ -19,6 +19,7 @@ import Observation
 
     func canTrash(_ meeting: LibraryMeeting?) -> Bool {
         guard !closing, !busy, !LibraryMoveCoordinator.shared.busy, !MeetingRenameCoordinator.shared.working,
+              !MeetingDateTimeCoordinator.shared.working,
               !LibrarySearchModel.shared.visible, let meeting,
               meeting.state.lifecycle == .saved else { return false }
         if let detail = MeetingNavigation.shared.detail, detail.meeting.folder == meeting.folder, detail.fileURL != nil { return false }
@@ -36,6 +37,7 @@ import Observation
     func move(_ meeting: LibraryMeeting, undoManager: UndoManager?) {
         guard canTrash(meeting) else { return }
         MeetingRenameCoordinator.shared.cancel()
+        MeetingDateTimeCoordinator.shared.cancel()
         busy = true; failure = nil
         task = Task {
             let location = LibraryLocationModel.shared

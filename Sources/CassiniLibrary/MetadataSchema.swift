@@ -26,6 +26,11 @@ enum MetadataSchema {
         }
         if let object = value.object {
             if let required = schema["required"]?.array, !required.allSatisfy({ value[$0.string ?? ""] != nil }) { return false }
+            if let dependent = schema["dependentRequired"]?.object {
+                for (trigger, needs) in dependent where value[trigger] != nil {
+                    guard let list = needs.array, list.allSatisfy({ value[$0.string ?? ""] != nil }) else { return false }
+                }
+            }
             for (key, child) in object {
                 if let rule = schema["properties"]?[key], !validate(child, against: rule) { return false }
             }

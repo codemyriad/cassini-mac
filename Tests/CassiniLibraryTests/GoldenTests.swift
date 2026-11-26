@@ -57,13 +57,13 @@ private enum Golden {
     @Test func goldenBytesAndCounts() throws {
         let hashes = ["format-vectors": "e418d48c7e551a90756699f42e939c7dd918f444deb302e4410af312afc32279",
                       "states-vectors": "2b946da58459452cb9fd17cacef58a3f10585a69142796cdd693e2f90fd9f497",
-                      "meeting.schema": "b20f930cdd689c779a225939e2c35f2379c965d81454b54a80aa70478c7b679e"]
+                      "meeting.schema": "dbac151cf4a4e098bf4457b11a8b8b4df283236d0b9b85db254595ab3f05e408"]
         for (name, expected) in hashes {
             #expect(SHA256.hash(data: try Golden.data(name)).map { String(format: "%02x", $0) }.joined() == expected)
         }
         #expect(MetadataSchema.bytes == (try Golden.data("meeting.schema")))
         let rules = try #require(Bundle.module.url(forResource: "LIBRARY-RULES", withExtension: "md", subdirectory: "Golden"))
-        #expect(SHA256.hash(data: try Data(contentsOf: rules)).map { String(format: "%02x", $0) }.joined() == "415d866eb4a098400c76a3975969d9764bb70eed905726fbdcf7e90e42f85ce8")
+        #expect(SHA256.hash(data: try Data(contentsOf: rules)).map { String(format: "%02x", $0) }.joined() == "1525db1ac89d2bf4cbe6ca8c1d2bf8d912bed4011b827ab2bda832c4a18465ea")
         #expect(Golden.formats.count == 76)
         #expect(Golden.states.count == 18)
         #expect(Golden.entryStates.count == 1)

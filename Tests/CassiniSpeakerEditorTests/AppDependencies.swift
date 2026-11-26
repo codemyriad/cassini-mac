@@ -13,6 +13,10 @@ import CassiniLibrary
     static let shared=MeetingTrashCoordinator()
     var busy=false
 }
+@MainActor final class MeetingDateTimeCoordinator {
+    static let shared=MeetingDateTimeCoordinator()
+    var working=false
+}
 @MainActor final class LibraryLocationModel {
     static let shared=LibraryLocationModel()
     var location=LibraryLocation(primary:FileManager.default.temporaryDirectory)

@@ -340,6 +340,7 @@ public enum LibraryImport {
             guard case .success? = verified.audioDigest else { throw MetadataError.invalid }
             file = verified
         }
+        Self.preserveModificationTime(from: source, to: original)
 
         if shouldCancel() { throw CancellationError() }
         let trusted = [.ok, .plainAudio].contains(file.state)
@@ -357,6 +358,10 @@ public enum LibraryImport {
             metadata["notes"] = importedNotes
             if trusted, let route = Self.importedOthersRoute(file.manifest?.raw["x"]?["codemyriad.io"]) {
                 metadata["recordingDetails"] = ["othersRoute": route]
+            }
+            if trusted, let userStartedAt = file.userStartedAt {
+                metadata["startedAt"] = userStartedAt
+                metadata["startedAtSource"] = "user"
             }
             if let title { metadata["title"] = String(String.UnicodeScalarView(title.unicodeScalars.prefix(500))) }
             if let transcript = Self.importedTranscript(file) { metadata["transcript"] = transcript }
@@ -541,6 +546,7 @@ public enum LibraryImport {
                 return .duplicate(duplicate)
             }
         }
+        Self.preserveModificationTime(from: source, to: original)
 
         if shouldCancel() { throw CancellationError() }
         let trusted = [.ok,.plainAudio].contains(file.state)
@@ -559,6 +565,10 @@ public enum LibraryImport {
             metadata["notes"] = importedNotes
             if trusted, let route = Self.importedOthersRoute(file.manifest?.raw["x"]?["codemyriad.io"]) {
                 metadata["recordingDetails"] = ["othersRoute":route]
+            }
+            if trusted, let userStartedAt = file.userStartedAt {
+                metadata["startedAt"] = userStartedAt
+                metadata["startedAtSource"] = "user"
             }
             if let title { metadata["title"] = String(String.UnicodeScalarView(title.unicodeScalars.prefix(500))) }
             if let transcript = Self.importedTranscript(file) { metadata["transcript"] = transcript }
@@ -616,5 +626,13 @@ public enum LibraryImport {
             return ["status":"done","reference":["kind":"embedded","file":"original.opus","transcriptId":selected.entry.id]]
         }
         return !trusted || selected != nil ? ["status":"damaged","reference":NSNull()] : nil
+    }
+
+    /// Preserve the source file's last-saved time on the imported copy so "Set date and time…"
+    /// can offer a prefill suggestion when the file carries no embedded recording time (D-1165).
+    /// Never used as the meeting start unless the person saves it.
+    private static func preserveModificationTime(from source: URL, to destination: URL) {
+        guard let mtime = (try? FileManager.default.attributesOfItem(atPath: source.path)[.modificationDate]) as? Date else { return }
+        try? FileManager.default.setAttributes([.modificationDate: mtime], ofItemAtPath: destination.path)
     }
 }

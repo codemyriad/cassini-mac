@@ -153,7 +153,7 @@ struct MeetingExportTests {
         #expect(file.state == .ok && file.manifest?.audio.sampleCount == 48000)
         #expect(file.manifest?.meeting.recordedAtLocal == nil)
         #expect(file.manifest?.meeting.recordedAtUtc == nil)
-        #expect(file.tags?["DATE"] == file.manifest?.meeting.createdAtUtc)
+        #expect(file.tags?["DATE"] == nil)
         #expect(file.manifest?.raw["meeting"]?["recordedAtUtc"] == nil)
         #expect(file.manifest?.raw["x"]?["gocassini.com"]?["recovery"]?["offsetsAssumedZero"] == .bool(true))
         #expect(file.manifest?.meeting.createdAtUtc == expected)
@@ -282,7 +282,7 @@ struct MeetingExportTests {
         for (index,m) in [direct,imported].enumerated() {
             let artifact=try MeetingFileExporter.cassini(m,assets:nil,temporaryRoot:root)
             let result=try CassiniReader.read(contentsOf:artifact.url)
-            #expect(result.tags?["DATE"]==(equivalent ? created : date))
+            #expect(result.tags?["DATE"]==(equivalent ? nil : date))
             #expect(result.manifest?.meeting.createdAtUtc==created)
             #expect(result.meetingTime?.value==(equivalent ? nil : date))
             let again=try LibraryImport.copy(artifact.url,into:root.appendingPathComponent("Again-"+String(index)))
@@ -306,12 +306,16 @@ struct MeetingExportTests {
         let plain = try CassiniReader.read(contentsOf:plainExport.url)
         #expect(plain.manifest?.meeting.recordedAtLocal == nil)
         #expect(plain.manifest?.raw["meeting"]?["recordedAtUtc"] == nil)
-        let manifest = try #require(plain.manifest?.raw)
+        var manifest = try #require(plain.manifest?.raw)
         var info = try #require(manifest["meeting"])
         info = try info.setting("createdAtUtc",to:.string("2020-01-02T03:04:05Z"))
         info = try info.setting("recordedAtUtc",to:.string("2001-02-02T19:05:06.125Z"))
         info = try info.setting("recordedAtLocal",to:recorded)
-        let changed = try manifest.setting("meeting",to:info)
+        manifest = try manifest.setting("meeting",to:info)
+        if let x = manifest["x"], let ns = x["codemyriad.io"] {
+            manifest = try manifest.setting("x",to:x.setting("codemyriad.io",to:ns.setting("namePrefixSource",to:.string("recorded"))))
+        }
+        let changed = manifest
         let tagged = root.appendingPathComponent("Known-or-unknown.opus")
         _ = try OpusStreamFile.rewrite(Data(contentsOf:plainExport.url),tags:PortableMeetingTags.make(manifest:changed,transcript:Data("{\"items\":[]}".utf8),wordCount:0),to:tagged)
         let received = try LibraryImport.copy(tagged,into:root.appendingPathComponent("Received"))
@@ -349,6 +353,9 @@ struct MeetingExportTests {
         info = try info.setting("recordedAtUtc",to:recorded)
         info = try info.setting("recordedAtLocal",to:.string(local))
         manifest = try manifest.setting("meeting",to:info)
+        if let x = manifest["x"], let ns = x["codemyriad.io"] {
+            manifest = try manifest.setting("x",to:x.setting("codemyriad.io",to:ns.setting("namePrefixSource",to:.string("recorded"))))
+        }
         let tagged = root.appendingPathComponent("Invalid UTC.opus")
         // The generic packer intentionally allows adversarial optional fields for reader fixtures.
         let tags = try PortableMeetingTags.make(manifest:manifest,transcript:Data("{\"items\":[]}".utf8),wordCount:0)
@@ -363,8 +370,8 @@ struct MeetingExportTests {
             #expect(result.manifest?.raw["meeting"]?["recordedAtUtc"] == nil)
             #expect(result.tags?["CASSINI_RECORDED_AT_UTC"] == nil)
             #expect(result.manifest?.meeting.recordedAtLocal == local)
-            // An offset DATE supplied by the original remains a legitimate legacy instant.
-            let expectedDate = recorded == .string("2001-02-03T04:05:06+01:00") ? recorded.string : created
+            // An offset DATE supplied by the original remains a legitimate legacy instant; unknown starts omit DATE (D112).
+            let expectedDate: String? = recorded == .string("2001-02-03T04:05:06+01:00") ? recorded.string : nil
             #expect(result.tags?["DATE"] == expectedDate)
             #expect(result.manifest?.meeting.createdAtUtc == created)
             #expect(result.manifest?.meeting.id == file.manifest?.meeting.id)

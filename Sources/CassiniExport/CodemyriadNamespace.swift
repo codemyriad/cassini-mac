@@ -13,7 +13,7 @@ enum CodemyriadNamespace {
     static let key = "codemyriad.io"
     /// meeting.json members placed in `meeting`; all other members (except the session
     /// link, notes and published) go to `passthrough`.
-    static let meetingMembers = ["version","title","titleSource","speakers","speakerMerges","transcript","etaMinutes","error","quoteOverride","received","recordingDetails"]
+    static let meetingMembers = ["version","title","titleSource","speakers","speakerMerges","transcript","etaMinutes","error","quoteOverride","received","recordingDetails","startedAt","startedAtSource"]
     static let linkMembers: Set<String> = ["id","revision","notes","namePrefix","namePrefixSource","published"]
     /// Mac-local meeting.json member, never exported: for a received file carrying another
     /// writer's schema-1 namespace, the revision Mac last gave that namespace and a digest of
@@ -92,11 +92,11 @@ enum CodemyriadNamespace {
     /// D55.1: the namePrefix is chosen once, on the first export, and saved into meeting.json,
     /// so later exports keep the same name. An existing one is never recomputed. D65 (Q6b): a
     /// meeting without a title saves its untitled fallback, in the language of that export, too.
-    static func persistNamePrefix(_ meeting: LibraryMeeting, dateTag: String?, now: Date, zone: TimeZone) throws {
+    static func persistNamePrefix(_ meeting: LibraryMeeting, dateTag: String?, persistPrefix: Bool = true, now: Date, zone: TimeZone) throws {
         // Metadata this app cannot validate is never rewritten; the export still goes ahead.
         guard !meeting.metadataReadOnly, !meeting.issues.contains(.invalidMetadata) else { return }
         let stored = (try? Data(contentsOf:meeting.folder.appendingPathComponent("meeting.json"))).flatMap { try? JSONParser.parse($0) }
-        let keptPrefix = stored?["namePrefix"]?.string.map(LibraryNames.isPrefix) ?? false
+        let keptPrefix = !persistPrefix || (stored?["namePrefix"]?.string.map(LibraryNames.isPrefix) ?? false)
         let needsUntitled = meeting.titleIsUntitled && untitled(stored) == nil
         if keptPrefix && !needsUntitled { return }
         let raw = stored ?? (try? JSONParser.parse(JSONSerialization.data(withJSONObject:MeetingMetadataWriter.defaultDocument(id:meeting.id)))) ?? .object([])
@@ -252,6 +252,10 @@ enum CodemyriadNamespace {
             set("title",title); set("titleSource",.string("user"))
         } else if raw["titleSource"]?.string == "meeting-window", raw["title"] == .null, copy["title"] != .null {
             set("title",.null); set("titleSource",.string("meeting-window"))
+        }
+        // D112 (L-87): a date and time the user set on Mac travels verbatim in x.meeting.
+        if raw["startedAtSource"]?.string == "user", let startedAt = raw["startedAt"], startedAt.string != nil {
+            set("startedAt",startedAt); set("startedAtSource",.string("user"))
         }
         // Transcription state Mac produced (the words travel in the file's own transcript).
         // A missing or null transcript (not schema-valid, but seen) gains Mac's state too.
