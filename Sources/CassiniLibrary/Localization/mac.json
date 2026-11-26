@@ -589,6 +589,27 @@
           "text": "menos de 1 s"
         }
       }
+    },
+    {
+      "id": "mac.imported.notTranscribed",
+      "en": "Not transcribed yet.",
+      "l10n": {
+        "it": {
+          "text": "Non ancora trascritto."
+        },
+        "fr": {
+          "text": "Pas encore transcrit."
+        },
+        "es": {
+          "text": "Aún no transcrito."
+        },
+        "pt-BR": {
+          "text": "Ainda não transcrito."
+        },
+        "pt-PT": {
+          "text": "Ainda não transcrito."
+        }
+      }
     }
   ]
 }

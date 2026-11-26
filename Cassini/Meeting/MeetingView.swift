@@ -202,6 +202,23 @@ struct MeetingView: View {
     }
     private var transcriptContent: some View {
         LazyVStack(alignment: .leading, spacing: 14) {
+            if !isTranscribing && meeting.canWriteDown && meeting.state.transcript == .none {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(UXText.mac("imported.notTranscribed"))
+                        .foregroundStyle(CassiniTheme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("transcript-not-transcribed")
+                    Button(UXText.text("common.writeDown")) {
+                        TranscriptionQueue.shared.writeDown(model)
+                    }
+                    .buttonStyle(.bordered)
+                    .contentShape(RoundedRectangle(cornerRadius: 6))
+                    .clipped()
+                    .disabled(LibraryMoveCoordinator.shared.busy || TranscriptionQueue.shared.isStopping(meeting.folder))
+                    .accessibilityIdentifier("meeting-write-down")
+                }
+            }
             if meeting.hasNoSpeech {
                 // A Library move disables Write down again only (the line disables it); the
                 // permission hint's Open System Settings stays available, as in Recording details.

@@ -35,6 +35,15 @@ extension LibraryFormat {
             ["day":unknownDate,"duration":durationMs.map {Self.meetingDuration($0,locale:locale,language:language)} ?? ""],
             locale:locale,language:language,omitting:durationMs == nil ? ["time","duration"] : ["time"])
     }
+    /// Splits `previewSubtitle` into its clickable date/time prefix and any trailing metadata suffix.
+    public func previewSubtitleParts(_ time: MeetingTime?, durationMs: Int64?, received: Bool = false, transcribedOnAnotherDevice: Bool = false) -> (date: String, suffix: String) {
+        let dateOnly = previewSubtitle(time, durationMs: nil, received: false, transcribedOnAnotherDevice: false)
+        let full = previewSubtitle(time, durationMs: durationMs, received: received, transcribedOnAnotherDevice: transcribedOnAnotherDevice)
+        if full.hasPrefix(dateOnly) {
+            return (dateOnly, String(full.dropFirst(dateOnly.count)))
+        }
+        return (full, "")
+    }
     public func searchDate(_ time:MeetingTime?) -> String {time.map {searchDate($0)} ?? unknownDate}
     public func searchContext(_ time:MeetingTime?,durationMs:Int64?,positionMs:Int64) -> String {
         if let time {return searchContext(time,durationMs:durationMs,positionMs:positionMs)}

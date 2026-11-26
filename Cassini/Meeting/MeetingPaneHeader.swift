@@ -9,17 +9,20 @@ struct MeetingPaneHeader: View {
     @Bindable var model: MeetingDetailModel
     let format: LibraryFormat
     @State private var rename = MeetingRenameCoordinator.shared
+    @State private var dateTime = MeetingDateTimeCoordinator.shared
     @State private var editingTitle = false
+    @State private var hoveringDate = false
     private var meeting: LibraryMeeting { model.meeting }
 
     var body: some View {
         let title = meeting.title ?? UXText.text("library.untitled")
-        let subtitle = format.previewSubtitle(
+        let subtitleParts = format.previewSubtitleParts(
             meeting.meetingTime,
             durationMs: meeting.durationMs,
             received: meeting.state.origin == .received,
             transcribedOnAnotherDevice: meeting.transcribedOnAnotherDevice
         )
+        let canSetDate = dateTime.canSetDateTime(meeting)
         let visibleSpeakers = meeting.visibleSpeakers
         let showSpeakers = !TranscribingPresentation.isActive(meeting.state) && !visibleSpeakers.isEmpty
 
@@ -36,13 +39,39 @@ struct MeetingPaneHeader: View {
                     editing: $editingTitle,
                     onCommit: { newTitle in rename.renameInline(meeting, to: newTitle) }
                 )
-                Text(subtitle)
-                    .font(.system(size: 13))
-                    .foregroundStyle(CassiniTheme.ink2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .opacity(editingTitle ? 0 : 1)
-                    .accessibilityHidden(editingTitle)
-                    .accessibilityIdentifier("meeting-inline-subtitle")
+                HStack(spacing: 0) {
+                    if canSetDate {
+                        Button {
+                            dateTime.show(meeting)
+                        } label: {
+                            Text(subtitleParts.date)
+                                .foregroundStyle(CassiniTheme.ink2)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(hoveringDate ? CassiniTheme.ink.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, -4)
+                        .onHover { hoveringDate = $0 }
+                        .help(UXText.text("meeting.setDateTime"))
+                        .accessibilityLabel(subtitleParts.date)
+                        .accessibilityHint(UXText.text("meeting.setDateTime"))
+                        .accessibilityIdentifier("meeting-inline-date")
+                    } else {
+                        Text(subtitleParts.date)
+                            .foregroundStyle(CassiniTheme.ink2)
+                    }
+                    if !subtitleParts.suffix.isEmpty {
+                        Text(subtitleParts.suffix)
+                            .foregroundStyle(CassiniTheme.ink2)
+                    }
+                }
+                .font(.system(size: 13))
+                .fixedSize(horizontal: false, vertical: true)
+                .opacity(editingTitle ? 0 : 1)
+                .accessibilityHidden(editingTitle)
+                .accessibilityIdentifier("meeting-inline-subtitle")
             }
             if let badge = LibraryBadgeCatalog.presentation(for: meeting),
                ["needsAttention", "interrupted"].contains(badge.kind) {

@@ -642,13 +642,6 @@ struct LibraryView: View {
         ToolbarItem(placement: .automatic) { Spacer() }
         #endif
         if let detail = navigation.savedDetail {
-            if let spec = meetingTranscriptionToolbarSpec(detail) {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(spec.title, action: spec.action)
-                        .disabled(!spec.enabled)
-                        .accessibilityIdentifier(spec.identifier)
-                }
-            }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     if detail.find.visible { detail.find.close() }
@@ -1152,20 +1145,6 @@ struct LibraryView: View {
 
     private func readTranscript(_ meeting: LibraryMeeting) {
         sessionPlayback.stop(); navigation.open(meeting)
-    }
-    private struct TranscriptionToolbarSpec {
-        let title: String
-        let identifier: String
-        let enabled: Bool
-        let action: () -> Void
-    }
-    private func meetingTranscriptionToolbarSpec(_ detail: MeetingDetailModel) -> TranscriptionToolbarSpec? {
-        let busy = LibraryMoveCoordinator.shared.busy || transcriptionQueue.isStopping(detail.meeting.folder)
-        if detail.meeting.canWriteDown && detail.meeting.state.transcript == .none {
-            let title = UXText.text("common.writeDown")
-            return .init(title:title,identifier:"meeting-write-down",enabled:!busy) { TranscriptionQueue.shared.writeDown(detail) }
-        }
-        return nil
     }
 }
 
