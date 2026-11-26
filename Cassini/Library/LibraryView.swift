@@ -16,10 +16,15 @@ struct LibraryView: View {
     @State private var searchFixturePrepared = false
     @State private var screenshotTestSheet = false
     #endif
+    private static let narrowSidebarThreshold: CGFloat = 920
     @State private var toolbarWidth: CGFloat = 1120
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var userHidSidebar = false
+    @State private var autoCollapsedSidebar = false
+    @State private var floatingSidebarOpen = false
     @State private var sidebarSearchPresented = false
     @State private var sidebarWidth: CGFloat = 390
+    private var isNarrowWindow: Bool { toolbarWidth < Self.narrowSidebarThreshold }
     @State private var recordCoordinator = RecordCoordinator.shared
     @State private var recorder = RecordingController.shared
     @State private var companionSetup = CompanionSetup.shared
@@ -48,8 +53,8 @@ struct LibraryView: View {
                 else if showsFirstRun { firstRun }
                 else { split }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
-                .onAppear { toolbarWidth = geometry.size.width }
-                .onChange(of: geometry.size.width) { _, width in toolbarWidth = width }
+                .onAppear { handleWindowWidthChange(geometry.size.width) }
+                .onChange(of: geometry.size.width) { _, width in handleWindowWidthChange(width) }
         }
         .modifier(VoicesQuestionPresentation())
         .font(.system(size: 13))
@@ -75,8 +80,24 @@ struct LibraryView: View {
             if phase == .active { Task { await speechModels.refreshRecommendation() } }
         }
         .onChange(of: search.sidebarFocusRequest) { _, _ in
-            columnVisibility = .all
+            if isNarrowWindow {
+                floatingSidebarOpen = true
+            } else {
+                userHidSidebar = false
+                columnVisibility = .all
+            }
             sidebarSearchPresented = true
+        }
+        .onChange(of: columnVisibility) { _, newValue in
+            if isNarrowWindow {
+                if newValue != .detailOnly {
+                    columnVisibility = .detailOnly
+                    floatingSidebarOpen.toggle()
+                }
+            } else {
+                autoCollapsedSidebar = false
+                userHidSidebar = (newValue == .detailOnly)
+            }
         }
         .onChange(of: search.query) { _, query in
             if !query.isEmpty && !search.visible {
@@ -89,7 +110,7 @@ struct LibraryView: View {
                 search.open()
             }
         }
-        .frame(minWidth: showsFirstRun ? 560 : nil, minHeight: 480)
+        .frame(minWidth: 560, minHeight: 480)
         .modifier(LibraryWindowTitleModifier(
             savedDetail: navigation.savedDetail,
             showsFirstRun: showsFirstRun,
@@ -301,9 +322,14 @@ struct LibraryView: View {
                 }
                 #endif
             }
-            .frame(minWidth: 300)
+            .frame(minWidth: 520)
             .toolbar {
                 detailToolbar
+            }
+        }
+        .overlay(alignment: .leading) {
+            if isNarrowWindow && floatingSidebarOpen {
+                floatingSidebarOverlay
             }
         }
         .searchable(
@@ -312,6 +338,78 @@ struct LibraryView: View {
             placement: .sidebar,
             prompt: UXText.text("search.field.placeholder")
         )
+    }
+
+    private func handleWindowWidthChange(_ width: CGFloat) {
+        let wasNarrow = toolbarWidth < Self.narrowSidebarThreshold
+        toolbarWidth = width
+        let nowNarrow = width < Self.narrowSidebarThreshold
+        if nowNarrow {
+            if columnVisibility != .detailOnly {
+                autoCollapsedSidebar = true
+                columnVisibility = .detailOnly
+            }
+        } else if wasNarrow {
+            if floatingSidebarOpen {
+                floatingSidebarOpen = false
+                userHidSidebar = false
+                autoCollapsedSidebar = false
+                columnVisibility = .all
+            } else if !userHidSidebar && autoCollapsedSidebar {
+                autoCollapsedSidebar = false
+                columnVisibility = .all
+            }
+        }
+    }
+
+    private var floatingSidebarOverlay: some View {
+        let overlayWidth = min(390, max(280, toolbarWidth - 60))
+        return ZStack(alignment: .leading) {
+            Color.black.opacity(0.001)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { floatingSidebarOpen = false }
+                .accessibilityHidden(true)
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    Button {
+                        floatingSidebarOpen = false
+                    } label: {
+                        Image(systemName: "sidebar.left")
+                            .font(.system(size: 14))
+                            .foregroundStyle(CassiniTheme.ink)
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(UXText.text("library.listPane.a11y"))
+                    .accessibilityIdentifier("floating-sidebar-toggle")
+                    Spacer(minLength: 0)
+                    sidebarImportButton
+                    if showsLiveToolbarPill {
+                        liveRecordingToolbarControl(height: 24)
+                    } else {
+                        sidebarRecordButton(height: 24)
+                    }
+                }
+                .padding(.leading, 76)
+                .padding(.trailing, 10)
+                .padding(.top, 10)
+                .padding(.bottom, 6)
+                sidebarColumn
+            }
+            .frame(width: overlayWidth)
+            .frame(maxHeight: .infinity)
+            .cassiniSidebarBackground()
+            .overlay(alignment: .trailing) {
+                Rectangle().fill(CassiniTheme.cardStroke).frame(width: 1)
+            }
+            .shadow(color: CassiniTheme.shadow, radius: 18, x: 4, y: 0)
+            .ignoresSafeArea(edges: .top)
+            .onExitCommand { floatingSidebarOpen = false }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("floating-sidebar")
+        }
     }
 
     private var showsLiveToolbarPill: Bool {
@@ -667,6 +765,7 @@ struct LibraryView: View {
                                             if NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
                                                 store.selectedKey = meeting.libraryKey
                                                 openSelection(userInitiated: true)
+                                                if floatingSidebarOpen { floatingSidebarOpen = false }
                                                 LibraryKeyboardMenu.focusList()
                                                 DispatchQueue.main.async { LibraryKeyboardMenu.focusList() }
                                             }
