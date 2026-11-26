@@ -15,6 +15,9 @@ struct AppMetadata: Decodable {
     let error: MeetingIssue?
     let quoteOverride: MeetingQuote?
     let received: Received?
+    let namePrefixSource: String?
+    let startedAt: String?
+    let startedAtSource: String?
     /// D24/UX16: ordered merge history; resolved by SpeakerMerges when the meeting is read.
     let speakerMerges: [SpeakerMerge]?
     struct SpeakerMerge: Decodable { let from: String; let into: String }
@@ -53,6 +56,10 @@ struct AppMetadata: Decodable {
             try require((0...Self.safe).contains(received.importedAtMs))
         } else { try require(!isReceived) }
         if let quoteOverride { try require((0...Self.safe).contains(quoteOverride.atMs) && !quoteOverride.text.isEmpty && quoteOverride.text.unicodeScalars.count <= 100000) }
+        try require((startedAt == nil) == (startedAtSource == nil))
+        if let startedAt, let startedAtSource {
+            try require(startedAtSource == "user" && MeetingTime.isValidStartedAt(startedAt))
+        }
     }
 }
 enum MetadataError: Error { case invalid, unsupportedVersion }

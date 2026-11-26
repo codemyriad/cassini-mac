@@ -157,6 +157,7 @@ import CassiniLibrary
 
     func canRename(_ meeting: LibraryMeeting?) -> Bool {
         guard !closing, !working, !LibraryMoveCoordinator.shared.busy, !MeetingTrashCoordinator.shared.busy,
+              !MeetingDateTimeCoordinator.shared.working,
               let meeting, meeting.state.lifecycle == .saved, !meeting.metadataReadOnly,
               !LibraryStore.shared.context.screenshot, LibraryLocationModel.shared.available, !LibraryStore.shared.offline else { return false }
         if let detail = MeetingNavigation.shared.detail, detail.meeting.folder == meeting.folder, detail.fileURL != nil { return false }

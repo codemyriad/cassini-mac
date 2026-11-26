@@ -17,7 +17,7 @@ public enum MeetingExportKind: String, Sendable, CaseIterable {
         }
     }
     public static func primary(for meeting: LibraryMeeting) -> [Self] {
-        let audio: Self = meeting.state.origin == .received && !meeting.hasCassiniFile && meeting.state.transcript != .done ? .originalAudio : .cassini
+        let audio: Self = meeting.state.origin == .received && !meeting.hasCassiniFile && meeting.state.transcript != .done && meeting.userStartedAt == nil ? .originalAudio : .cassini
         return meeting.state.transcript == .done ? [audio, .markdown] : [audio]
     }
     public static func more(for meeting: LibraryMeeting) -> [Self] {

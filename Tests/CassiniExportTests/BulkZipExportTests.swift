@@ -442,7 +442,10 @@ import CassiniRecording
         let seedArtifact = try MeetingFileExporter.cassini(seedScanned, assets: nil, temporaryRoot: root)
         let seedBytes = try Data(contentsOf: seedArtifact.url)
         let seedParsed = try CassiniReader.read(seedBytes)
-        let baseManifest = try #require(seedParsed.manifest?.raw)
+        var baseManifest = try #require(seedParsed.manifest?.raw)
+        if let x = baseManifest["x"], let ns = x["codemyriad.io"] {
+            baseManifest = try baseManifest.setting("x", to: x.setting("codemyriad.io", to: ns.setting("namePrefixSource", to: .string("date-tag"))))
+        }
         let txBody = Data("{\"language\":\"en\",\"items\":[{\"speaker\":\"s1\",\"startMs\":0,\"endMs\":400,\"text\":\"Embedded original words\"}]}".utf8)
         let txSet = try PortableMeetingTags.transcripts(own: (txBody, "en", 1), carried: nil)
         let customTags = [Comment(name: "ARTIST", value: "Original Producer"), Comment(name: "DATE", value: "2025-05-06T07:08:09+02:00")]

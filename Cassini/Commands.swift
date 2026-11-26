@@ -57,6 +57,9 @@ struct AppCommands: Commands {
             Button(UXText.text("meeting.renameEllipsis")) {
                 if let meeting = MeetingRenameCoordinator.shared.commandMeeting { MeetingRenameCoordinator.shared.show(meeting) }
             }.disabled(speakerDialog || !MeetingRenameCoordinator.shared.commandEnabled)
+            Button(UXText.text("meeting.setDateTimeEllipsis")) {
+                if let meeting = MeetingDateTimeCoordinator.shared.commandMeeting { MeetingDateTimeCoordinator.shared.show(meeting) }
+            }.disabled(speakerDialog || !MeetingDateTimeCoordinator.shared.commandEnabled)
 
             Button(UXText.text("common.exportEllipsis")) { if let meeting = exportMeeting { MeetingExportCoordinator.shared.show(meeting) } }
                 .keyboardShortcut("e", modifiers: [.command, .shift]).disabled(speakerDialog || !MeetingExportCoordinator.canExport(exportMeeting))

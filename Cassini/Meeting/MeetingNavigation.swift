@@ -219,7 +219,7 @@ import Observation
     var canUseListeningCommands: Bool { listen.active && canUseTranscriptCommands }
     private var canUseTranscriptCommands: Bool {
         canPlay && !find.focused && MeetingNavigation.shared.detail === self && !LibrarySearchModel.shared.visible &&
-        MeetingRenameCoordinator.shared.presentation == nil && !MeetingExportCoordinator.shared.showing &&
+        MeetingRenameCoordinator.shared.presentation == nil && !MeetingDateTimeCoordinator.shared.showing && !MeetingExportCoordinator.shared.showing &&
         !RecordingDetailsCoordinator.shared.showing && !RecordCoordinator.shared.showingFirst &&
         CompanionSetup.shared.presenter != .library && !RecordingConfirmation.active
     }

@@ -46,7 +46,8 @@ enum ManifestParser {
             durationMs: try int(m, "meeting", "durationMs"),
             recordedAtLocal: m["recordedAtLocal"]?.string,
             processedAtUtc: m["processedAtUtc"]?.string,
-            recordedAtUtc: m["recordedAtUtc"]?.string
+            recordedAtUtc: m["recordedAtUtc"]?.string,
+            startedAt: m["startedAt"]?.string
         )
 
         let a = try object("audio")

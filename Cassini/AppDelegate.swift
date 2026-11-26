@@ -178,10 +178,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let exports = MeetingExportCoordinator.shared
             let bulkExports = BulkZipExportCoordinator.shared
             let moves = LibraryMoveCoordinator.shared
-            let wait = testHadWork || MeetingRenameCoordinator.shared.working || RecordingOverview.saving || queue.isBusy || imports.isBusy || exports.isBusy || bulkExports.isBusy || moves.busy || MeetingTrashCoordinator.shared.busy || RecordingPageModel.hasPendingEdits
+            let wait = testHadWork || MeetingRenameCoordinator.shared.working || MeetingDateTimeCoordinator.shared.working || RecordingOverview.saving || queue.isBusy || imports.isBusy || exports.isBusy || bulkExports.isBusy || moves.busy || MeetingTrashCoordinator.shared.busy || RecordingPageModel.hasPendingEdits
             CaptureCollection.shared.beginShutdown()
             imports.beginShutdown()
             MeetingRenameCoordinator.shared.beginShutdown()
+            MeetingDateTimeCoordinator.shared.beginShutdown()
             exports.beginShutdown()
             bulkExports.beginShutdown()
             moves.beginShutdown()
@@ -198,6 +199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     await queue.waitForShutdown()
                     await imports.waitForShutdown()
                     await MeetingRenameCoordinator.shared.waitForShutdown()
+                    await MeetingDateTimeCoordinator.shared.waitForShutdown()
                     await exports.waitForShutdown()
                     await bulkExports.waitForShutdown()
                     await moves.waitForShutdown()
@@ -211,6 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async { [weak self] in
           Task { @MainActor in
             await MeetingRenameCoordinator.shared.dismissForQuit()
+            await MeetingDateTimeCoordinator.shared.dismissForQuit()
             await MeetingExportCoordinator.shared.dismissForQuit()
             await BulkZipExportCoordinator.shared.dismissForQuit()
             await LibraryMoveCoordinator.shared.dismissForQuit()
@@ -229,6 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         LibraryMoveCoordinator.shared.beginShutdown()
                         MeetingTrashCoordinator.shared.beginShutdown()
                         MeetingRenameCoordinator.shared.beginShutdown()
+                        MeetingDateTimeCoordinator.shared.beginShutdown()
                         MeetingExportCoordinator.shared.beginShutdown()
                         BulkZipExportCoordinator.shared.beginShutdown()
                         LibraryImportCoordinator.shared.beginShutdown()
@@ -238,6 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         await TranscriptionQueue.shared.waitForShutdown()
                         await LibraryImportCoordinator.shared.waitForShutdown()
                         await MeetingRenameCoordinator.shared.waitForShutdown()
+                        await MeetingDateTimeCoordinator.shared.waitForShutdown()
                         await MeetingExportCoordinator.shared.waitForShutdown()
                         await BulkZipExportCoordinator.shared.waitForShutdown()
                         await LibraryMoveCoordinator.shared.waitForShutdown()
@@ -264,6 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             TranscriptionQueue.shared.beginShutdown()
             LibraryImportCoordinator.shared.beginShutdown()
             MeetingRenameCoordinator.shared.beginShutdown()
+            MeetingDateTimeCoordinator.shared.beginShutdown()
             MeetingExportCoordinator.shared.beginShutdown()
             BulkZipExportCoordinator.shared.beginShutdown()
             LibraryMoveCoordinator.shared.beginShutdown()

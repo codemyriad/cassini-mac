@@ -24,6 +24,7 @@ struct LibraryView: View {
     @State private var recorder = RecordingController.shared
     @State private var companionSetup = CompanionSetup.shared
     @State private var rename = MeetingRenameCoordinator.shared
+    @State private var dateTime = MeetingDateTimeCoordinator.shared
     @State private var updates = ApplicationUpdates.shared
     @State private var speechModels = SpeechModelController.shared
     @State private var transcriptionQueue = TranscriptionQueue.shared
@@ -142,6 +143,9 @@ struct LibraryView: View {
          .sheet(isPresented:Binding(get:{ rename.presentation == .sheet },set:{ if !$0 { rename.cancel() } })) {
             MeetingRenameView()
         }
+        .sheet(isPresented:Binding(get:{ dateTime.showing },set:{ if !$0 { dateTime.cancel() } })) {
+            MeetingDateTimeView()
+        }
         .sheet(isPresented:$exporter.showing) { if let meeting = exporter.meeting { MeetingExportSheet(meeting:meeting) } }
         .sheet(isPresented:$recordingDetails.showing) { RecordingDetailsSheet() }
         .overlay(alignment:.bottom) { MeetingExportNotice() }
@@ -166,7 +170,7 @@ struct LibraryView: View {
             store.start()
             if navigation.detail == nil { openSelection() }
         }
-        .onDisappear { rename.cancel(); sessionPlayback.stop(); navigation.back(); search.close() }
+        .onDisappear { rename.cancel(); dateTime.cancel(); sessionPlayback.stop(); navigation.back(); search.close() }
         .onChange(of: recorder.isSaving) { _,saving in
             if saving, let folder = recorder.directory { navigation.captureBeganSaving(at:folder) }
         }
@@ -621,6 +625,8 @@ struct LibraryView: View {
                                                 .accessibilityIdentifier("library-star")
                                             Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = meeting.libraryKey; rename.show(meeting) }
                                                 .disabled(store.selectedKeys.count > 1 || !rename.canRename(meeting)).accessibilityIdentifier("library-rename")
+                                            Button(UXText.text("meeting.setDateTimeEllipsis")) { store.selectedKey = meeting.libraryKey; dateTime.show(meeting) }
+                                                .disabled(store.selectedKeys.count > 1 || !dateTime.canSetDateTime(meeting)).accessibilityIdentifier("library-set-date-time")
                                             Button(UXText.text("common.exportEllipsis")) { store.selectedKey = meeting.libraryKey; exporter.show(meeting) }
                                                 .disabled(store.selectedKeys.count > 1 || !MeetingExportCoordinator.canExport(meeting))
                                                 .onAppear {

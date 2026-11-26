@@ -7,7 +7,7 @@ import CassiniLibrary
     static let shared = LibraryMoveCoordinator()
     struct FailureGroup: Identifiable { let root: URL; let names: Set<String>; var id: String { root.path } }
     private(set) var busy = false
-    var canChoose: Bool { !busy && !MeetingTrashCoordinator.shared.busy && !MeetingRenameCoordinator.shared.working && chooser == nil && !closing && !RecordingOverview.starting && !RecordingOverview.saving }
+    var canChoose: Bool { !busy && !MeetingTrashCoordinator.shared.busy && !MeetingRenameCoordinator.shared.working && !MeetingDateTimeCoordinator.shared.working && chooser == nil && !closing && !RecordingOverview.starting && !RecordingOverview.saving }
     var requiresRecordingConfirmation: Bool { RecordingOverview.active }
     var waitingCount: Int { LibraryLocationModel.shared.location.pendingMoves.filter { $0.phase == .pending }.count }
     var failures: [FailureGroup] {
@@ -83,7 +83,7 @@ import CassiniLibrary
     func beginShutdown() { closing = true; observing = false; chooser?.cancel(nil); task?.cancel(); retryTask?.cancel() }
     func waitForShutdown() async { await task?.value }
     func maybeRetryDeferred() {
-        guard !closing, !busy, !MeetingTrashCoordinator.shared.busy && !MeetingRenameCoordinator.shared.working && !MeetingExportCoordinator.shared.isBusy && !BulkZipExportCoordinator.shared.isBusy, retryTask == nil, waitingCount > 0 else { return }
+        guard !closing, !busy, !MeetingTrashCoordinator.shared.busy && !MeetingRenameCoordinator.shared.working && !MeetingDateTimeCoordinator.shared.working && !MeetingExportCoordinator.shared.isBusy && !BulkZipExportCoordinator.shared.isBusy, retryTask == nil, waitingCount > 0 else { return }
         retryTask = Task {
             do { try await Task.sleep(for:.seconds(2)) } catch { retryTask = nil; return }
             guard !closing, !busy else { retryTask = nil; return }
@@ -122,12 +122,13 @@ import CassiniLibrary
         return held
     }
     private func run(destination: FileAccessLease?, selection: Selection) {
-        guard !busy, !closing, !MeetingTrashCoordinator.shared.busy && !MeetingRenameCoordinator.shared.working else { return }; busy = true
+        guard !busy, !closing, !MeetingTrashCoordinator.shared.busy && !MeetingRenameCoordinator.shared.working && !MeetingDateTimeCoordinator.shared.working else { return }; busy = true
         CaptureCollection.shared.setLibraryMoveBlocked(true)
         task = Task {
             let location = LibraryLocationModel.shared
             do {
                 MeetingRenameCoordinator.shared.cancel()
+                MeetingDateTimeCoordinator.shared.cancel()
                 if destination != nil {
                     RecordCoordinator.shared.showingFirst = false
                     MeetingExportCoordinator.shared.cancel(); await MeetingExportCoordinator.shared.waitForShutdown()

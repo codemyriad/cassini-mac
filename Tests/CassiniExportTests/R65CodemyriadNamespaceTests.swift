@@ -619,9 +619,10 @@ struct R65CodemyriadNamespaceTests {
         let input = try CassiniReader.read(contentsOf:vector("016-two-transcripts"))
         _ = try LibraryImport.copy(vector("016-two-transcripts"),into:tagged.appendingPathComponent("Library"))
         let exported = try reexportFile(tagged)
-        for name in ["DATE","DESCRIPTION","ENCODER","CASSINI_DECODE_HINT"] {
+        for name in ["DESCRIPTION","ENCODER","CASSINI_DECODE_HINT"] {
             #expect(exported.tags?[name] != nil && exported.tags?[name] == input.tags?[name],"\(name) carried")
         }
+        #expect(exported.tags?["DATE"] == nil,"unknown-start export omits DATE (D112)")
     }
     /// A copy of `source` with its manifest and tags changed, the manifest chunk set rebuilt.
     private func rewritten(_ source: URL, in root: URL, manifest change: (JSON) throws -> JSON,
@@ -704,7 +705,7 @@ struct R65CodemyriadNamespaceTests {
             #expect(file.tags?[name] == input.tags?[name],"\(name)")
         }
         #expect(input.tags?["ARTIST"] != nil || input.tags?["DATE"] != nil)
-        #expect(file.tags?["DATE"] == file.manifest?.meeting.createdAtUtc)
+        #expect(file.tags?["DATE"] == nil)
         #expect(file.meetingTime == nil)
     }
     /// Speakers: carried words keep the original list (nothing appended); after a Write down the
@@ -825,7 +826,7 @@ struct R65CodemyriadNamespaceTests {
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
         if input.tags?["DATE"] == nil {
             #expect(file.manifest?.meeting.createdAtUtc == iso.string(from:Date(timeIntervalSince1970:Double(imported) / 1000)))
-            #expect(file.tags?["DATE"] == file.manifest?.meeting.createdAtUtc)
+            #expect(file.tags?["DATE"] == nil)
             #expect(file.meetingTime == nil,"An artifact stamp is not a meeting time")
         }
     }
@@ -846,7 +847,7 @@ struct R65CodemyriadNamespaceTests {
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime,.withFractionalSeconds]
         #expect(file.manifest?.meeting.createdAtUtc == iso.string(from:Date(timeIntervalSince1970:Double(imported) / 1000)))
         if tag.hasSuffix("-00:00") {
-            #expect(file.tags?["DATE"] == file.manifest?.meeting.createdAtUtc)
+            #expect(file.tags?["DATE"] == nil)
             #expect(file.manifest?.meeting.recordedAtUtc == nil && file.meetingTime == nil)
         } else {
             #expect(file.manifest?.meeting.recordedAtUtc == "2026-03-03T17:45:00.000Z")

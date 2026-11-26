@@ -79,6 +79,10 @@ public final class MeetingMetadataWriter: @unchecked Sendable {
         } else {
             guard errno == ENOENT else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             document = Self.defaultDocument(id: id)
+            if !directory.lastPathComponent.hasPrefix("Received-"),
+               let legacyTranscript = Self.legacySidecarTranscript(in: fd) {
+                document["transcript"] = legacyTranscript
+            }
         }
         try edit(&document)
         let edited = try JSONSerialization.data(withJSONObject: document, options: [.sortedKeys, .prettyPrinted])
@@ -103,5 +107,23 @@ public final class MeetingMetadataWriter: @unchecked Sendable {
         }
         guard fsync(output) == 0, renameat(fd, temporary, fd, "meeting.json") == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         if fsync(fd) != 0 && errno != EINVAL { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+    }
+    /// When creating `meeting.json` for a legacy `Recording-*` folder that already has
+    /// `transcript.json`, preserve the scanner's derived status and sidecar reference atomically
+    /// under the folder lock (R2.3/R3) so the first metadata write never hides existing words.
+    private static func legacySidecarTranscript(in dirFD: Int32) -> [String: Any]? {
+        var info = stat()
+        guard fstatat(dirFD, "transcript.json", &info, AT_SYMLINK_NOFOLLOW) == 0 else { return nil }
+        let reference: [String: Any] = ["kind": "sidecar", "file": "transcript.json", "format": "cassini.words.v1"]
+        let transcriptFD = openat(dirFD, "transcript.json", O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard transcriptFD >= 0 else { return ["status": "damaged", "reference": reference] }
+        defer { Darwin.close(transcriptFD) }
+        guard fstat(transcriptFD, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
+              let data = try? regularData(transcriptFD, limit: 64 * 1024 * 1024),
+              let body = try? decodeJSON(LibraryWords.self, data: data),
+              (try? body.validate()) != nil else {
+            return ["status": "damaged", "reference": reference]
+        }
+        return ["status": "done", "reference": reference]
     }
 }
