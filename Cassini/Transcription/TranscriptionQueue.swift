@@ -33,7 +33,12 @@ private final class OffMainModelBox: @unchecked Sendable {
     private(set) var active: URL?
     private(set) var activeModel: String?
     private(set) var following: URL?
+    private(set) var queuedFolders = Set<String>()
     private(set) var stoppingFolders = Set<String>()
+    func isQueuedOrActive(_ folder: URL) -> Bool {
+        let path = folder.path
+        return !stoppingFolders.contains(path) && (active?.path == path || queuedFolders.contains(path))
+    }
     @ObservationIgnored private var stoppingTasks: [String:Task<Void,Never>] = [:]
     @ObservationIgnored private var pending: [LibraryMeeting] = []
     @ObservationIgnored private var automaticPending = Set<String>()
@@ -159,6 +164,7 @@ private final class OffMainModelBox: @unchecked Sendable {
         let path = meeting.folder.path, id = meeting.id, folder = meeting.folder
         guard !closing, !trashing.contains(path), !stoppingFolders.contains(path), !meeting.metadataReadOnly else { return nil }
         stoppingFolders.insert(path)
+        queuedFolders.remove(path)
         pending.removeAll { $0.folder.path == path }; prepared.remove(path)
         automaticPending.remove(path); explicitRetries.remove(path)
         let child = active?.path == path ? task : nil
@@ -199,6 +205,7 @@ private final class OffMainModelBox: @unchecked Sendable {
     func cancel(meeting folder: URL) async {
         let path = folder.path
         trashing.insert(path)
+        queuedFolders.remove(path)
         pending.removeAll { $0.folder.path == path }; prepared.remove(path)
         automaticPending.remove(path); explicitRetries.remove(path)
         let child = active?.path == path ? task : nil
@@ -232,7 +239,7 @@ private final class OffMainModelBox: @unchecked Sendable {
     func waitForShutdown() async {
         await terminateWarmWorkerAndWait()
         await preparation?.value
-        pending.removeAll(); prepared.removeAll()
+        pending.removeAll(); prepared.removeAll(); queuedFolders.removeAll()
         automaticPending.removeAll(); explicitRetries.removeAll()
         await task?.value
         await waitForWorkerTeardown()
@@ -266,7 +273,7 @@ private final class OffMainModelBox: @unchecked Sendable {
         paused = true
         await terminateWarmWorkerAndWait()
         await preparation?.value
-        pending.removeAll(); prepared.removeAll()
+        pending.removeAll(); prepared.removeAll(); queuedFolders.removeAll()
         automaticPending.removeAll(); explicitRetries.removeAll()
         #if DEBUG
         if !stoppingTasks.isEmpty { fixtureOnBarrierAwaitingStops?("move") }
@@ -343,6 +350,7 @@ private final class OffMainModelBox: @unchecked Sendable {
         schedulingFailures.remove(path)
         if automatic { automaticPending.insert(path); explicitRetries.remove(path) }
         else { automaticPending.remove(path); if retry { explicitRetries.insert(path) } else { explicitRetries.remove(path) } }
+        queuedFolders.insert(path)
         pending.append(meeting); preparePending()
     }
     func writeDown(_ detail: MeetingDetailModel) {
@@ -378,6 +386,7 @@ private final class OffMainModelBox: @unchecked Sendable {
                         }
                     }
                     if !stillEligible {
+                        queuedFolders.remove(path)
                         pending.removeAll { $0.folder.path == path }; known.remove(path)
                         automaticPending.remove(path); explicitRetries.remove(path)
                         startNext()
@@ -385,6 +394,7 @@ private final class OffMainModelBox: @unchecked Sendable {
                         prepared.insert(path); startNext()
                     }
                 } catch {
+                    queuedFolders.remove(path)
                     pending.removeAll { $0.folder.path == path }; known.remove(path)
                     automaticPending.remove(path); explicitRetries.remove(path)
                     schedulingFailures.insert(path)
@@ -398,6 +408,7 @@ private final class OffMainModelBox: @unchecked Sendable {
         let nextPath = pending[0].folder.path
         guard prepared.contains(nextPath) else { return }
         let meeting = pending.removeFirst(); active = meeting.folder
+        queuedFolders.remove(nextPath)
         prepared.remove(nextPath); automaticPending.remove(nextPath); explicitRetries.remove(nextPath)
         task = Task {
             var completedSuccessfully = false

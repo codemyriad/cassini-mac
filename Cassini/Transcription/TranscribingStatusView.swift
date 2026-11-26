@@ -71,7 +71,7 @@ struct TranscribingStatusView: View {
     }
     private var statusText: Text {
         if let eta = meeting.state.etaMinutes, eta > 0 {
-            return Text(UXText.text("transcribing.heading")).fontWeight(.semibold).foregroundColor(CassiniTheme.ink)
+            return Text(presentation.status).fontWeight(.semibold).foregroundColor(CassiniTheme.ink)
                 + Text(" · " + UXText.text("transcribing.eta.minutes",["n":String(eta)])).foregroundColor(CassiniTheme.ink2)
         }
         return Text(presentation.status).fontWeight(.semibold).foregroundColor(CassiniTheme.ink)

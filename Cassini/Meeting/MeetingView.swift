@@ -14,7 +14,9 @@ struct MeetingView: View {
     @State private var rename = MeetingRenameCoordinator.shared
     var showsCompanionSuggestion: Bool { !suggestionDismissed && !CaptureCollection.shared.connected }
     private var meeting: LibraryMeeting { model.meeting }
-    private var isTranscribing: Bool { TranscribingPresentation.isActive(meeting.state) }
+    private var isTranscribing: Bool {
+        TranscribingPresentation.isActive(meeting.state) || TranscriptionQueue.shared.isQueuedOrActive(meeting.folder)
+    }
     /// M11: paragraphs only; an aside is shown inside its host.
     private var visibleTurns: [MeetingPresentation.Turn] { model.visibleTurns }
     private func name(_ speaker: String) -> String { model.speakerName(speaker) }
@@ -497,13 +499,15 @@ struct NoSpeechTranscriptLine: View {
     var meeting: LibraryMeeting? = nil
     @State private var permissionHint = false
     var body: some View {
-        VStack(alignment:.leading,spacing:6) {
+        VStack(alignment:.leading,spacing:10) {
             HStack(alignment:.firstTextBaseline,spacing:12) {
                 Text(UXText.text("transcript.noSpeech")).foregroundStyle(CassiniTheme.secondaryInk)
                     .fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,alignment:.leading)
                     .accessibilityIdentifier("transcript-no-speech")
                 if let action {
                     Button(UXText.text("transcript.writeDownAgain"),action:action).buttonStyle(.bordered)
+                        .contentShape(RoundedRectangle(cornerRadius: 6))
+                        .clipped()
                         .disabled(LibraryMoveCoordinator.shared.busy)
                         .accessibilityIdentifier("transcript-write-down-again")
                 }
@@ -514,6 +518,9 @@ struct NoSpeechTranscriptLine: View {
                         .fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,alignment:.leading)
                         .accessibilityIdentifier("transcript-no-speech-permission-hint")
                     Button(UXText.text("errors.othersPermission.action")) { CaptureSettings.open(.others) }
+                        .buttonStyle(.bordered)
+                        .contentShape(RoundedRectangle(cornerRadius: 6))
+                        .clipped()
                         .accessibilityIdentifier("transcript-no-speech-permission-settings")
                 }
             }
