@@ -365,6 +365,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            window.attachedSheet == nil, NSApp.modalWindow == nil,
            LibrarySearchModel.shared.visible {
             LibrarySearchModel.shared.close()
+            if window.firstResponder is NSText { window.makeFirstResponder(nil) }
             return nil
         }
         if event.keyCode == 53,
