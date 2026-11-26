@@ -401,3 +401,63 @@ struct LibrarySearchField: NSViewRepresentable {
         @objc func cancel() { parent.text = ""; parent.onCancel() }
     }
 }
+
+/// Focuses the currently mounted sidebar `NSSearchField` (native `.searchable` in wide windows
+/// or embedded `LibrarySearchField` in narrow floating sidebars) and places the caret at the end.
+@MainActor enum SidebarSearchFocus {
+    static func focusLibrarySearchField(attemptsRemaining: Int = 2) {
+        let window = NSApp.windows.first { $0.accessibilityIdentifier() == "cassini-library-window" } ?? NSApp.keyWindow
+        if let window, focusMountedSearchField(in: window) {
+            return
+        }
+        guard attemptsRemaining > 1 else { return }
+        DispatchQueue.main.async {
+            focusLibrarySearchField(attemptsRemaining: attemptsRemaining - 1)
+        }
+    }
+
+    @discardableResult
+    static func focusMountedSearchField(in window: NSWindow) -> Bool {
+        if let field = findMountedSearchField(in: window.contentView) {
+            return focus(field, in: window)
+        }
+        if let items = window.toolbar?.items {
+            for item in items {
+                if let searchItem = item as? NSSearchToolbarItem {
+                    searchItem.beginSearchInteraction()
+                    let field = searchItem.searchField
+                    if field.window === window {
+                        return focus(field, in: window)
+                    }
+                    return true
+                }
+            }
+        }
+        if let frameView = window.contentView?.superview,
+           let field = findMountedSearchField(in: frameView) {
+            return focus(field, in: window)
+        }
+        return false
+    }
+
+    private static func focus(_ field: NSSearchField, in window: NSWindow) -> Bool {
+        guard window.makeFirstResponder(field) else { return false }
+        if let editor = field.currentEditor() {
+            editor.selectedRange = NSRange(location: (field.stringValue as NSString).length, length: 0)
+        }
+        return true
+    }
+
+    private static func findMountedSearchField(in root: NSView?) -> NSSearchField? {
+        guard let root, !root.isHiddenOrHasHiddenAncestor else { return nil }
+        if let field = root as? NSSearchField, field.isEnabled, field.isEditable {
+            return field
+        }
+        for subview in root.subviews {
+            if let found = findMountedSearchField(in: subview) {
+                return found
+            }
+        }
+        return nil
+    }
+}

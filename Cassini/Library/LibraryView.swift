@@ -79,13 +79,7 @@ struct LibraryView: View {
             if phase == .active { Task { await speechModels.refreshRecommendation() } }
         }
         .onChange(of: search.sidebarFocusRequest) { _, _ in
-            if isNarrowWindow {
-                floatingSidebarOpen = true
-            } else {
-                userHidSidebar = false
-                columnVisibility = .all
-            }
-            sidebarSearchPresented = true
+            handleSidebarSearchFocusRequest()
         }
         .onChange(of: columnVisibility) { _, newValue in
             if isNarrowWindow {
@@ -342,6 +336,27 @@ struct LibraryView: View {
         )
     }
 
+    private func handleSidebarSearchFocusRequest() {
+        var presentation = LibrarySidebarSearchPresentation(
+            floatingSidebarOpen: floatingSidebarOpen,
+            userHidSidebar: userHidSidebar,
+            showsSplitSidebar: columnVisibility != .detailOnly,
+            sidebarSearchPresented: sidebarSearchPresented
+        )
+        let target = presentation.requestFocus(isNarrowWindow: isNarrowWindow)
+        floatingSidebarOpen = presentation.floatingSidebarOpen
+        userHidSidebar = presentation.userHidSidebar
+        if presentation.showsSplitSidebar && !isNarrowWindow {
+            columnVisibility = .all
+        }
+        sidebarSearchPresented = presentation.sidebarSearchPresented
+        if target == .nativeSearchField {
+            DispatchQueue.main.async {
+                SidebarSearchFocus.focusLibrarySearchField()
+            }
+        }
+    }
+
     private func handleWindowWidthChange(_ width: CGFloat) {
         let wasNarrow = toolbarWidth < Self.narrowSidebarThreshold
         toolbarWidth = width
@@ -559,6 +574,58 @@ struct LibraryView: View {
         .accessibilityIdentifier("toolbar-record")
     }
 
+    private var displayedSearchPreviewMeeting: LibraryMeeting? {
+        guard search.visible, let hit = search.selected else { return nil }
+        return search.meeting(hit)
+    }
+
+    private var detailToolbarTarget: LibraryDetailToolbarTarget {
+        LibraryDetailToolbarTarget.resolve(
+            searchVisible: search.visible,
+            searchPreviewMeeting: displayedSearchPreviewMeeting,
+            savedDetailMeeting: navigation.savedDetail?.meeting,
+            recordingSelected: recordingSelected,
+            selectedMeeting: store.selected
+        )
+    }
+
+    @ViewBuilder
+    private func detailMeetingActionButtons(for meeting: LibraryMeeting, allowTrash: Bool, exportDisabled: Bool) -> some View {
+        let starred = store.isStarred(meeting)
+        Button {
+            store.toggleStar(meeting)
+        } label: {
+            Image(systemName: starred ? "star.fill" : "star")
+                .foregroundStyle(starred ? CassiniTheme.accentInk : CassiniTheme.ink)
+        }
+        .help(UXText.text(starred ? "meeting.unstar" : "meeting.star"))
+        .accessibilityLabel(UXText.text(starred ? "meeting.unstar" : "meeting.star"))
+        .accessibilityIdentifier("meeting-star")
+
+        Button {
+            exporter.show(meeting)
+        } label: {
+            Image(systemName: "square.and.arrow.up")
+        }
+        .disabled(exportDisabled || !MeetingExportCoordinator.canExport(meeting))
+        .help(UXText.text("common.exportEllipsis"))
+        .accessibilityLabel(UXText.text("common.exportEllipsis"))
+        .accessibilityIdentifier("meeting-export")
+
+        if allowTrash {
+            Button {
+                store.selectedKey = meeting.libraryKey
+                trash.move(meeting, undoManager: undoManager ?? NSApp.keyWindow?.undoManager)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .disabled(!trash.canTrash(meeting))
+            .help(UXText.text("common.moveToTrash"))
+            .accessibilityLabel(UXText.text("common.moveToTrash"))
+            .accessibilityIdentifier("meeting-trash")
+        }
+    }
+
     @ToolbarContentBuilder
     private var detailToolbar: some ToolbarContent {
         if columnVisibility == .detailOnly {
@@ -591,7 +658,7 @@ struct LibraryView: View {
             }
             #endif
         }
-        if let detail = navigation.savedDetail, detail.compactHeader {
+        if detailToolbarTarget.showsCompactHeader, let detail = navigation.savedDetail, detail.compactHeader {
             let title = detail.meeting.title ?? UXText.text("library.untitled")
             let subtitle = store.format.previewSubtitle(
                 detail.meeting.meetingTime,
@@ -648,7 +715,7 @@ struct LibraryView: View {
         #else
         ToolbarItem(placement: .automatic) { Spacer() }
         #endif
-        if let detail = navigation.savedDetail {
+        if detailToolbarTarget.showsFindAction, let detail = navigation.savedDetail {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     if detail.find.visible { detail.find.close() }
@@ -666,40 +733,16 @@ struct LibraryView: View {
                 ToolbarSpacer(.fixed, placement: .primaryAction)
             }
             #endif
+        }
+        if case .savedDetail(let meeting) = detailToolbarTarget {
             ToolbarItemGroup(placement: .primaryAction) {
-                let starred = store.isStarred(detail.meeting)
-                Button {
-                    store.toggleStar(detail.meeting)
-                } label: {
-                    Image(systemName: starred ? "star.fill" : "star")
-                        .foregroundStyle(starred ? CassiniTheme.accentInk : CassiniTheme.ink)
-                }
-                .help(UXText.text(starred ? "meeting.unstar" : "meeting.star"))
-                .accessibilityLabel(UXText.text(starred ? "meeting.unstar" : "meeting.star"))
-                .accessibilityIdentifier("meeting-star")
-
-                Button {
-                    exporter.show(detail.meeting)
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                }
-                .disabled(!MeetingExportCoordinator.canExport(detail.meeting))
-                .help(UXText.text("common.exportEllipsis"))
-                .accessibilityLabel(UXText.text("common.exportEllipsis"))
-                .accessibilityIdentifier("meeting-export")
-
-                Button {
-                    store.selectedKey = detail.meeting.libraryKey
-                    trash.move(detail.meeting, undoManager: undoManager ?? NSApp.keyWindow?.undoManager)
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .disabled(!trash.canTrash(detail.meeting))
-                .help(UXText.text("common.moveToTrash"))
-                .accessibilityLabel(UXText.text("common.moveToTrash"))
-                .accessibilityIdentifier("meeting-trash")
+                detailMeetingActionButtons(for: meeting, allowTrash: true, exportDisabled: false)
             }
-        } else if recordingSelected, let meeting = store.selected {
+        } else if case .searchPreview(let meeting) = detailToolbarTarget {
+            ToolbarItemGroup(placement: .primaryAction) {
+                detailMeetingActionButtons(for: meeting, allowTrash: false, exportDisabled: search.searching)
+            }
+        } else if case .recording(let meeting) = detailToolbarTarget {
             ToolbarItem(placement: .primaryAction) {
                 LibraryToolbarAction(title: "", label: UXText.text("meeting.moreActions"), identifier: "recording-more-actions", style: .more, menu: {
                     LibraryToolbarAction.menu([
@@ -718,7 +761,14 @@ struct LibraryView: View {
                 format: store.format,
                 showEmbeddedField: isNarrowWindow && floatingSidebarOpen,
                 onPickResult: {
-                    if floatingSidebarOpen { floatingSidebarOpen = false }
+                    var presentation = LibrarySidebarSearchPresentation(
+                        floatingSidebarOpen: floatingSidebarOpen,
+                        userHidSidebar: userHidSidebar,
+                        showsSplitSidebar: columnVisibility != .detailOnly,
+                        sidebarSearchPresented: sidebarSearchPresented
+                    )
+                    presentation.didPickSearchResult()
+                    floatingSidebarOpen = presentation.floatingSidebarOpen
                 }
             )
         } else {

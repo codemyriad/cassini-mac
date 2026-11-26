@@ -296,6 +296,7 @@ private final class OffMainModelBox: @unchecked Sendable {
             let path = queued.folder.path
             guard automaticPending.contains(path), preparing?.folder.path != path,
                   let current = byPath[path], !current.canQueueAutomatically else { return false }
+            queuedFolders.remove(path)
             prepared.remove(path); known.remove(path); automaticPending.remove(path); explicitRetries.remove(path)
             return true
         }

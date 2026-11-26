@@ -66,4 +66,125 @@ import CassiniKit
             }
         }
     }
+
+    @Test func detailToolbarTargetsDisplayedSearchPreviewMeetingInsteadOfHiddenOpenMeeting() {
+        let meetingA = LibraryMeeting(
+            id: UUID(),
+            folder: URL(fileURLWithPath: "/tmp/meeting-a"),
+            state: .init(lifecycle: .saved, transcript: .done),
+            title: "Meeting A",
+            start: nil,
+            durationMs: 60_000,
+            speakers: [],
+            quote: nil,
+            notes: [],
+            audioFiles: [],
+            issues: []
+        )
+        let meetingB = LibraryMeeting(
+            id: UUID(),
+            folder: URL(fileURLWithPath: "/tmp/meeting-b"),
+            state: .init(lifecycle: .saved, transcript: .done),
+            title: "Meeting B",
+            start: nil,
+            durationMs: 120_000,
+            speakers: [],
+            quote: nil,
+            notes: [],
+            audioFiles: [],
+            issues: []
+        )
+
+        // Open A without search: toolbar targets A with Find, Trash, and compact header.
+        let openA = LibraryDetailToolbarTarget.resolve(
+            searchVisible: false,
+            searchPreviewMeeting: nil,
+            savedDetailMeeting: meetingA,
+            recordingSelected: false,
+            selectedMeeting: meetingA
+        )
+        #expect(openA.meeting?.libraryKey == meetingA.libraryKey)
+        #expect(openA.showsFindAction)
+        #expect(openA.showsCompactHeader)
+        #expect(openA.showsTrashAction)
+
+        // Search open before picking a hit: pane still shows A, so toolbar still targets A.
+        let searchWithoutSelection = LibraryDetailToolbarTarget.resolve(
+            searchVisible: true,
+            searchPreviewMeeting: nil,
+            savedDetailMeeting: meetingA,
+            recordingSelected: false,
+            selectedMeeting: meetingA
+        )
+        #expect(searchWithoutSelection.meeting?.libraryKey == meetingA.libraryKey)
+        #expect(searchWithoutSelection.showsFindAction)
+
+        // Select a search hit from B while A stays in navigation.savedDetail:
+        // Star/Export target B, and Find/Trash/compact header for hidden A are suppressed.
+        let previewB = LibraryDetailToolbarTarget.resolve(
+            searchVisible: true,
+            searchPreviewMeeting: meetingB,
+            savedDetailMeeting: meetingA,
+            recordingSelected: false,
+            selectedMeeting: meetingA
+        )
+        #expect(previewB.meeting?.libraryKey == meetingB.libraryKey)
+        #expect(!previewB.showsFindAction)
+        #expect(!previewB.showsCompactHeader)
+        #expect(!previewB.showsTrashAction)
+
+        // Closing search restores A as the toolbar target.
+        let closedSearch = LibraryDetailToolbarTarget.resolve(
+            searchVisible: false,
+            searchPreviewMeeting: meetingB,
+            savedDetailMeeting: meetingA,
+            recordingSelected: false,
+            selectedMeeting: meetingA
+        )
+        #expect(closedSearch.meeting?.libraryKey == meetingA.libraryKey)
+        #expect(closedSearch.showsFindAction)
+    }
+
+    @Test func sidebarSearchShortcutsReopenAndRefocusAfterResultSelectionAndDismissal() {
+        // Narrow window (< 920 pt): selecting a result closes the floating sidebar;
+        // a subsequent ⌥⌘F or ⌘F must reopen it and target the embedded search field.
+        var narrow = LibrarySidebarSearchPresentation(floatingSidebarOpen: false, showsSplitSidebar: false, sidebarSearchPresented: false)
+        #expect(narrow.requestFocus(isNarrowWindow: true) == .embeddedField)
+        #expect(narrow.floatingSidebarOpen)
+
+        narrow.didPickSearchResult()
+        #expect(!narrow.floatingSidebarOpen)
+
+        #expect(narrow.requestFocus(isNarrowWindow: true) == .embeddedField)
+        #expect(narrow.floatingSidebarOpen)
+
+        narrow.didDismissSearch()
+        narrow.didPickSearchResult()
+        #expect(!narrow.floatingSidebarOpen)
+        #expect(!narrow.sidebarSearchPresented)
+
+        #expect(narrow.requestFocus(isNarrowWindow: true) == .embeddedField)
+        #expect(narrow.floatingSidebarOpen)
+
+        // Wide window (>= 920 pt): refocuses the native search field even when already presented
+        // after picking a result, and re-presents + focuses after dismissal or hidden sidebar.
+        var wide = LibrarySidebarSearchPresentation(floatingSidebarOpen: false, userHidSidebar: true, showsSplitSidebar: false, sidebarSearchPresented: false)
+        #expect(wide.requestFocus(isNarrowWindow: false) == .nativeSearchField)
+        #expect(!wide.userHidSidebar)
+        #expect(wide.showsSplitSidebar)
+        #expect(wide.sidebarSearchPresented)
+
+        // Result picked: sidebar stays open and search remains presented; shortcut still targets native field.
+        wide.didPickSearchResult()
+        #expect(wide.sidebarSearchPresented)
+        #expect(wide.requestFocus(isNarrowWindow: false) == .nativeSearchField)
+        #expect(wide.showsSplitSidebar)
+        #expect(wide.sidebarSearchPresented)
+
+        // Search dismissed: shortcut re-presents and focuses native search field.
+        wide.didDismissSearch()
+        #expect(!wide.sidebarSearchPresented)
+        #expect(wide.requestFocus(isNarrowWindow: false) == .nativeSearchField)
+        #expect(wide.sidebarSearchPresented)
+    }
 }
