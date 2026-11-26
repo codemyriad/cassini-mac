@@ -465,7 +465,9 @@ final class LibraryBoards: XCTestCase {
         XCTAssertFalse(window.buttons["meeting-back"].exists,"The direct pane has no intermediate Back action")
         XCTAssertFalse(window.buttons["meeting-export"].firstMatch.isEnabled)
         capture(window,name:"speakers")
-        // Tab must reach the dialog's merge menu, never an inline transcript button.
+        // Tab moves from Name through Background voice to the dialog's merge menu,
+        // never to an inline transcript button.
+        app.typeKey(.tab,modifierFlags:[])
         app.typeKey(.tab,modifierFlags:[])
         app.typeKey("z",modifierFlags:.command)
         app.typeKey("z",modifierFlags:[.command,.shift])
@@ -473,6 +475,7 @@ final class LibraryBoards: XCTestCase {
         app.typeKey(.space,modifierFlags:[])
         XCTAssertTrue(app.menuItems["Marta"].waitForExistence(timeout:5),app.debugDescription)
         app.typeKey(.escape,modifierFlags:[])
+        app.typeKey(.tab,modifierFlags:.shift)
         app.typeKey(.tab,modifierFlags:.shift)
         app.typeKey("[",modifierFlags:.command)
         XCTAssertTrue(nameField.exists,"Back must not navigate behind the modal dialog")
