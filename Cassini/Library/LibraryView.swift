@@ -758,24 +758,58 @@ struct LibraryView: View {
         }
     }
 
+    private func recordingMoreActionsButton(for meeting: LibraryMeeting) -> some View {
+        let starTitle = UXText.text(store.isStarred(meeting) ? "meeting.unstar" : "meeting.star")
+        let detailsTitle = UXText.text("details.menu")
+        return LibraryToolbarAction(
+            title: "",
+            label: UXText.text("meeting.moreActions"),
+            identifier: "recording-more-actions",
+            style: .more,
+            menu: {
+                let entries: [LibraryToolbarAction.MenuEntry] = [
+                    LibraryToolbarAction.MenuEntry(title: starTitle, identifier: "recording-star") {
+                        store.toggleStar(meeting)
+                    },
+                    LibraryToolbarAction.MenuEntry(title: detailsTitle, identifier: "recording-details") {
+                        recordingDetails.show(meeting)
+                    }
+                ]
+                return LibraryToolbarAction.menu(entries)
+            }
+        ) {}
+    }
+
+    private func detailMeetingActionConfig(for target: LibraryDetailToolbarTarget) -> (meeting: LibraryMeeting, allowTrash: Bool, exportDisabled: Bool)? {
+        switch target {
+        case .savedDetail(let meeting):
+            return (meeting, true, false)
+        case .searchPreview(let meeting):
+            return (meeting, false, search.searching)
+        case .recording, .none:
+            return nil
+        }
+    }
+
+    private func recordingActionMeeting(for target: LibraryDetailToolbarTarget) -> LibraryMeeting? {
+        if case .recording(let meeting) = target { return meeting }
+        return nil
+    }
+
     @ToolbarContentBuilder
     private func detailActionToolbarItem(for target: LibraryDetailToolbarTarget) -> some ToolbarContent {
-        if case .savedDetail(let meeting) = target {
+        if let config = detailMeetingActionConfig(for: target) {
             ToolbarItemGroup(placement: .primaryAction) {
-                detailMeetingActionButtons(for: meeting, allowTrash: true, exportDisabled: false)
+                detailMeetingActionButtons(
+                    for: config.meeting,
+                    allowTrash: config.allowTrash,
+                    exportDisabled: config.exportDisabled
+                )
             }
-        } else if case .searchPreview(let meeting) = target {
-            ToolbarItemGroup(placement: .primaryAction) {
-                detailMeetingActionButtons(for: meeting, allowTrash: false, exportDisabled: search.searching)
-            }
-        } else if case .recording(let meeting) = target {
+        }
+        if let meeting = recordingActionMeeting(for: target) {
             ToolbarItem(placement: .primaryAction) {
-                LibraryToolbarAction(title: "", label: UXText.text("meeting.moreActions"), identifier: "recording-more-actions", style: .more, menu: {
-                    LibraryToolbarAction.menu([
-                        .init(title: UXText.text(store.isStarred(meeting) ? "meeting.unstar" : "meeting.star"), identifier: "recording-star") { store.toggleStar(meeting) },
-                        .init(title: UXText.text("details.menu"), identifier: "recording-details") { recordingDetails.show(meeting) }
-                    ])
-                }) {}
+                recordingMoreActionsButton(for: meeting)
             }
         }
     }
