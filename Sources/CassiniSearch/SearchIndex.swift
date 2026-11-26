@@ -118,12 +118,12 @@ public actor SearchIndex {
                 nextFingerprints[meeting.libraryKey] = hash
                 if fingerprints[meeting.libraryKey] == hash { nextTurns[meeting.libraryKey] = turns[meeting.libraryKey]; nextProse[meeting.libraryKey] = prose[meeting.libraryKey]; nextSpoken[meeting.libraryKey] = spoken[meeting.libraryKey]; continue }
                 let all = MeetingPresentation.turns(meeting.transcriptItems,gaps:gaps,endsBoundedByAudio:meeting.wordEndsBoundedByAudio)
-                let grouped = MeetingPresentation.visibleTurns(all)
+                let grouped = MeetingPresentation.foregroundTurns(in:all,background:backgroundIDs)
                 let names = Dictionary(uniqueKeysWithValues:meeting.speakers.map { ($0.id,$0.displayName) })
                 let text = grouped.map { MeetingPresentation.prose($0,in:all,names:names,excluding:backgroundIDs) }
                 try database.remove(meeting.libraryKey)
                 var rows: [SpokenRow] = []
-                for (index,turn) in grouped.enumerated() where !backgroundIDs.contains(turn.speaker) {
+                for (index,turn) in grouped.enumerated() {
                     for source in [turn] + turn.asides.map({ all[$0.turn] }) where !backgroundIDs.contains(source.speaker) {
                         // Labels and other speakers never interrupt a speaker's spoken phrase.
                         let seeks = text[index].seeks.filter { $0.turnID == source.id }

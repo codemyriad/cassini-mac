@@ -58,12 +58,25 @@ import CassiniLibrary
     var snapshot:SavedVoicesSnapshot?
     var readOnly=false
     var voices:[SavedVoice] {snapshot?.voices ?? []}
-    struct TranscriptEnrollment:Sendable { let embedding:[Float] }
+    struct TranscriptEnrollment:Sendable {
+        let embedding:[Float]
+        var seconds:Double = 5
+        var generation:Int64 = 0
+        var clip:VoiceClip? = nil
+    }
     var refreshAction: (@MainActor () async -> Void)?
+    var prepareAction: (@MainActor (LibraryMeeting, String) async throws -> TranscriptEnrollment?)?
+    var enrollAction: (@MainActor (TranscriptEnrollment, String, String?) async throws -> SavedVoicesStore.ContributionBackup?)?
     var prepared: TranscriptEnrollment?
     func refresh() async { await refreshAction?() }
-    func prepare(_ meeting:LibraryMeeting,speaker:String) async throws -> TranscriptEnrollment? {prepared}
-    func enroll(_ prepared:TranscriptEnrollment,name:String,into id:String?) async throws {throw SavedVoicesError.unsafeStorage}
+    func prepare(_ meeting:LibraryMeeting,speaker:String) async throws -> TranscriptEnrollment? {
+        if let prepareAction { return try await prepareAction(meeting, speaker) }
+        return prepared
+    }
+    @discardableResult func enroll(_ prepared:TranscriptEnrollment,name:String,into id:String?) async throws -> SavedVoicesStore.ContributionBackup? {
+        if let enrollAction { return try await enrollAction(prepared, name, id) }
+        throw SavedVoicesError.unsafeStorage
+    }
 }
 
 // The production preference policy uses an isolated defaults suite in this harness.

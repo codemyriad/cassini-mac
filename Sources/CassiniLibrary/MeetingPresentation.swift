@@ -133,8 +133,30 @@ public enum MeetingPresentation {
     }
     /// The turns shown as paragraphs: every turn not shown inside another.
     public static func visibleTurns(_ turns: [Turn]) -> [Turn] { turns.filter { $0.host == nil } }
+    /// Foreground turns that are independently visible and searchable when `background` speakers
+    /// are hidden: top-level foreground turns plus foreground asides promoted from background hosts,
+    /// in reading order. Preserves each turn's original `id` and word/seek identities. O(N).
+    public static func foregroundTurns(in turns: [Turn], background: Set<String>) -> [Turn] {
+        guard !background.isEmpty else { return visibleTurns(turns) }
+        var result: [Turn] = []
+        result.reserveCapacity(turns.count)
+        for turn in turns where turn.host == nil {
+            if !background.contains(turn.speaker) {
+                result.append(turn)
+            } else {
+                for aside in turn.asides where turns.indices.contains(aside.turn) {
+                    let child = turns[aside.turn]
+                    if !background.contains(child.speaker) {
+                        result.append(child)
+                    }
+                }
+            }
+        }
+        return result
+    }
     /// D112 (L-86): folded display rows for the transcript, collapsing each consecutive run of
-    /// background turns into one row counting the distinct background voices in that run. O(N).
+    /// background turns into one row counting the distinct background voices in that run, while
+    /// promoting any foreground asides from background hosts into independent `.turn` entries. O(N).
     public enum TranscriptDisplayEntry: Identifiable, Sendable, Equatable {
         case turn(Int)
         case backgroundRun(id: String, turnIDs: [Int], distinctVoiceCount: Int)
@@ -145,10 +167,10 @@ public enum MeetingPresentation {
             }
         }
     }
-    public static func displayEntries(for visibleTurns: [Turn], background: Set<String>) -> [TranscriptDisplayEntry] {
-        guard !background.isEmpty else { return visibleTurns.map { .turn($0.id) } }
+    public static func displayEntries(for turns: [Turn], background: Set<String>) -> [TranscriptDisplayEntry] {
+        guard !background.isEmpty else { return turns.compactMap { $0.host == nil ? .turn($0.id) : nil } }
         var entries: [TranscriptDisplayEntry] = []
-        entries.reserveCapacity(visibleTurns.count)
+        entries.reserveCapacity(turns.count)
         var runTurnIDs: [Int] = []
         var runSpeakers: Set<String> = []
         func flush() {
@@ -157,10 +179,25 @@ public enum MeetingPresentation {
             runTurnIDs.removeAll(keepingCapacity: true)
             runSpeakers.removeAll(keepingCapacity: true)
         }
-        for turn in visibleTurns {
+        for turn in turns where turn.host == nil {
             if background.contains(turn.speaker) {
                 runTurnIDs.append(turn.id)
                 runSpeakers.insert(turn.speaker)
+                var promoted: [Int] = []
+                for aside in turn.asides where turns.indices.contains(aside.turn) {
+                    let child = turns[aside.turn]
+                    if background.contains(child.speaker) {
+                        runSpeakers.insert(child.speaker)
+                    } else {
+                        promoted.append(child.id)
+                    }
+                }
+                if !promoted.isEmpty {
+                    flush()
+                    for id in promoted {
+                        entries.append(.turn(id))
+                    }
+                }
             } else {
                 flush()
                 entries.append(.turn(turn.id))
@@ -171,12 +208,17 @@ public enum MeetingPresentation {
     }
     /// Canonical reading order need not be chronological. Reveal the sounding
     /// word's visible host, then the nearest upcoming word (or final past word).
-    public static func readingTurn(at position: Int64, in turns: [Turn]) -> Int? {
+    public static func readingTurn(at position: Int64, in turns: [Turn], background: Set<String> = []) -> Int? {
         var sounding: (id: Int, start: Int64)?
         var upcoming: (id: Int, start: Int64)?
         var previous: (id: Int, start: Int64)?
         for turn in turns {
-            let id = turn.host ?? turn.id
+            let id: Int
+            if let host = turn.host, turns.indices.contains(host), !background.contains(turns[host].speaker) {
+                id = host
+            } else {
+                id = turn.id
+            }
             for item in turn.items where item.endMs > item.startMs {
                 if item.startMs <= position && position < item.endMs {
                     if sounding == nil || item.startMs > sounding!.start { sounding = (id, item.startMs) }

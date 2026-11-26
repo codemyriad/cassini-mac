@@ -61,7 +61,15 @@ public enum SavedVoicesError: Error { case newerVersion, invalidName, invalidPri
 /// One atomic document owns profiles and sample references. No audio or biometric
 /// data is written to the Library. flock also serializes separate app processes.
 public actor SavedVoicesStore {
-    private struct Contribution:Codable { let voiceID:String;let embedding:[Float];let clip:VoiceClip }
+    fileprivate struct Contribution:Codable,Sendable,Equatable { let voiceID:String;let embedding:[Float];let clip:VoiceClip }
+    public struct ContributionBackup: Sendable, Equatable {
+        public let meeting: String
+        public let speaker: String
+        public let generation: Int64
+        fileprivate let previous: Contribution?
+        fileprivate let previousVoice: SavedVoice?
+        fileprivate let previousClip: VoiceClip?
+    }
     private struct Document: Codable {
         var version=1
         var generation:Int64=0
@@ -150,6 +158,10 @@ public actor SavedVoicesStore {
     }
     @discardableResult public func enroll(name: String, embedding: [Float], seconds: Double, generation: Int64,
                                          into id: String? = nil, clip: VoiceClip? = nil) throws -> String {
+        try enrollReturningBackup(name:name,embedding:embedding,seconds:seconds,generation:generation,into:id,clip:clip).voiceID
+    }
+    public func enrollReturningBackup(name: String, embedding: [Float], seconds: Double, generation: Int64,
+                                      into id: String? = nil, clip: VoiceClip? = nil) throws -> (voiceID: String, backup: ContributionBackup?) {
         guard Self.validName(name) else { throw SavedVoicesError.invalidName }
         guard let print=Voiceprint.normalized(embedding), seconds.isFinite, seconds >= 4, seconds <= 45 else { throw SavedVoicesError.invalidPrint }
         return try transaction({ d in
@@ -157,12 +169,25 @@ public actor SavedVoicesStore {
             let now=Date().timeIntervalSince1970
             let key=clip.map { $0.meeting+"\u{1f}"+$0.speaker }
             var target=id
-            if let key, let previous=d.contributions[key] {
+            let previous=key.flatMap { d.contributions[$0] }
+            if let previous {
                 let prior=d.voices.first { $0.id == previous.voiceID }
                 if (target == previous.voiceID || target == nil && prior?.name == SpeakerEdits.normalizedName(name)), previous.embedding == print {
-                    return previous.voiceID // Retrying Save never counts a clip twice.
+                    return (previous.voiceID, nil) // Retrying Save never counts a clip twice.
                 }
                 if target == nil, prior?.name == SpeakerEdits.normalizedName(name) { target=previous.voiceID }
+            }
+            let backup: ContributionBackup? = clip.map { clip in
+                ContributionBackup(
+                    meeting: clip.meeting,
+                    speaker: clip.speaker,
+                    generation: d.generation,
+                    previous: previous,
+                    previousVoice: previous.flatMap { prev in d.voices.first { $0.id == prev.voiceID } },
+                    previousClip: previous.flatMap { d.clips[$0.voiceID] }
+                )
+            }
+            if let key, previous != nil {
                 Self.removeContribution(key,from:&d)
                 if let targetID=target, !d.voices.contains(where:{$0.id == targetID}) { target=nil }
             }
@@ -189,7 +214,7 @@ public actor SavedVoicesStore {
                 d.clips[voiceID]=clip
                 d.contributions[key] = .init(voiceID:voiceID,embedding:print,clip:clip)
             }
-            return voiceID
+            return (voiceID, backup)
         },write:true)
     }
     private static func removeContribution(_ key:String,from d:inout Document) {
@@ -207,8 +232,56 @@ public actor SavedVoicesStore {
         d.clips[previous.voiceID]=remaining.first?.clip
     }
     public func unenroll(meeting:String,speakers:Set<String>) throws {
+        _=try unenrollReturningBackups(meeting:meeting,speakers:speakers)
+    }
+    public func unenrollReturningBackups(meeting:String,speakers:Set<String>) throws -> [ContributionBackup] {
         try transaction({ d in
-            for speaker in speakers { Self.removeContribution(meeting+"\u{1f}"+speaker,from:&d) }
+            var backups:[ContributionBackup]=[]
+            for speaker in speakers.sorted() {
+                let key=meeting+"\u{1f}"+speaker
+                guard let previous=d.contributions[key] else { continue }
+                backups.append(ContributionBackup(
+                    meeting:meeting,
+                    speaker:speaker,
+                    generation:d.generation,
+                    previous:previous,
+                    previousVoice:d.voices.first { $0.id == previous.voiceID },
+                    previousClip:d.clips[previous.voiceID]
+                ))
+                Self.removeContribution(key,from:&d)
+            }
+            return backups
+        },write:true)
+    }
+    public func restore(_ backups:[ContributionBackup]) throws {
+        guard !backups.isEmpty else { return }
+        try transaction({ d in
+            for backup in backups.reversed() {
+                guard d.generation == backup.generation else { throw SavedVoicesError.changedGeneration }
+                let key=backup.meeting+"\u{1f}"+backup.speaker
+                if d.contributions[key] != nil { Self.removeContribution(key,from:&d) }
+                if let previous=backup.previous {
+                    if let idx=d.voices.firstIndex(where:{$0.id == previous.voiceID}) {
+                        let weight=Float(min(d.voices[idx].count,20))
+                        if let mean=Voiceprint.normalized(zip(d.voices[idx].mean,previous.embedding).map { $0 * weight + $1 }) {
+                            d.voices[idx].mean=mean
+                        }
+                        d.voices[idx].count += 1
+                        if !d.voices[idx].meetings.contains(previous.clip.meeting) {
+                            d.voices[idx].meetings.append(previous.clip.meeting)
+                        }
+                        if d.clips[previous.voiceID] == nil {
+                            d.clips[previous.voiceID]=backup.previousClip ?? previous.clip
+                        }
+                        d.contributions[key]=previous
+                    } else if let priorVoice=backup.previousVoice {
+                        d.voices.append(priorVoice)
+                        d.nextColourSlot=max(d.nextColourSlot,priorVoice.colourSlot+1)
+                        d.clips[priorVoice.id]=backup.previousClip ?? previous.clip
+                        d.contributions[key]=previous
+                    }
+                }
+            }
         },write:true)
     }
     public func forget(_ id: String) throws {

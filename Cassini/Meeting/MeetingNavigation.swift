@@ -152,8 +152,8 @@ import Observation
         transcriptListening = TranscriptListening()
     }
     private func refreshDisplayEntries() {
-        visibleTurns = MeetingPresentation.visibleTurns(turns)
-        displayEntries = MeetingPresentation.displayEntries(for: visibleTurns, background: meeting.backgroundSpeakerIDs)
+        visibleTurns = MeetingPresentation.foregroundTurns(in: turns, background: meeting.backgroundSpeakerIDs)
+        displayEntries = MeetingPresentation.displayEntries(for: turns, background: meeting.backgroundSpeakerIDs)
     }
     private func prepareTurns() {
         guard !TranscribingPresentation.isActive(meeting.state) else { return }

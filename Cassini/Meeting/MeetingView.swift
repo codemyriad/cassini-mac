@@ -19,11 +19,16 @@ struct MeetingView: View {
     private var visibleTurns: [MeetingPresentation.Turn] { model.visibleTurns }
     private func name(_ speaker: String) -> String { model.speakerName(speaker) }
     private func asides(_ turn: MeetingPresentation.Turn, includeBackground: Bool = false) -> [MeetingTranscriptText.Aside] {
-        let backgroundIDs = includeBackground ? [] : meeting.backgroundSpeakerIDs
+        let backgroundIDs = meeting.backgroundSpeakerIDs
         return turn.asides.compactMap { aside in
             guard model.turns.indices.contains(aside.turn) else { return nil }
             let asideTurn = model.turns[aside.turn]
-            if backgroundIDs.contains(asideTurn.speaker) { return nil }
+            if includeBackground {
+                // Inside an expanded background host, foreground asides are promoted to their own rows.
+                if !backgroundIDs.contains(asideTurn.speaker) { return nil }
+            } else {
+                if backgroundIDs.contains(asideTurn.speaker) { return nil }
+            }
             let speaker = meeting.speaker(for:asideTurn.speaker)
             return .init(id:aside.turn,listeningWords:model.transcriptListening.words(in:aside.turn,listeningTo:model.listen.turn?.index),
                          after:aside.after,name:name(asideTurn.speaker),items:asideTurn.items,
@@ -309,7 +314,7 @@ struct MeetingView: View {
     private func revealSearchHit(in proxy: ScrollViewProxy) {
         guard model.tab == .transcript else { return }
         let exact = model.revealTurnID.flatMap { id in visibleTurns.first { $0.id == id } }
-        let fallbackID = model.revealPositionMs.flatMap { MeetingPresentation.readingTurn(at: $0, in: model.turns) }
+        let fallbackID = model.revealPositionMs.flatMap { MeetingPresentation.readingTurn(at: $0, in: model.turns, background: meeting.backgroundSpeakerIDs) }
         let fallback = fallbackID.flatMap { id in visibleTurns.first { $0.id == id } }
         guard let target = exact ?? fallback else { return }
         proxy.scrollTo(target.id, anchor: .center)

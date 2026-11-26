@@ -28,7 +28,7 @@ import CassiniLibrary
         let meeting: LibraryMeeting
         let message: String
         let snapshot: SpeakerEdits.BatchSnapshot
-        let enrolledSpeakers: [String]
+        let voiceBackups: [SavedVoicesStore.ContributionBackup]
     }
 
     private(set) var speakerDrafts: [String: SpeakerDraft] = [:]
@@ -241,7 +241,7 @@ import CassiniLibrary
     }
     func previewToast(message: String, meeting: LibraryMeeting) {
         guard LibraryStore.shared.context.screenshot else { return }
-        speakerEditToast = UndoToast(meeting: meeting, message: message, snapshot: .init(entries: [:]), enrolledSpeakers: [])
+        speakerEditToast = UndoToast(meeting: meeting, message: message, snapshot: .init(entries: [:]), voiceBackups: [])
     }
     #endif
 
@@ -357,13 +357,13 @@ import CassiniLibrary
         dismissToast()
         let meeting = toast.meeting
         let snapshot = toast.snapshot
-        let enrolledSpeakers = toast.enrolledSpeakers
+        let voiceBackups = toast.voiceBackups
         working = true; speakerChangeFailed = false; voiceChangeFailed = false
         let location = LibraryLocationModel.shared.location
         let scanner = LibraryStore.shared.scannerForRename(meeting) ?? LibraryScanner(root: meeting.folder.deletingLastPathComponent())
         task = Task {
             do {
-                voiceChangeFailed = try await SpeakerEditTransaction.run(changesVoices: !enrolledSpeakers.isEmpty, library: {
+                voiceChangeFailed = try await SpeakerEditTransaction.run(changesVoices: !voiceBackups.isEmpty, library: {
                     try await Task.detached(priority: .userInitiated) {
                         let access = try LibraryAccess(location, tolerateMissingPrevious: true)
                         defer { withExtendedLifetime(access) {} }
@@ -376,8 +376,8 @@ import CassiniLibrary
                     }
                     LibraryStore.shared.refresh(affected: meeting.folder)
                 }, readOnly: { try await SavedVoicesController.shared.store.snapshot().readOnly }, voices: {
-                    if !enrolledSpeakers.isEmpty {
-                        try await SavedVoicesController.shared.store.unenroll(meeting: meeting.folder.lastPathComponent, speakers: Set(enrolledSpeakers))
+                    if !voiceBackups.isEmpty {
+                        try await SavedVoicesController.shared.store.restore(voiceBackups)
                         await SavedVoicesController.shared.refresh()
                     }
                 })
@@ -452,7 +452,6 @@ import CassiniLibrary
 
         let edit: SpeakerEdits.Edit = .batch(changes)
         let changesVoices = !toForget.isEmpty || !toEnroll.isEmpty
-        let enrolledIDs = toEnroll.map(\.id)
         let summaryMessage = Self.toastMessage(named: namedNames, newlyBackground: newlyBackgroundNames, unbackgroundedCount: unbackgroundedCount)
 
         stopSpeakerPreparation(); MeetingNavigation.shared.detail?.speakerSample.cancel()
@@ -463,6 +462,7 @@ import CassiniLibrary
         task = Task {
             do {
                 var capturedSnapshot: SpeakerEdits.BatchSnapshot?
+                var committedVoiceBackups: [SavedVoicesStore.ContributionBackup] = []
                 voiceChangeFailed = try await SpeakerEditTransaction.run(changesVoices: changesVoices, library: {
                     try await Task.detached(priority: .userInitiated) {
                         let access = try LibraryAccess(location, tolerateMissingPrevious: true)
@@ -480,18 +480,28 @@ import CassiniLibrary
                     self.meeting = updated
                     LibraryStore.shared.refresh(affected: meeting.folder)
                 }, readOnly: { try await SavedVoicesController.shared.store.snapshot().readOnly }, voices: {
-                    if !toForget.isEmpty {
-                        try await SavedVoicesController.shared.store.unenroll(meeting: meeting.folder.lastPathComponent, speakers: toForget)
+                    do {
+                        if !toForget.isEmpty {
+                            let backups = try await SavedVoicesController.shared.store.unenrollReturningBackups(meeting: meeting.folder.lastPathComponent, speakers: toForget)
+                            committedVoiceBackups.append(contentsOf: backups)
+                        }
+                        for item in toEnroll {
+                            if let backup = try await SavedVoicesController.shared.enroll(item.enrollment, name: item.name, into: item.voiceID) {
+                                committedVoiceBackups.append(backup)
+                            }
+                        }
+                        await SavedVoicesController.shared.refresh()
+                    } catch {
+                        if !committedVoiceBackups.isEmpty {
+                            await SavedVoicesController.shared.refresh()
+                        }
+                        throw error
                     }
-                    for item in toEnroll {
-                        try await SavedVoicesController.shared.enroll(item.enrollment, name: item.name, into: item.voiceID)
-                    }
-                    await SavedVoicesController.shared.refresh()
                 })
                 let updatedMeeting = self.meeting ?? meeting
                 presentation = nil; self.meeting = nil; speakerID = nil; speakerDrafts = [:]
                 if let summaryMessage, let capturedSnapshot {
-                    showToast(UndoToast(meeting: updatedMeeting, message: summaryMessage, snapshot: capturedSnapshot, enrolledSpeakers: enrolledIDs))
+                    showToast(UndoToast(meeting: updatedMeeting, message: summaryMessage, snapshot: capturedSnapshot, voiceBackups: committedVoiceBackups))
                 }
             } catch {
                 if !closing { speakerChangeFailed = true }

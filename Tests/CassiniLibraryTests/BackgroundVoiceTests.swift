@@ -134,8 +134,7 @@ struct BackgroundVoiceTests {
         ]), to: meeting, roots: [root])
         let updated = try #require(LibraryScanner(root: root).meeting(at: meeting.folder))
         let turns = MeetingPresentation.turns(updated.transcriptItems, gaps: updated.speakerGaps, endsBoundedByAudio: updated.wordEndsBoundedByAudio)
-        let visible = MeetingPresentation.visibleTurns(turns)
-        let entries = MeetingPresentation.displayEntries(for: visible, background: updated.backgroundSpeakerIDs)
+        let entries = MeetingPresentation.displayEntries(for: turns, background: updated.backgroundSpeakerIDs)
 
         // Expected sequence: spk-1, spk-2, [run: spk-4, spk-5, spk-4 -> 2 distinct voices], spk-3, [run: spk-6, spk-7 -> 2 distinct voices], spk-1
         #expect(entries.count == 6)
@@ -190,5 +189,75 @@ struct BackgroundVoiceTests {
         let smallResult = MeetingPresentation.displayEntries(for: small, background: bg)
         let largeResult = MeetingPresentation.displayEntries(for: large, background: bg)
         #expect(largeResult.count == smallResult.count * 2)
+    }
+
+    @Test func foregroundAsideInsideBackgroundHostIsPromotedAndSearchable() throws {
+        let items: [LibraryTranscriptItem] = [
+            .init(speaker: "bg", startMs: 0, endMs: 800, text: "Latte"),
+            .init(speaker: "bg", startMs: 800, endMs: 2000, text: "ready"),
+            .init(speaker: "fg", startMs: 1900, endMs: 2050, text: "Confirmed"),
+            .init(speaker: "fg", startMs: 2050, endMs: 2200, text: "Tuesday."),
+            .init(speaker: "bg", startMs: 2100, endMs: 2600, text: "for"),
+            .init(speaker: "bg", startMs: 2600, endMs: 3100, text: "table"),
+            .init(speaker: "bg", startMs: 3100, endMs: 3600, text: "three."),
+        ]
+        let turns = MeetingPresentation.turns(items, endsBoundedByAudio: true)
+        let fgAside = try #require(turns.first { $0.speaker == "fg" })
+        let bgHost = try #require(turns.first { $0.speaker == "bg" && $0.host == nil })
+        #expect(fgAside.host == bgHost.id)
+
+        let bg: Set<String> = ["bg"]
+        // Promoted foreground turn preserves original turn ID and word/seek identities.
+        let promoted = MeetingPresentation.foregroundTurns(in: turns, background: bg)
+        #expect(promoted.map(\.id) == [fgAside.id])
+        #expect(promoted[0].items.map(\.startMs) == [1900, 2050])
+
+        // Transcript folding shows the background run and promotes the foreground aside as its own `.turn`.
+        let entries = MeetingPresentation.displayEntries(for: turns, background: bg)
+        #expect(entries == [
+            .backgroundRun(id: "bg-\(bgHost.id)", turnIDs: [bgHost.id], distinctVoiceCount: 1),
+            .turn(fgAside.id),
+        ])
+
+        // Reading turn lookup resolves the promoted foreground aside to its own turn ID.
+        #expect(MeetingPresentation.readingTurn(at: 1950, in: turns, background: bg) == fgAside.id)
+
+        // In-meeting Find searches the promoted foreground aside and omits the background host.
+        let locale = Locale(identifier: "en_GB")
+        let paragraphs = try TranscriptFind.paragraphs(in: turns, names: ["bg": "Barista", "fg": "Silvio"], background: bg, locale: locale, language: .en)
+        #expect(paragraphs.map(\.id) == [fgAside.id])
+        let fgMatches = try TranscriptFind.matches(in: paragraphs, query: "Confirmed Tuesday", locale: locale)
+        #expect(fgMatches.count == 1 && fgMatches[0].paragraph == fgAside.id)
+        #expect(try TranscriptFind.matches(in: paragraphs, query: "Latte", locale: locale).isEmpty)
+    }
+
+    @Test func backgroundAsideInsideForegroundHostIsExcludedFromProseAndFind() throws {
+        let items: [LibraryTranscriptItem] = [
+            .init(speaker: "fg", startMs: 0, endMs: 800, text: "We"),
+            .init(speaker: "fg", startMs: 800, endMs: 2000, text: "ship"),
+            .init(speaker: "bg", startMs: 1900, endMs: 2050, text: "Espresso"),
+            .init(speaker: "bg", startMs: 2050, endMs: 2200, text: "shot."),
+            .init(speaker: "fg", startMs: 2100, endMs: 2600, text: "the"),
+            .init(speaker: "fg", startMs: 2600, endMs: 3100, text: "release"),
+            .init(speaker: "fg", startMs: 3100, endMs: 3600, text: "Friday."),
+        ]
+        let turns = MeetingPresentation.turns(items, endsBoundedByAudio: true)
+        let bgAside = try #require(turns.first { $0.speaker == "bg" })
+        let fgHost = try #require(turns.first { $0.speaker == "fg" && $0.host == nil })
+        #expect(bgAside.host == fgHost.id)
+
+        let bg: Set<String> = ["bg"]
+        #expect(MeetingPresentation.foregroundTurns(in: turns, background: bg).map(\.id) == [fgHost.id])
+        #expect(MeetingPresentation.displayEntries(for: turns, background: bg) == [.turn(fgHost.id)])
+
+        let locale = Locale(identifier: "en_GB")
+        let prose = MeetingPresentation.prose(fgHost, in: turns, names: ["bg": "Barista", "fg": "Silvio"], locale: locale, language: .en, excluding: bg)
+        #expect(prose.text == "We ship the release Friday.")
+        #expect(prose.seeks.map(\.item.startMs) == [0, 800, 2100, 2600, 3100])
+
+        let paragraphs = try TranscriptFind.paragraphs(in: turns, names: ["bg": "Barista", "fg": "Silvio"], background: bg, locale: locale, language: .en)
+        #expect(try TranscriptFind.matches(in: paragraphs, query: "Espresso", locale: locale).isEmpty)
+        let shipMatches = try TranscriptFind.matches(in: paragraphs, query: "ship the release", locale: locale)
+        #expect(shipMatches.count == 1 && shipMatches[0].paragraph == fgHost.id)
     }
 }
