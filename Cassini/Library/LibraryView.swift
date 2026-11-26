@@ -46,7 +46,7 @@ struct LibraryView: View {
     private var recordingSelected: Bool {
         store.selected.map { $0.state.lifecycle != .saved } == true && !search.visible && !showsFirstRun
     }
-    var body: some View {
+    private var rootSurface: some View {
         GeometryReader { geometry in
             Group {
                 if navigation.loading { ProgressView() }
@@ -74,7 +74,6 @@ struct LibraryView: View {
                     .background(CassiniTheme.paneGround)
             }
         }
-
         .task { await speechModels.refresh() }
         .onChange(of:scenePhase) { _, phase in
             if phase == .active { Task { await speechModels.refreshRecommendation() } }
@@ -114,34 +113,42 @@ struct LibraryView: View {
                 search.close()
             }
         }
-        .frame(minWidth: 560, minHeight: 480)
-        .modifier(LibraryWindowTitleModifier(
-            savedDetail: navigation.savedDetail,
-            showsFirstRun: showsFirstRun,
-            searchVisible: search.visible,
-            format: store.format
-        ))
-        .toolbar {
-            if showsFirstRun {
-                ToolbarItem(placement:.automatic) { Spacer() }
-                ToolbarItem(id:"first-run-actions",placement:.primaryAction) { toolbarControl }
+    }
+
+    private var chromeWrappedSurface: some View {
+        rootSurface
+            .frame(minWidth: 560, minHeight: 480)
+            .modifier(LibraryWindowTitleModifier(
+                savedDetail: navigation.savedDetail,
+                showsFirstRun: showsFirstRun,
+                searchVisible: search.visible,
+                format: store.format
+            ))
+            .toolbar {
+                if showsFirstRun {
+                    ToolbarItem(placement:.automatic) { Spacer() }
+                    ToolbarItem(id:"first-run-actions",placement:.primaryAction) { toolbarControl }
+                }
             }
-        }
-        .cassiniUnifiedToolbarChrome()
-        .background(WindowAccessor { window in
-            guard let window else { return }
-            window.setAccessibilityIdentifier("cassini-library-window")
-            window.backgroundColor = showsFirstRun ? NSColor(CassiniTheme.surface) : .windowBackgroundColor
-            ScrollEdgeChrome.configureUnifiedWindow(window)
-            window.titleVisibility = .hidden
-            RecordingConfirmation.attach(to: window)
-            SpeakerEditorChrome.update(window,visible:rename.presentation == .speakers)
-            #if DEBUG
-            if store.loaded { ScreenshotFixture.prepareLibrary(window) }
-            #endif
-        })
-        .disabled(rename.presentation == .speakers)
-        .accessibilityHidden(rename.presentation == .speakers)
+            .cassiniUnifiedToolbarChrome()
+            .background(WindowAccessor { window in
+                guard let window else { return }
+                window.setAccessibilityIdentifier("cassini-library-window")
+                window.backgroundColor = showsFirstRun ? NSColor(CassiniTheme.surface) : .windowBackgroundColor
+                ScrollEdgeChrome.configureUnifiedWindow(window)
+                window.titleVisibility = .hidden
+                RecordingConfirmation.attach(to: window)
+                SpeakerEditorChrome.update(window,visible:rename.presentation == .speakers)
+                #if DEBUG
+                if store.loaded { ScreenshotFixture.prepareLibrary(window) }
+                #endif
+            })
+            .disabled(rename.presentation == .speakers)
+            .accessibilityHidden(rename.presentation == .speakers)
+    }
+
+    var body: some View {
+        chromeWrappedSurface
         .overlay {
             if rename.presentation == .speakers {
                 ZStack {
