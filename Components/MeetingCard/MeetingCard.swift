@@ -5,12 +5,14 @@ import SwiftUI
 /// The host owns selection, keyboard navigation, context menus, and content.
 struct MeetingCard<Content: View>: View {
     let isSelected: Bool
+    var isContextMenuTarget: Bool = false
     private let content: Content
     @Environment(\.colorScheme) private var scheme
     @State private var isHovered = false
 
-    init(isSelected: Bool, @ViewBuilder content: () -> Content) {
+    init(isSelected: Bool, isContextMenuTarget: Bool = false, @ViewBuilder content: () -> Content) {
         self.isSelected = isSelected
+        self.isContextMenuTarget = isContextMenuTarget
         self.content = content()
     }
 
@@ -47,6 +49,14 @@ struct MeetingCard<Content: View>: View {
             .overlay {
                 shape.strokeBorder(Color(nsColor: paint.border),
                     lineWidth: Metrics.border + (isSelected ? Metrics.selectedInset : 0))
+            }
+            .overlay {
+                if isContextMenuTarget {
+                    RoundedRectangle(cornerRadius: Metrics.radius + 1)
+                        .stroke(Color(nsColor: .controlAccentColor), lineWidth: 2)
+                        .padding(-1)
+                        .allowsHitTesting(false)
+                }
             }
             .onHover { isHovered = $0 }
             .accessibilityAddTraits(isSelected ? .isSelected : [])

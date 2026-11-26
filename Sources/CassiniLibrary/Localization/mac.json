@@ -379,6 +379,237 @@
           "text": "Não foi possível importar este ficheiro de áudio."
         }
       }
+    },
+    {
+      "id": "mac.details.source.recorded",
+      "en": "{duration} recorded",
+      "l10n": {
+        "it": {
+          "text": "{duration} registrati"
+        },
+        "fr": {
+          "text": "{duration} enregistrés"
+        },
+        "es": {
+          "text": "{duration} grabados"
+        },
+        "pt-BR": {
+          "text": "{duration} gravados"
+        },
+        "pt-PT": {
+          "text": "{duration} gravados"
+        }
+      }
+    },
+    {
+      "id": "mac.details.source.silent",
+      "en": "No speech heard.",
+      "l10n": {
+        "it": {
+          "text": "Nessuna voce rilevata."
+        },
+        "fr": {
+          "text": "Aucune voix détectée."
+        },
+        "es": {
+          "text": "No se detectó voz."
+        },
+        "pt-BR": {
+          "text": "Nenhuma fala ouvida."
+        },
+        "pt-PT": {
+          "text": "Nenhuma fala ouvida."
+        }
+      }
+    },
+    {
+      "id": "mac.details.source.gap",
+      "en": "{duration} of audio is missing.",
+      "l10n": {
+        "it": {
+          "text": "Mancano {duration} di audio."
+        },
+        "fr": {
+          "text": "{duration} d’audio manquent."
+        },
+        "es": {
+          "text": "Faltan {duration} de audio."
+        },
+        "pt-BR": {
+          "text": "Faltam {duration} de áudio."
+        },
+        "pt-PT": {
+          "text": "Faltam {duration} de áudio."
+        }
+      }
+    },
+    {
+      "id": "mac.details.source.computerBusy",
+      "en": "About {duration} is missing because the computer was too busy. That part is silent.",
+      "l10n": {
+        "it": {
+          "text": "Mancano circa {duration} perché il computer era troppo occupato. Quella parte è silenziosa."
+        },
+        "fr": {
+          "text": "Environ {duration} manquent car l’ordinateur était trop occupé. Cette partie est silencieuse."
+        },
+        "es": {
+          "text": "Faltan unos {duration} porque el ordenador estaba demasiado ocupado. Esa parte está en silencio."
+        },
+        "pt-BR": {
+          "text": "Faltam cerca de {duration} porque o computador estava muito ocupado. Essa parte ficou em silêncio."
+        },
+        "pt-PT": {
+          "text": "Faltam cerca de {duration} porque o computador estava demasiado ocupado. Essa parte ficou em silêncio."
+        }
+      }
+    },
+    {
+      "id": "mac.details.source.neverAudio",
+      "en": "No audio was received.",
+      "l10n": {
+        "it": {
+          "text": "Nessun audio ricevuto."
+        },
+        "fr": {
+          "text": "Aucun audio reçu."
+        },
+        "es": {
+          "text": "No se recibió audio."
+        },
+        "pt-BR": {
+          "text": "Nenhum áudio foi recebido."
+        },
+        "pt-PT": {
+          "text": "Nenhum áudio foi recebido."
+        }
+      }
+    },
+    {
+      "id": "mac.details.source.lowAudio",
+      "en": "Only {duration} of audio was received.",
+      "l10n": {
+        "it": {
+          "text": "Ricevuti solo {duration} di audio."
+        },
+        "fr": {
+          "text": "Seulement {duration} d’audio reçus."
+        },
+        "es": {
+          "text": "Solo se recibieron {duration} de audio."
+        },
+        "pt-BR": {
+          "text": "Apenas {duration} de áudio foram recebidos."
+        },
+        "pt-PT": {
+          "text": "Apenas {duration} de áudio foram recebidos."
+        }
+      }
+    },
+    {
+      "id": "mac.details.source.lowAudio.underSecond",
+      "en": "Less than a second of audio was received.",
+      "l10n": {
+        "it": {
+          "text": "Ricevuto meno di un secondo di audio."
+        },
+        "fr": {
+          "text": "Moins d’une seconde d’audio reçue."
+        },
+        "es": {
+          "text": "Se recibió menos de un segundo de audio."
+        },
+        "pt-BR": {
+          "text": "Menos de um segundo de áudio foi recebido."
+        },
+        "pt-PT": {
+          "text": "Menos de um segundo de áudio foi recebido."
+        }
+      }
+    },
+    {
+      "id": "mac.details.source.failed",
+      "en": "Audio couldn’t be recorded.",
+      "l10n": {
+        "it": {
+          "text": "Impossibile registrare l’audio."
+        },
+        "fr": {
+          "text": "Impossible d’enregistrer l’audio."
+        },
+        "es": {
+          "text": "No se pudo grabar el audio."
+        },
+        "pt-BR": {
+          "text": "Não foi possível gravar o áudio."
+        },
+        "pt-PT": {
+          "text": "Não foi possível gravar o áudio."
+        }
+      }
+    },
+    {
+      "id": "mac.details.source.notSelected",
+      "en": "Not selected for recording.",
+      "l10n": {
+        "it": {
+          "text": "Non selezionato per la registrazione."
+        },
+        "fr": {
+          "text": "Non sélectionné pour l’enregistrement."
+        },
+        "es": {
+          "text": "No seleccionado para grabar."
+        },
+        "pt-BR": {
+          "text": "Não selecionado para gravação."
+        },
+        "pt-PT": {
+          "text": "Não selecionado para gravação."
+        }
+      }
+    },
+    {
+      "id": "mac.speakers.underSecond",
+      "en": "under 1 s",
+      "l10n": {
+        "it": {
+          "text": "meno di 1 s"
+        },
+        "fr": {
+          "text": "moins d’1 s"
+        },
+        "es": {
+          "text": "menos de 1 s"
+        },
+        "pt-BR": {
+          "text": "menos de 1 s"
+        },
+        "pt-PT": {
+          "text": "menos de 1 s"
+        }
+      }
+    },
+    {
+      "id": "mac.imported.notTranscribed",
+      "en": "Not transcribed yet.",
+      "l10n": {
+        "it": {
+          "text": "Non ancora trascritto."
+        },
+        "fr": {
+          "text": "Pas encore transcrit."
+        },
+        "es": {
+          "text": "Aún no transcrito."
+        },
+        "pt-BR": {
+          "text": "Ainda não transcrito."
+        },
+        "pt-PT": {
+          "text": "Ainda não transcrito."
+        }
+      }
     }
   ]
 }

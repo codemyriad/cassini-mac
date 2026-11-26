@@ -16,10 +16,16 @@ struct LibraryView: View {
     @State private var searchFixturePrepared = false
     @State private var screenshotTestSheet = false
     #endif
+    private static let narrowSidebarThreshold: CGFloat = 920
     @State private var toolbarWidth: CGFloat = 1120
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var userHidSidebar = false
+    @State private var autoCollapsedSidebar = false
+    @State private var floatingSidebarOpen = false
+    @State private var contextMenuMeetingKey: String?
     @State private var sidebarSearchPresented = false
-    @State private var sidebarWidth: CGFloat = 340
+    @State private var sidebarWidth: CGFloat = 390
+    private var isNarrowWindow: Bool { toolbarWidth < Self.narrowSidebarThreshold }
     @State private var recordCoordinator = RecordCoordinator.shared
     @State private var recorder = RecordingController.shared
     @State private var companionSetup = CompanionSetup.shared
@@ -40,16 +46,15 @@ struct LibraryView: View {
     private var recordingSelected: Bool {
         store.selected.map { $0.state.lifecycle != .saved } == true && !search.visible && !showsFirstRun
     }
-    var body: some View {
+    private var rootSurface: some View {
         GeometryReader { geometry in
             Group {
                 if navigation.loading { ProgressView() }
-                else if search.visible { LibrarySearchView(format:store.format) }
                 else if showsFirstRun { firstRun }
                 else { split }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
-                .onAppear { toolbarWidth = geometry.size.width }
-                .onChange(of: geometry.size.width) { _, width in toolbarWidth = width }
+                .onAppear { handleWindowWidthChange(geometry.size.width) }
+                .onChange(of: geometry.size.width) { _, width in handleWindowWidthChange(width) }
         }
         .modifier(VoicesQuestionPresentation())
         .font(.system(size: 13))
@@ -69,63 +74,75 @@ struct LibraryView: View {
                     .background(CassiniTheme.paneGround)
             }
         }
-
         .task { await speechModels.refresh() }
         .onChange(of:scenePhase) { _, phase in
             if phase == .active { Task { await speechModels.refreshRecommendation() } }
         }
         .onChange(of: search.sidebarFocusRequest) { _, _ in
-            columnVisibility = .all
-            sidebarSearchPresented = true
+            handleSidebarSearchFocusRequest()
+        }
+        .onChange(of: columnVisibility) { _, newValue in
+            if isNarrowWindow {
+                if newValue != .detailOnly {
+                    columnVisibility = .detailOnly
+                    floatingSidebarOpen.toggle()
+                }
+            } else {
+                autoCollapsedSidebar = false
+                userHidSidebar = (newValue == .detailOnly)
+            }
         }
         .onChange(of: search.query) { _, query in
-            if !query.isEmpty && !search.visible {
-                search.open()
+            if !query.isEmpty {
+                if !search.visible { search.open() }
+                else { search.refresh() }
+            } else if search.visible && !search.hasActiveFilters {
+                search.close()
+            } else if search.visible {
+                search.refresh()
             }
         }
         .onChange(of: sidebarSearchPresented) { _, presented in
-            if presented && !search.visible {
-                sidebarSearchPresented = false
-                search.open()
+            if !presented && search.visible && search.query.isEmpty && !search.hasActiveFilters {
+                search.close()
             }
         }
-        .frame(minWidth: showsFirstRun ? 560 : nil, minHeight: 480)
-        .modifier(LibraryWindowTitleModifier(
-            savedDetail: navigation.savedDetail,
-            showsFirstRun: showsFirstRun,
-            searchVisible: search.visible,
-            format: store.format
-        ))
-        .toolbar {
-            if showsFirstRun && !search.visible {
-                ToolbarItem(placement:.automatic) { Spacer() }
-                ToolbarItem(id:"first-run-actions",placement:.primaryAction) { toolbarControl }
-            } else if search.visible {
-                ToolbarItem(placement: .navigation) {
-                    HStack(spacing: 0) {
-                        toolbarControl
-                            .padding(.trailing,10)
-                            .frame(width: 388, alignment: .trailing)
-                        toolbarTitle
-                    }
+    }
+
+    private var chromeWrappedSurface: some View {
+        rootSurface
+            .frame(minWidth: 560, minHeight: 480)
+            .modifier(LibraryWindowTitleModifier(
+                savedDetail: navigation.savedDetail,
+                showsFirstRun: showsFirstRun,
+                searchVisible: search.visible,
+                format: store.format
+            ))
+            .toolbar {
+                if showsFirstRun {
+                    ToolbarItem(placement:.automatic) { Spacer() }
+                    ToolbarItem(id:"first-run-actions",placement:.primaryAction) { toolbarControl }
                 }
             }
-        }
-        .modifier(ConditionalFirstRunToolbarChrome(enabled: showsFirstRun && !search.visible))
-        .background(WindowAccessor { window in
-            guard let window else { return }
-            window.setAccessibilityIdentifier("cassini-library-window")
-            window.backgroundColor = showsFirstRun ? NSColor(CassiniTheme.surface) : .windowBackgroundColor
-            ScrollEdgeChrome.configureUnifiedWindow(window)
-            window.titleVisibility = .hidden
-            RecordingConfirmation.attach(to: window)
-            SpeakerEditorChrome.update(window,visible:rename.presentation == .speakers)
-            #if DEBUG
-            if store.loaded { ScreenshotFixture.prepareLibrary(window) }
-            #endif
-        })
-        .disabled(rename.presentation == .speakers)
-        .accessibilityHidden(rename.presentation == .speakers)
+            .cassiniUnifiedToolbarChrome()
+            .background(WindowAccessor { window in
+                guard let window else { return }
+                window.setAccessibilityIdentifier("cassini-library-window")
+                window.backgroundColor = showsFirstRun ? NSColor(CassiniTheme.surface) : .windowBackgroundColor
+                ScrollEdgeChrome.configureUnifiedWindow(window)
+                window.titleVisibility = .hidden
+                RecordingConfirmation.attach(to: window)
+                SpeakerEditorChrome.update(window,visible:rename.presentation == .speakers)
+                #if DEBUG
+                if store.loaded { ScreenshotFixture.prepareLibrary(window) }
+                #endif
+            })
+            .disabled(rename.presentation == .speakers)
+            .accessibilityHidden(rename.presentation == .speakers)
+    }
+
+    var body: some View {
+        chromeWrappedSurface
         .overlay {
             if rename.presentation == .speakers {
                 ZStack {
@@ -244,7 +261,7 @@ struct LibraryView: View {
         .preferredColorScheme(LibraryLaunchContext.screenshotDark ? .dark : (store.context.screenshot ? .light : nil))
     }
     private func trashButton(_ meeting: LibraryMeeting) -> some View {
-        Button(UXText.text("meeting.moveToRecentlyDeleted")) {
+        Button(UXText.text("common.moveToTrash")) {
             store.selectedKey = meeting.libraryKey
             trash.move(meeting,undoManager:undoManager ?? NSApp.keyWindow?.undoManager)
         }.accessibilityIdentifier("move-to-trash")
@@ -285,8 +302,8 @@ struct LibraryView: View {
                 .toolbar {
                     sidebarToolbar
                 }
-                .frame(minWidth: 260, idealWidth: 340, maxWidth: 400)
-                .navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 400)
+                .frame(minWidth: 260, idealWidth: 390, maxWidth: 420)
+                .navigationSplitViewColumnWidth(min: 260, ideal: 390, max: 420)
         } detail: {
             VStack(spacing: 0) {
                 detailColumn
@@ -301,9 +318,14 @@ struct LibraryView: View {
                 }
                 #endif
             }
-            .frame(minWidth: 300)
+            .frame(minWidth: 520)
             .toolbar {
                 detailToolbar
+            }
+        }
+        .overlay(alignment: .leading) {
+            if isNarrowWindow && floatingSidebarOpen {
+                floatingSidebarOverlay
             }
         }
         .searchable(
@@ -314,91 +336,234 @@ struct LibraryView: View {
         )
     }
 
+    private func handleSidebarSearchFocusRequest() {
+        var presentation = LibrarySidebarSearchPresentation(
+            floatingSidebarOpen: floatingSidebarOpen,
+            userHidSidebar: userHidSidebar,
+            showsSplitSidebar: columnVisibility != .detailOnly,
+            sidebarSearchPresented: sidebarSearchPresented
+        )
+        let target = presentation.requestFocus(isNarrowWindow: isNarrowWindow)
+        floatingSidebarOpen = presentation.floatingSidebarOpen
+        userHidSidebar = presentation.userHidSidebar
+        if presentation.showsSplitSidebar && !isNarrowWindow {
+            columnVisibility = .all
+        }
+        sidebarSearchPresented = presentation.sidebarSearchPresented
+        if target == .nativeSearchField {
+            DispatchQueue.main.async {
+                SidebarSearchFocus.focusLibrarySearchField()
+            }
+        }
+    }
+
+    private func handleWindowWidthChange(_ width: CGFloat) {
+        let wasNarrow = toolbarWidth < Self.narrowSidebarThreshold
+        toolbarWidth = width
+        let nowNarrow = width < Self.narrowSidebarThreshold
+        if nowNarrow {
+            if columnVisibility != .detailOnly {
+                autoCollapsedSidebar = true
+                columnVisibility = .detailOnly
+            }
+        } else if wasNarrow {
+            if floatingSidebarOpen {
+                floatingSidebarOpen = false
+                userHidSidebar = false
+                autoCollapsedSidebar = false
+                columnVisibility = .all
+            } else if !userHidSidebar && autoCollapsedSidebar {
+                autoCollapsedSidebar = false
+                columnVisibility = .all
+            }
+        }
+    }
+
+    private var floatingSidebarOverlay: some View {
+        let overlayWidth = min(390, max(280, toolbarWidth - 60))
+        return ZStack(alignment: .leading) {
+            Color.black.opacity(0.001)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { floatingSidebarOpen = false }
+                .accessibilityHidden(true)
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    Button {
+                        floatingSidebarOpen = false
+                    } label: {
+                        Image(systemName: "sidebar.left")
+                            .font(.system(size: 14))
+                            .foregroundStyle(CassiniTheme.ink)
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(UXText.text("library.listPane.a11y"))
+                    .accessibilityIdentifier("floating-sidebar-toggle")
+                    Spacer(minLength: 0)
+                    sidebarImportButton
+                    if showsLiveToolbarPill {
+                        liveRecordingToolbarControl(height: 24)
+                    } else {
+                        sidebarRecordButton(height: 24)
+                    }
+                }
+                .padding(.leading, 76)
+                .padding(.trailing, 10)
+                .padding(.top, 10)
+                .padding(.bottom, 6)
+                if !search.visible {
+                    LibrarySearchField(
+                        text: $search.query,
+                        large: false,
+                        focusRequest: search.focusRequest,
+                        onChange: { search.refresh() },
+                        onCancel: { search.close() }
+                    )
+                    .frame(height: 28)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 6)
+                }
+                sidebarColumn
+            }
+            .frame(width: overlayWidth)
+            .frame(maxHeight: .infinity)
+            .cassiniSidebarBackground()
+            .overlay(alignment: .trailing) {
+                Rectangle().fill(CassiniTheme.cardStroke).frame(width: 1)
+            }
+            .shadow(color: CassiniTheme.shadow, radius: 18, x: 4, y: 0)
+            .ignoresSafeArea(edges: .top)
+            .onExitCommand { floatingSidebarOpen = false }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("floating-sidebar")
+        }
+    }
+
     private var showsLiveToolbarPill: Bool {
         RecordingOverview.active || RecordingOverview.saving
             || store.meetings.contains(where: { $0.state.lifecycle == .recording })
     }
 
+    private var sidebarImportButton: some View {
+        let enabled = !LibraryMoveCoordinator.shared.busy && LibraryLocationModel.shared.available
+        return Button {
+            LegacyOpening.chooseDocuments()
+        } label: {
+            ImportTrayIcon(size: 13, strokeWidth: 1.8)
+                .foregroundStyle(enabled ? CassiniTheme.ink : CassiniTheme.ink3)
+                .frame(width: 24, height: 24)
+                .modifier(SidebarGlassCircleModifier())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .help(UXText.text("import.action"))
+        .accessibilityLabel(UXText.text("import.action"))
+        .accessibilityIdentifier("toolbar-import")
+    }
+
     @ToolbarContentBuilder
     private var sidebarToolbar: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                LegacyOpening.chooseDocuments()
-            } label: {
-                ImportTrayIcon(size: 15, strokeWidth: 1.9)
-            }
-            .disabled(LibraryMoveCoordinator.shared.busy || !LibraryLocationModel.shared.available)
-            .help(UXText.text("import.action"))
-            .accessibilityLabel(UXText.text("import.action"))
-            .accessibilityIdentifier("toolbar-import")
-        }
-        if !showsLiveToolbarPill {
-            #if compiler(>=6.2)
-            if #available(macOS 26.0, *) {
-                ToolbarSpacer(.fixed, placement: .primaryAction)
-                ToolbarItem(placement: .primaryAction) {
-                    sidebarRecordButton
-                }
-                .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .primaryAction) {
-                    sidebarRecordButton
-                }
-            }
-            #else
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
             ToolbarItem(placement: .primaryAction) {
-                sidebarRecordButton
+                sidebarImportButton
             }
-            #endif
+            .sharedBackgroundVisibility(.hidden)
+            ToolbarSpacer(.fixed, placement: .primaryAction)
+            ToolbarItem(placement: .primaryAction) {
+                if showsLiveToolbarPill {
+                    liveRecordingToolbarControl(height: 24)
+                } else {
+                    sidebarRecordButton(height: 24)
+                }
+            }
+            .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .primaryAction) {
+                sidebarImportButton
+            }
+            ToolbarItem(placement: .primaryAction) {
+                if showsLiveToolbarPill {
+                    liveRecordingToolbarControl(height: 24)
+                } else {
+                    sidebarRecordButton(height: 24)
+                }
+            }
         }
+        #else
+        ToolbarItem(placement: .primaryAction) {
+            sidebarImportButton
+        }
+        ToolbarItem(placement: .primaryAction) {
+            if showsLiveToolbarPill {
+                liveRecordingToolbarControl(height: 24)
+            } else {
+                sidebarRecordButton(height: 24)
+            }
+        }
+        #endif
     }
 
     @ViewBuilder
-    private var liveRecordingToolbarControl: some View {
+    private func liveRecordingToolbarControl(height: CGFloat) -> some View {
+        let compact = height <= 24
+        let innerHeight = max(18, height - 6)
         if RecordingOverview.active, let started = RecordingOverview.startedAt {
-            LiveRecordingPill(started: started, microphone: RecordingOverview.levels["microphone", default: 0], output: RecordingOverview.levels["output", default: 0])
+            LiveRecordingPill(started: started, microphone: RecordingOverview.levels["microphone", default: 0], output: RecordingOverview.levels["output", default: 0], height: height)
         } else if RecordingOverview.saving {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
-                Text(UXText.text("states.badge.saving")).fontWeight(.semibold).foregroundStyle(CassiniTheme.ink2)
+                Text(UXText.text("states.badge.saving"))
+                    .font(.system(size: compact ? 12 : 13, weight: .semibold))
+                    .foregroundStyle(CassiniTheme.ink2)
             }
-            .padding(.horizontal, 14)
-            .frame(height: 30)
+            .padding(.horizontal, compact ? 10 : 14)
+            .frame(height: height)
             .background(CassiniTheme.neutralPillFill, in: Capsule())
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("toolbar-saving")
         } else if let live = store.meetings.first(where: { $0.state.lifecycle == .recording }) {
-            HStack(spacing: 8) {
-                Circle().fill(CassiniTheme.recordInk).frame(width: 8, height: 8)
-                Text(LibraryFormat.liveBadge(live.state.liveMs ?? 0)).fontWeight(.semibold).monospacedDigit().foregroundStyle(CassiniTheme.recordInk)
-                VStack(spacing: 3) {
-                    Capsule().fill(CassiniTheme.recordInk.opacity(0.6)).frame(width: 24, height: 4)
-                    Capsule().fill(CassiniTheme.recordInk.opacity(0.3)).frame(width: 24, height: 4)
-                }.accessibilityHidden(true)
-                Text(UXText.text("common.stop")).font(.system(size: 12, weight: .semibold)).foregroundStyle(CassiniTheme.onRecord)
-                    .padding(.horizontal, 12).frame(height: 24).background(CassiniTheme.record, in: Capsule())
-            }.fixedSize().padding(.leading, 12).padding(.trailing, 4).frame(height: 30).background(CassiniTheme.recordTint, in: Capsule())
+            HStack(spacing: 6) {
+                Circle().fill(CassiniTheme.recordInk).frame(width: compact ? 7 : 8, height: compact ? 7 : 8)
+                Text(LibraryFormat.liveBadge(live.state.liveMs ?? 0))
+                    .font(.system(size: compact ? 12 : 13, weight: .semibold))
+                    .monospacedDigit().foregroundStyle(CassiniTheme.recordInk)
+                Text(UXText.text("common.stop"))
+                    .font(.system(size: compact ? 11 : 12, weight: .semibold))
+                    .foregroundStyle(CassiniTheme.onRecord)
+                    .padding(.horizontal, compact ? 8 : 12)
+                    .frame(height: innerHeight)
+                    .background(CassiniTheme.record, in: Capsule())
+            }
+            .fixedSize()
+            .padding(.leading, compact ? 8 : 12)
+            .padding(.trailing, 3)
+            .frame(height: height)
+            .background(CassiniTheme.recordTint, in: Capsule())
         }
     }
 
-    private var sidebarRecordButton: some View {
+    private func sidebarRecordButton(height: CGFloat) -> some View {
+        let compact = height <= 24
         let enabled = RecordingOverview.canStart
         let title = UXText.text("common.record")
         return Button {
             sessionPlayback.stop()
             RecordCoordinator.shared.request(parent: store.context.root)
         } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: compact ? 6 : 7) {
                 Circle()
                     .fill(enabled ? CassiniTheme.onRecord : CassiniTheme.ink3)
-                    .frame(width: 8, height: 8)
+                    .frame(width: compact ? 7 : 8, height: compact ? 7 : 8)
                 Text(title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: compact ? 12.5 : 13, weight: .semibold))
                     .foregroundStyle(enabled ? CassiniTheme.onRecord : CassiniTheme.ink3)
             }
-            .padding(.leading, 12)
-            .padding(.trailing, 14)
-            .frame(height: 30)
+            .padding(.horizontal, compact ? 10 : 12)
+            .frame(height: height)
             .background(enabled ? CassiniTheme.record : CassiniTheme.chipFill, in: Capsule())
             .contentShape(Capsule())
         }
@@ -409,9 +574,105 @@ struct LibraryView: View {
         .accessibilityIdentifier("toolbar-record")
     }
 
+    private var displayedSearchPreviewMeeting: LibraryMeeting? {
+        guard search.visible, let hit = search.selected else { return nil }
+        return search.meeting(hit)
+    }
+
+    private var detailToolbarTarget: LibraryDetailToolbarTarget {
+        LibraryDetailToolbarTarget.resolve(
+            searchVisible: search.visible,
+            searchPreviewMeeting: displayedSearchPreviewMeeting,
+            savedDetailMeeting: navigation.savedDetail?.meeting,
+            recordingSelected: recordingSelected,
+            selectedMeeting: store.selected
+        )
+    }
+
+    @ViewBuilder
+    private func detailMeetingActionButtons(for meeting: LibraryMeeting, allowTrash: Bool, exportDisabled: Bool) -> some View {
+        let starred = store.isStarred(meeting)
+        Button {
+            store.toggleStar(meeting)
+        } label: {
+            Image(systemName: starred ? "star.fill" : "star")
+                .foregroundStyle(starred ? CassiniTheme.accentInk : CassiniTheme.ink)
+        }
+        .help(UXText.text(starred ? "meeting.unstar" : "meeting.star"))
+        .accessibilityLabel(UXText.text(starred ? "meeting.unstar" : "meeting.star"))
+        .accessibilityIdentifier("meeting-star")
+
+        Button {
+            exporter.show(meeting)
+        } label: {
+            Image(systemName: "square.and.arrow.up")
+        }
+        .disabled(exportDisabled || !MeetingExportCoordinator.canExport(meeting))
+        .help(UXText.text("common.exportEllipsis"))
+        .accessibilityLabel(UXText.text("common.exportEllipsis"))
+        .accessibilityIdentifier("meeting-export")
+
+        if allowTrash {
+            Button {
+                store.selectedKey = meeting.libraryKey
+                trash.move(meeting, undoManager: undoManager ?? NSApp.keyWindow?.undoManager)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .disabled(!trash.canTrash(meeting))
+            .help(UXText.text("common.moveToTrash"))
+            .accessibilityLabel(UXText.text("common.moveToTrash"))
+            .accessibilityIdentifier("meeting-trash")
+        }
+    }
+
     @ToolbarContentBuilder
     private var detailToolbar: some ToolbarContent {
-        if let detail = navigation.savedDetail {
+        let target = detailToolbarTarget
+        detailSidebarCollapsedToolbarItem
+        detailCompactHeaderToolbarItem(for: target)
+        detailToolbarSpacer
+        detailFindToolbarItem(for: target)
+        detailActionToolbarItem(for: target)
+    }
+
+    @ToolbarContentBuilder
+    private var detailSidebarCollapsedToolbarItem: some ToolbarContent {
+        if columnVisibility == .detailOnly {
+            #if compiler(>=6.2)
+            if #available(macOS 26.0, *) {
+                ToolbarItem(placement: .navigation) {
+                    if showsLiveToolbarPill {
+                        liveRecordingToolbarControl(height: 32)
+                    } else {
+                        sidebarRecordButton(height: 32)
+                    }
+                }
+                .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .navigation) {
+                    if showsLiveToolbarPill {
+                        liveRecordingToolbarControl(height: 32)
+                    } else {
+                        sidebarRecordButton(height: 32)
+                    }
+                }
+            }
+            #else
+            ToolbarItem(placement: .navigation) {
+                if showsLiveToolbarPill {
+                    liveRecordingToolbarControl(height: 32)
+                } else {
+                    sidebarRecordButton(height: 32)
+                }
+            }
+            #endif
+        }
+    }
+
+    @ToolbarContentBuilder
+    private func detailCompactHeaderToolbarItem(for target: LibraryDetailToolbarTarget) -> some ToolbarContent {
+        if target.showsCompactHeader, let detail = navigation.savedDetail, detail.compactHeader {
             let title = detail.meeting.title ?? UXText.text("library.untitled")
             let subtitle = store.format.previewSubtitle(
                 detail.meeting.meetingTime,
@@ -419,7 +680,8 @@ struct LibraryView: View {
                 received: detail.meeting.state.origin == .received,
                 transcribedOnAnotherDevice: detail.meeting.transcribedOnAnotherDevice
             )
-            let titleMaxWidth: CGFloat = toolbarWidth < 860 ? 140 : 280
+            let titleMaxWidth: CGFloat = toolbarWidth < 860 ? 180 : 320
+            let leadingInset: CGFloat = columnVisibility == .detailOnly ? 0 : 22
             #if compiler(>=6.2)
             if #available(macOS 26.0, *) {
                 ToolbarItem(placement: .navigation) {
@@ -430,6 +692,7 @@ struct LibraryView: View {
                         maxWidth: titleMaxWidth,
                         onCommit: { newTitle in rename.renameInline(detail.meeting, to: newTitle) }
                     )
+                    .padding(.leading, leadingInset)
                 }
                 .sharedBackgroundVisibility(.hidden)
             } else {
@@ -441,6 +704,7 @@ struct LibraryView: View {
                         maxWidth: titleMaxWidth,
                         onCommit: { newTitle in rename.renameInline(detail.meeting, to: newTitle) }
                     )
+                    .padding(.leading, leadingInset)
                 }
             }
             #else
@@ -452,38 +716,28 @@ struct LibraryView: View {
                     maxWidth: titleMaxWidth,
                     onCommit: { newTitle in rename.renameInline(detail.meeting, to: newTitle) }
                 )
+                .padding(.leading, leadingInset)
             }
             #endif
         }
-        if navigation.savedDetail == nil {
+    }
+
+    @ToolbarContentBuilder
+    private var detailToolbarSpacer: some ToolbarContent {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            ToolbarSpacer(.flexible, placement: .primaryAction)
+        } else {
             ToolbarItem(placement: .automatic) { Spacer() }
         }
-        if showsLiveToolbarPill {
-            #if compiler(>=6.2)
-            if #available(macOS 26.0, *) {
-                ToolbarItem(placement: .primaryAction) {
-                    liveRecordingToolbarControl
-                }
-                .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .primaryAction) {
-                    liveRecordingToolbarControl
-                }
-            }
-            #else
-            ToolbarItem(placement: .primaryAction) {
-                liveRecordingToolbarControl
-            }
-            #endif
-        }
-        if let detail = navigation.savedDetail {
-            if let spec = meetingTranscriptionToolbarSpec(detail) {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(spec.title, action: spec.action)
-                        .disabled(!spec.enabled)
-                        .accessibilityIdentifier(spec.identifier)
-                }
-            }
+        #else
+        ToolbarItem(placement: .automatic) { Spacer() }
+        #endif
+    }
+
+    @ToolbarContentBuilder
+    private func detailFindToolbarItem(for target: LibraryDetailToolbarTarget) -> some ToolbarContent {
+        if target.showsFindAction, let detail = navigation.savedDetail {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     if detail.find.visible { detail.find.close() }
@@ -501,52 +755,88 @@ struct LibraryView: View {
                 ToolbarSpacer(.fixed, placement: .primaryAction)
             }
             #endif
-            ToolbarItemGroup(placement: .primaryAction) {
-                let starred = store.isStarred(detail.meeting)
-                Button {
-                    store.toggleStar(detail.meeting)
-                } label: {
-                    Image(systemName: starred ? "star.fill" : "star")
-                        .foregroundStyle(starred ? CassiniTheme.warnInk : CassiniTheme.ink)
-                }
-                .help(UXText.text(starred ? "meeting.unstar" : "meeting.star"))
-                .accessibilityLabel(UXText.text(starred ? "meeting.unstar" : "meeting.star"))
-                .accessibilityIdentifier("meeting-star")
+        }
+    }
 
-                Button {
-                    exporter.show(detail.meeting)
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                }
-                .disabled(!MeetingExportCoordinator.canExport(detail.meeting))
-                .help(UXText.text("common.exportEllipsis"))
-                .accessibilityLabel(UXText.text("common.exportEllipsis"))
-                .accessibilityIdentifier("meeting-export")
-
-                Button {
-                    store.selectedKey = detail.meeting.libraryKey
-                    trash.move(detail.meeting, undoManager: undoManager ?? NSApp.keyWindow?.undoManager)
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .disabled(!trash.canTrash(detail.meeting))
-                .help(UXText.text("meeting.moveToRecentlyDeleted"))
-                .accessibilityLabel(UXText.text("meeting.moveToRecentlyDeleted"))
-                .accessibilityIdentifier("meeting-trash")
+    private func recordingMoreActionsButton(for meeting: LibraryMeeting) -> some View {
+        let starTitle = UXText.text(store.isStarred(meeting) ? "meeting.unstar" : "meeting.star")
+        let detailsTitle = UXText.text("details.menu")
+        return LibraryToolbarAction(
+            title: "",
+            label: UXText.text("meeting.moreActions"),
+            identifier: "recording-more-actions",
+            style: .more,
+            menu: {
+                let entries: [LibraryToolbarAction.MenuEntry] = [
+                    LibraryToolbarAction.MenuEntry(title: starTitle, identifier: "recording-star") {
+                        store.toggleStar(meeting)
+                    },
+                    LibraryToolbarAction.MenuEntry(title: detailsTitle, identifier: "recording-details") {
+                        recordingDetails.show(meeting)
+                    }
+                ]
+                return LibraryToolbarAction.menu(entries)
             }
-        } else if recordingSelected, let meeting = store.selected {
+        ) {}
+    }
+
+    private func detailMeetingActionConfig(for target: LibraryDetailToolbarTarget) -> (meeting: LibraryMeeting, allowTrash: Bool, exportDisabled: Bool)? {
+        switch target {
+        case .savedDetail(let meeting):
+            return (meeting, true, false)
+        case .searchPreview(let meeting):
+            return (meeting, false, search.searching)
+        case .recording, .none:
+            return nil
+        }
+    }
+
+    private func recordingActionMeeting(for target: LibraryDetailToolbarTarget) -> LibraryMeeting? {
+        if case .recording(let meeting) = target { return meeting }
+        return nil
+    }
+
+    @ToolbarContentBuilder
+    private func detailActionToolbarItem(for target: LibraryDetailToolbarTarget) -> some ToolbarContent {
+        if let config = detailMeetingActionConfig(for: target) {
+            ToolbarItemGroup(placement: .primaryAction) {
+                detailMeetingActionButtons(
+                    for: config.meeting,
+                    allowTrash: config.allowTrash,
+                    exportDisabled: config.exportDisabled
+                )
+            }
+        }
+        if let meeting = recordingActionMeeting(for: target) {
             ToolbarItem(placement: .primaryAction) {
-                LibraryToolbarAction(title: "", label: UXText.text("meeting.moreActions"), identifier: "recording-more-actions", style: .more, menu: {
-                    LibraryToolbarAction.menu([
-                        .init(title: UXText.text(store.isStarred(meeting) ? "meeting.unstar" : "meeting.star"), identifier: "recording-star") { store.toggleStar(meeting) },
-                        .init(title: UXText.text("details.menu"), identifier: "recording-details") { recordingDetails.show(meeting) }
-                    ])
-                }) {}
+                recordingMoreActionsButton(for: meeting)
             }
         }
     }
 
+    @ViewBuilder
     private var sidebarColumn: some View {
+        if search.visible {
+            LibrarySearchSidebarContent(
+                format: store.format,
+                showEmbeddedField: isNarrowWindow && floatingSidebarOpen,
+                onPickResult: {
+                    var presentation = LibrarySidebarSearchPresentation(
+                        floatingSidebarOpen: floatingSidebarOpen,
+                        userHidSidebar: userHidSidebar,
+                        showsSplitSidebar: columnVisibility != .detailOnly,
+                        sidebarSearchPresented: sidebarSearchPresented
+                    )
+                    presentation.didPickSearchResult()
+                    floatingSidebarOpen = presentation.floatingSidebarOpen
+                }
+            )
+        } else {
+            libraryListSidebarColumn
+        }
+    }
+
+    private var libraryListSidebarColumn: some View {
         let todayTitle = UXText.text("format.today")
         let firstGroupIsToday = store.groups.first?.title == todayTitle
         return VStack(spacing: 0) {
@@ -557,6 +847,7 @@ struct LibraryView: View {
                 }
                 .pickerStyle(.segmented)
                 .controlSize(.regular)
+                .tint(nil)
                 .labelsHidden()
                 .fixedSize()
                 .accessibilityIdentifier("library-filters")
@@ -586,7 +877,10 @@ struct LibraryView: View {
                                 }
                             } header: {
                                 Text(todayTitle).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2).textCase(nil)
-                                    .padding(.horizontal, 10)
+                                    .padding(.leading, 20)
+                                    .padding(.trailing, 10)
+                                    .padding(.top, 10)
+                                    .padding(.bottom, 4)
                                     .accessibilityIdentifier("library-day-header-importing")
                             }
                         }
@@ -616,6 +910,7 @@ struct LibraryView: View {
                                             if NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
                                                 store.selectedKey = meeting.libraryKey
                                                 openSelection(userInitiated: true)
+                                                if floatingSidebarOpen { floatingSidebarOpen = false }
                                                 LibraryKeyboardMenu.focusList()
                                                 DispatchQueue.main.async { LibraryKeyboardMenu.focusList() }
                                             }
@@ -623,6 +918,8 @@ struct LibraryView: View {
                                         .contextMenu {
                                             Button(UXText.text(store.isStarred(meeting) ? "meeting.unstar" : "meeting.star")) { store.toggleStar(meeting) }
                                                 .accessibilityIdentifier("library-star")
+                                                .onAppear { contextMenuMeetingKey = meeting.libraryKey }
+                                                .onDisappear { if contextMenuMeetingKey == meeting.libraryKey { contextMenuMeetingKey = nil } }
                                             Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = meeting.libraryKey; rename.show(meeting) }
                                                 .disabled(store.selectedKeys.count > 1 || !rename.canRename(meeting)).accessibilityIdentifier("library-rename")
                                             Button(UXText.text("meeting.setDateTimeEllipsis")) { store.selectedKey = meeting.libraryKey; dateTime.show(meeting) }
@@ -634,14 +931,14 @@ struct LibraryView: View {
                                                         store.selectedKey = meeting.libraryKey
                                                     }
                                                 }
-                                            if !store.selectedKeys.isEmpty {
+                                            if store.selectedKeys.count > 1 {
                                                 Button(UXText.text("export.zip.selected")) { bulkExporter.exportSelected() }
                                                     .disabled(!bulkExporter.canExportSelected)
                                                     .accessibilityIdentifier("library-export-selected-zip")
                                             }
-                                            Button(UXText.text("export.zip.all")) { bulkExporter.exportAll() }
-                                                .disabled(!bulkExporter.canExportAll)
-                                                .accessibilityIdentifier("library-export-all-zip")
+                                            Button(UXText.text("details.menu")) { store.selectedKey = meeting.libraryKey; recordingDetails.show(meeting) }
+                                                .disabled(store.selectedKeys.count > 1)
+                                                .accessibilityIdentifier("library-recording-details")
                                             if store.selectedKeys.count <= 1 && trash.canTrash(meeting) { Divider(); trashButton(meeting) }
                                         }
                                         .listRowSeparator(.hidden)
@@ -651,17 +948,26 @@ struct LibraryView: View {
                                 }
                             } header: {
                                 Text(group.title).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2).textCase(nil)
-                                    .padding(.horizontal, 10)
+                                    .padding(.leading, 20)
+                                    .padding(.trailing, 10)
+                                    .padding(.top, 10)
+                                    .padding(.bottom, 4)
                                     .accessibilityIdentifier("library-day-header-" + (group.meetings.first?.libraryKey ?? "empty"))
                             }
                         }
                         if !store.meetings.isEmpty, store.meetings.allSatisfy({ $0.state.origin == .received }) {
                             Text(UXText.text("received.libraryHint")).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.ink2)
+                                .padding(.horizontal, 10)
                                 .listRowBackground(Color.clear).listRowSeparator(.hidden)
                         }
                     }
-                    .listStyle(.sidebar)
+                    .listStyle(.plain)
+                    .contentMargins(.horizontal, 0, for: .scrollContent)
                     .scrollContentBackground(.hidden)
+                    .modifier(SidebarBottomScrollEdgeModifier())
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        LibraryDropHintFooter(entered: dropState.showsWindowOutline)
+                    }
                     .opacity(dropState.dimsListContent ? 0.30 : 1.0)
                     .accessibilityLabel(UXText.text("library.listPane.a11y"))
 
@@ -674,14 +980,14 @@ struct LibraryView: View {
                     }
                 }
             }
-
-            LibraryDropHintFooter(entered: dropState.showsWindowOutline)
         }
     }
 
     @ViewBuilder
     private var detailColumn: some View {
-        if let detail = navigation.savedDetail {
+        if search.visible, let hit = search.selected, let meeting = search.meeting(hit) {
+            LibrarySearchPreviewPane(hit: hit, meeting: meeting, format: store.format)
+        } else if let detail = navigation.savedDetail {
             MeetingView(model: detail, format: store.format).id(ObjectIdentifier(detail))
         } else if let meeting = store.selected, meeting.state.lifecycle != .saved {
             RecordingPageView(meeting: meeting, format: store.format).id(meeting.libraryKey)
@@ -801,21 +1107,21 @@ struct LibraryView: View {
         let presentation = LibraryBadgeCatalog.presentation(for: meeting)
         let showDuration = meeting.durationMs != nil && presentation?.kind != "recording" && presentation?.kind != "saving"
         let trailingMeta = rowTrailingMeta(meeting, badgeKind: presentation?.kind)
-        return MeetingCard(isSelected: selected) {
+        return MeetingCard(isSelected: selected, isContextMenuTarget: contextMenuMeetingKey == meeting.libraryKey) {
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 10) {
-                    if store.isStarred(meeting) {
-                        Image(systemName:"star.fill")
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(CassiniTheme.warnInk)
-                            .accessibilityLabel(UXText.text("library.row.starred.a11y"))
-                            .accessibilityIdentifier("library-starred-" + meeting.libraryKey)
-                    }
+                HStack(spacing: 6) {
                     Text(meeting.title ?? UXText.text("library.untitled"))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(CassiniTheme.ink)
                         .lineLimit(1)
                     Spacer(minLength: 2)
+                    if store.isStarred(meeting) {
+                        Image(systemName:"star.fill")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(CassiniTheme.accentInk)
+                            .accessibilityLabel(UXText.text("library.row.starred.a11y"))
+                            .accessibilityIdentifier("library-starred-" + meeting.libraryKey)
+                    }
                     if showDuration, let durationMs = meeting.durationMs {
                         Text(LibraryFormat.meetingDuration(durationMs))
                             .font(.system(size: 11.5))
@@ -833,10 +1139,12 @@ struct LibraryView: View {
                     }
                     if let presentation {
                         catalogStatusBadge(presentation, onAccent: false)
+                            .layoutPriority(1)
                         if let trailingMeta {
                             Text(trailingMeta)
                                 .foregroundStyle(CassiniTheme.ink2)
                                 .lineLimit(1)
+                                .truncationMode(.tail)
                         }
                     } else if let trailingMeta {
                         if meeting.meetingTime != nil {
@@ -955,20 +1263,6 @@ struct LibraryView: View {
     private func readTranscript(_ meeting: LibraryMeeting) {
         sessionPlayback.stop(); navigation.open(meeting)
     }
-    private struct TranscriptionToolbarSpec {
-        let title: String
-        let identifier: String
-        let enabled: Bool
-        let action: () -> Void
-    }
-    private func meetingTranscriptionToolbarSpec(_ detail: MeetingDetailModel) -> TranscriptionToolbarSpec? {
-        let busy = LibraryMoveCoordinator.shared.busy || transcriptionQueue.isStopping(detail.meeting.folder)
-        if detail.meeting.canWriteDown && detail.meeting.state.transcript == .none {
-            let title = UXText.text("common.writeDown")
-            return .init(title:title,identifier:"meeting-write-down",enabled:!busy) { TranscriptionQueue.shared.writeDown(detail) }
-        }
-        return nil
-    }
 }
 
 private struct LibraryWindowTitleModifier: ViewModifier {
@@ -1008,136 +1302,60 @@ private struct MeetingWindowTitleView: View {
     var maxWidth: CGFloat = 280
     let onCommit: (String) -> Void
     @State private var editing = false
-    @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            if editing && canRename {
-                InlineToolbarTitleField(
-                    initialText: title,
-                    onCommit: { newValue in
-                        editing = false
-                        onCommit(newValue)
-                    },
-                    onCancel: {
-                        editing = false
-                    }
-                )
-                .frame(minWidth: 120, idealWidth: min(220, maxWidth), maxWidth: maxWidth, minHeight: 20, maxHeight: 20)
-            } else if canRename {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(CassiniTheme.ink)
+            InlineEditableTitle(
+                title: title,
+                fontSize: 13,
+                weight: .semibold,
+                singleLine: true,
+                canRename: canRename,
+                identifier: "meeting-window-title",
+                editorIdentifier: "meeting-window-title-editor",
+                maxWidth: maxWidth,
+                editing: $editing,
+                onCommit: onCommit
+            )
+            if !editing {
+                Text(subtitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(CassiniTheme.secondaryInk)
                     .lineLimit(1)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(hovering ? CassiniTheme.ink.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
-                    .contentShape(Rectangle())
-                    .onHover { hovering = $0 }
-                    .onTapGesture { editing = true }
-                    .accessibilityIdentifier("meeting-window-title")
-            } else {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(CassiniTheme.ink)
-                    .lineLimit(1)
-                    .accessibilityIdentifier("meeting-window-title")
+                    .accessibilityIdentifier("meeting-window-subtitle")
             }
-            Text(subtitle)
-                .font(.system(size: 11))
-                .foregroundStyle(CassiniTheme.secondaryInk)
-                .lineLimit(1)
-                .padding(.horizontal, canRename ? 4 : 0)
-                .accessibilityIdentifier("meeting-window-subtitle")
         }
-        .frame(minWidth: 60, maxWidth: maxWidth, alignment: .leading)
+        .frame(maxWidth: maxWidth, alignment: .leading)
         .onChange(of: title) { _, _ in editing = false }
         .onChange(of: canRename) { _, allowed in if !allowed { editing = false } }
     }
 }
 
-private struct InlineToolbarTitleField: NSViewRepresentable {
-    let initialText: String
-    let onCommit: (String) -> Void
-    let onCancel: () -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(onCommit: onCommit, onCancel: onCancel) }
-
-    func makeNSView(context: Context) -> FocusableTitleField {
-        let field = FocusableTitleField()
-        field.stringValue = initialText
-        field.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        field.isBezeled = true
-        field.bezelStyle = .roundedBezel
-        field.isEditable = true
-        field.isSelectable = true
-        field.lineBreakMode = .byTruncatingTail
-        field.delegate = context.coordinator
-        field.setAccessibilityIdentifier("meeting-window-title-editor")
-        return field
-    }
-
-    func updateNSView(_ view: FocusableTitleField, context: Context) {
-        context.coordinator.onCommit = onCommit
-        context.coordinator.onCancel = onCancel
-    }
-
-    final class FocusableTitleField: NSTextField {
-        private var didFocus = false
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            guard !didFocus, let window else { return }
-            didFocus = true
-            DispatchQueue.main.async { [weak self, weak window] in
-                guard let self, let window else { return }
-                if window.makeFirstResponder(self) {
-                    self.currentEditor()?.selectAll(nil)
-                }
-            }
+private struct SidebarGlassCircleModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            content.glassEffect(.regular, in: .circle)
+        } else {
+            content.background(CassiniTheme.chipFill, in: Circle())
         }
-    }
-
-    final class Coordinator: NSObject, NSTextFieldDelegate {
-        var onCommit: (String) -> Void
-        var onCancel: () -> Void
-        private var finished = false
-        init(onCommit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
-            self.onCommit = onCommit
-            self.onCancel = onCancel
-        }
-        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-            if commandSelector == #selector(NSResponder.insertNewline(_:)) {
-                guard !finished else { return true }
-                finished = true
-                onCommit(control.stringValue)
-                return true
-            }
-            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-                guard !finished else { return true }
-                finished = true
-                onCancel()
-                return true
-            }
-            return false
-        }
-        func controlTextDidEndEditing(_ obj: Notification) {
-            guard !finished, let field = obj.object as? NSTextField else { return }
-            finished = true
-            onCommit(field.stringValue)
-        }
+        #else
+        content.background(CassiniTheme.chipFill, in: Circle())
+        #endif
     }
 }
 
-private struct ConditionalFirstRunToolbarChrome: ViewModifier {
-    let enabled: Bool
-
-    @ViewBuilder
+private struct SidebarBottomScrollEdgeModifier: ViewModifier {
     func body(content: Content) -> some View {
-        if enabled {
-            content.cassiniUnifiedToolbarChrome()
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            content.scrollEdgeEffectStyle(.soft, for: .bottom)
         } else {
             content
         }
+        #else
+        content
+        #endif
     }
 }
 

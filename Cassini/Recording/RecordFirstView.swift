@@ -180,6 +180,7 @@ struct LiveRecordingPill: View {
     let started: Date
     let microphone: Float
     let output: Float
+    var height: CGFloat = 32
     var frozenMs: Int64? = nil
     @State private var elapsedMs: Int64 = 0
     @State private var previewSpectrogram: RecordingSpectrogram?
@@ -190,10 +191,10 @@ struct LiveRecordingPill: View {
             label:UXText.text("recording.pill.open.a11y",["time":LibraryFormat.liveBig(displayedMs)]),
             microphone:microphone,output:output,silent:frozenMs != nil || RecordingOverview.microphoneSilent,
             controller:frozenMs == nil ? RecordingOverview.spectrogram : previewSpectrogram,
-            noSleep:RecordingRuntime.shared.power.held,dark:colorScheme == .dark,
+            noSleep:RecordingRuntime.shared.power.held,dark:colorScheme == .dark,height:height,
             open:{ if frozenMs == nil { RecordCoordinator.shared.openCurrent() } },
             stop:{ if frozenMs == nil { RecordingOverview.stop() } })
-            .fixedSize().frame(height:34)
+            .fixedSize().frame(height:height)
             .task {
                 if let frozenMs {
                     #if DEBUG
@@ -217,6 +218,7 @@ private struct RecordingPillControls: NSViewRepresentable {
     let silent: Bool
     let controller: RecordingSpectrogram?
     let noSleep: Bool, dark: Bool
+    let height: CGFloat
     let open: () -> Void, stop: () -> Void
     func makeNSView(context: Context) -> RecordingPillControlView { RecordingPillControlView() }
     func updateNSView(_ view: RecordingPillControlView, context: Context) {
@@ -228,16 +230,20 @@ private final class RecordingPillControlView: NSView {
     private let me = RecordingPillMeter(), others = RecordingPillMeter()
     private let spectrogram = RecordingSpectrogramView(style:.pill)
     private var openWidth: NSLayoutConstraint!, stopWidth: NSLayoutConstraint!
+    private var openHeight: NSLayoutConstraint!, stopHeight: NSLayoutConstraint!
+    private var trailingConstraint: NSLayoutConstraint!
+    private var pillHeight: CGFloat = 32
     private var onOpen: (() -> Void)?, onStop: (() -> Void)?
     override init(frame: NSRect) {
         super.init(frame:frame)
-        wantsLayer = true; layer?.cornerRadius = 17
+        wantsLayer = true; layer?.cornerRadius = 16
         setAccessibilityElement(true); setAccessibilityRole(.group)
         for button in [openButton,stopButton] {
             button.isBordered = false; button.setButtonType(.momentaryPushIn)
             button.target = self; button.font = .systemFont(ofSize:13,weight:.semibold)
-            button.heightAnchor.constraint(equalToConstant:26).isActive = true
         }
+        openHeight = openButton.heightAnchor.constraint(equalToConstant:26); openHeight.isActive = true
+        stopHeight = stopButton.heightAnchor.constraint(equalToConstant:26); stopHeight.isActive = true
         openButton.action = #selector(openRecording); stopButton.action = #selector(stopRecording)
         openButton.setAccessibilityIdentifier("recording-open-current")
         stopButton.setAccessibilityIdentifier("recording-stop")
@@ -253,31 +259,41 @@ private final class RecordingPillControlView: NSView {
         for meter in [me,others] { meters.addSubview(meter) }
         me.setAccessibilityLabel(UXText.text("common.yourMicrophone"))
         others.setAccessibilityLabel(UXText.text("common.theOthers"))
-        let row = NSStackView(views:[openButton,meters,stopButton]); row.spacing = 8; row.alignment = .centerY
+        let row = NSStackView(views:[openButton,meters,stopButton]); row.spacing = 6; row.alignment = .centerY
         row.translatesAutoresizingMaskIntoConstraints = false; addSubview(row)
-        NSLayoutConstraint.activate([row.leadingAnchor.constraint(equalTo:leadingAnchor,constant:10),row.trailingAnchor.constraint(equalTo:trailingAnchor,constant:-4),row.centerYAnchor.constraint(equalTo:centerYAnchor)])
+        trailingConstraint = row.trailingAnchor.constraint(equalTo:trailingAnchor,constant:-3)
+        NSLayoutConstraint.activate([row.leadingAnchor.constraint(equalTo:leadingAnchor,constant:8),trailingConstraint,row.centerYAnchor.constraint(equalTo:centerYAnchor)])
         setAccessibilityChildren([openButton,me,others,stopButton])
     }
     required init?(coder: NSCoder) { nil }
-    override var intrinsicContentSize: NSSize { NSSize(width:openWidth.constant + stopWidth.constant + 50 + 16 + 14,height:34) }
+    override var intrinsicContentSize: NSSize { NSSize(width:openWidth.constant + stopWidth.constant + 50 + 12 + 11,height:pillHeight) }
     func update(_ value: RecordingPillControls) {
         onOpen = value.open; onStop = value.stop
+        pillHeight = value.height
+        let compact = pillHeight <= 24
+        let innerHeight = max(18, pillHeight - 6)
+        layer?.cornerRadius = pillHeight / 2
+        openHeight.constant = innerHeight
+        stopHeight.constant = innerHeight
+        stopButton.layer?.cornerRadius = innerHeight / 2
+        trailingConstraint.constant = -3
         let ink = CassiniTheme.nsLivePillInk(dark: value.dark)
         let stopFill = CassiniTheme.nsLivePillStopFill(dark: value.dark)
-        let font = NSFont.monospacedDigitSystemFont(ofSize:13,weight:.semibold)
+        let font = NSFont.monospacedDigitSystemFont(ofSize:compact ? 12 : 13,weight:.semibold)
         openButton.attributedTitle = NSAttributedString(string:value.time,attributes:[.font:font,.foregroundColor:ink])
-        openButton.image = NSImage(size:NSSize(width:17,height:10),flipped:false) { _ in
-            ink.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:0.5,width:9,height:9)).fill(); return true
+        let dotSize: CGFloat = compact ? 7 : 8
+        openButton.image = NSImage(size:NSSize(width:dotSize + 6,height:dotSize + 2),flipped:false) { _ in
+            ink.setFill(); NSBezierPath(ovalIn:NSRect(x:0,y:1,width:dotSize,height:dotSize)).fill(); return true
         }
         openButton.imagePosition = .imageLeft; openButton.imageHugsTitle = true
         openButton.spokenLabel = value.label
-        let stopTitle = UXText.text("common.stop"), stopFont = NSFont.systemFont(ofSize:11,weight:.semibold)
+        let stopTitle = UXText.text("common.stop"), stopFont = NSFont.systemFont(ofSize:compact ? 11 : 12,weight:.semibold)
         stopButton.attributedTitle = NSAttributedString(string:stopTitle,attributes:[.font:stopFont,.foregroundColor:CassiniTheme.nsOnRecord])
         stopButton.spokenLabel = UXText.text("recording.pill.stop.a11y")
         stopButton.layer?.backgroundColor = stopFill.cgColor
         layer?.backgroundColor = CassiniTheme.nsLivePillWash(dark: value.dark).cgColor
-        openWidth.constant = ceil((value.time as NSString).size(withAttributes:[.font:font]).width) + 21
-        stopWidth.constant = ceil((stopTitle as NSString).size(withAttributes:[.font:stopFont]).width) + 20
+        openWidth.constant = ceil((value.time as NSString).size(withAttributes:[.font:font]).width) + dotSize + 10
+        stopWidth.constant = ceil((stopTitle as NSString).size(withAttributes:[.font:stopFont]).width) + (compact ? 16 : 20)
         toolTip = value.noSleep ? UXText.text("recording.pill.noSleep") : nil
         spectrogram.configure(value.controller,dark:value.dark,silent:value.silent)
         me.update(value.microphone,color:ink,silent:value.silent)

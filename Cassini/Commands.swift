@@ -77,7 +77,7 @@ struct AppCommands: Commands {
                 Button(UXText.text("meeting.undoMerge")) { MeetingRenameCoordinator.shared.undoSpeakerMerge(detail.meeting) }
                     .disabled(speakerDialog || !MeetingRenameCoordinator.shared.canEditSpeakers(detail.meeting))
             }
-            Button(UXText.text("meeting.moveToRecentlyDeleted")) {
+            Button(UXText.text("common.moveToTrash")) {
                 let trash = MeetingTrashCoordinator.shared
                 if trash.commandEnabled, let meeting = trash.commandMeeting { trash.move(meeting,undoManager:NSApp.keyWindow?.undoManager) }
             }.keyboardShortcut(.delete,modifiers:.command).disabled(speakerDialog || !MeetingTrashCoordinator.shared.commandEnabled)

@@ -33,6 +33,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
             return label.map(part) ?? ""
         }
     }
+    public enum Side: Equatable, Sendable { case me, others }
     public struct SourceRow: Equatable, Sendable {
         public let line: Line
         /// An expected source that failed, or (once final) produced no or little audio.
@@ -48,6 +49,14 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         /// is silent." A quiet line (never a problem, never amber), shown only when the source's
         /// summed D69 writer loss, rounded once, is at least 1 s.
         public var computerBusy: Line? = nil
+        /// D-1172 grouped presentation fields (source-less details inside a Me / The others row).
+        public var side: Side = .others
+        public var sourceName: Line = .init(text: .catalog("details.source.unknown"))
+        public var recordedValue: Line? = nil
+        public var statusNote: Line? = nil
+        public var detailGapLines: [Line] = []
+        public var detailComputerBusy: Line? = nil
+        public var detailSilent: Line? = nil
         /// The lines in display order: the source's own line, its gap lines, the computer-busy line,
         /// the silent line, then the hint.
         public var lines: [Line] {
@@ -69,6 +78,9 @@ public struct RecordingDetailsReport: Equatable, Sendable {
     public let notes: [Line]
     public let ended: Line
     public let endKnown: Bool
+    /// D-1172: structured reason + optional timestamp (ms) for one-row grouped "How it ended".
+    public let endReason: Line?
+    public let endTimeMs: Int64?
 
     /// Every catalog id this report can emit (checked against the catalog in tests).
     public static let catalogIDs: [String] = ["details.title","details.liveSubtitle","details.updates","details.unknown",
@@ -149,7 +161,7 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         notes = (input.sourceSpansSeparated && input.transcriptDone ? [.init("details.sources.overlap")] : [])
             + (input.othersRoute?["source"]?.string == "system" && input.othersRoute?["reason"]?.string == "mixedSiteSignal" && Self.routeSite(input.othersRoute?["site"]) != nil ? [.init("details.othersRoute.mixedGeneric")] : [])
             + Self.fallbackCauseLines(input.session?["events"] ?? record?["events"])
-        (ended,endKnown) = Self.end(input,events:input.session?["events"] ?? record?["events"])
+        (ended,endKnown,endReason,endTimeMs) = Self.end(input,events:input.session?["events"] ?? record?["events"])
     }
 
     private static func routeSite(_ value: JSON?) -> String? {
@@ -214,42 +226,73 @@ public struct RecordingDetailsReport: Equatable, Sendable {
         let recorded = row["captureOutcome"]!.string!
         let outcome = expected ? recorded : "notSelected"
         let source = name(row), duration = Line.Part.duration(shown(row["audioMs"]!.double!))
+        let side: Side = ["microphone","local"].contains(row["kind"]?.string ?? "") ? .me : .others
         let line: Line
-        if !final && outcome == "neverAudio" { line = .init(text:source) }
-        else {
-            let shown = !final && outcome == "lowAudio" ? "captured" : outcome
+        let recordedValue: Line?
+        let statusNote: Line?
+        if !final && outcome == "neverAudio" {
+            line = .init(text:source)
+            recordedValue = nil
+            statusNote = nil
+        } else {
+            let shownOutcome = !final && outcome == "lowAudio" ? "captured" : outcome
             // D58.4: under one second the low-audio line says so in words, not as a rounded number.
-            let underSecond = shown == "lowAudio" && row["audioMs"]!.double! < 1000
-            line = shown == "neverAudio" || shown == "failed" || shown == "notSelected" || underSecond
-                ? .init("details.sources."+shown+(underSecond ? ".underSecond" : ""),["source":source])
-                : .init("details.sources."+shown,["source":source,"duration":duration])
+            let underSecond = shownOutcome == "lowAudio" && row["audioMs"]!.double! < 1000
+            line = shownOutcome == "neverAudio" || shownOutcome == "failed" || shownOutcome == "notSelected" || underSecond
+                ? .init("details.sources."+shownOutcome+(underSecond ? ".underSecond" : ""),["source":source])
+                : .init("details.sources."+shownOutcome,["source":source,"duration":duration])
+            if shownOutcome == "captured" {
+                recordedValue = .init("mac.details.source.recorded", ["duration": duration])
+                statusNote = nil
+            } else {
+                recordedValue = nil
+                statusNote = underSecond
+                    ? .init("mac.details.source.lowAudio.underSecond")
+                    : (shownOutcome == "lowAudio"
+                        ? .init("mac.details.source.lowAudio", ["duration": duration])
+                        : .init("mac.details.source." + shownOutcome))
+            }
         }
         let problem = expected && (recorded == "failed" || (final && (recorded == "neverAudio" || recorded == "lowAudio")))
-        var gaps: [Line] = [], busy: Line? = nil
+        var gaps: [Line] = [], detailGaps: [Line] = [], busy: Line? = nil, detailBusy: Line? = nil
         if expected {
             let ids = (row["trackIds"]?.array ?? []).compactMap(\.string)
             let padding = counter("gapFrames",ids:ids,tracks:tracks), dropped = counter("droppedFrames",ids:ids,tracks:tracks)
             let writer = writerLoss(ids:ids,tracks:tracks)
-            if let padding, padding > 0 { gaps.append(.init("details.sources.gap",["source":source,"duration":.duration(shown(padding))])) }
+            if let padding, padding > 0 {
+                gaps.append(.init("details.sources.gap",["source":source,"duration":.duration(shown(padding))]))
+                detailGaps.append(.init("mac.details.source.gap",["duration":.duration(shown(padding))]))
+            }
             // D69.2: writer loss is the quiet line below, so the dropped-audio line counts only the
             // audio the producer dropped (browser capture); native droppedFrames is writer padding.
             if let dropped {
                 let residual = writer.map { max(0,dropped - $0.droppedMs) } ?? dropped
                 if residual > 0, residual != padding {
-                    gaps.append(.init(label:.catalog("details.health.dropped"),value:.duration(shown(residual))))
+                    let dropLine = Line(label:.catalog("details.health.dropped"),value:.duration(shown(residual)))
+                    gaps.append(dropLine)
+                    detailGaps.append(dropLine)
                 }
             }
             if let writer, writer.roundedMs >= 1000 {
                 busy = .init("details.sources.computerBusy",["source":source,"duration":.duration(Int64(writer.roundedMs))])
+                detailBusy = .init("mac.details.source.computerBusy",["duration":.duration(Int64(writer.roundedMs))])
             }
         }
         // R13 (D67.1): a captured expected source whose every track was left out as silent by a
         // done write-down. neverAudio and lowAudio keep their own line only (R13.2).
         let ids = (row["trackIds"]?.array ?? []).compactMap(\.string)
-        let silent: Line? = expected && recorded == "captured" && !ids.isEmpty && silentTracks.map({ set in ids.allSatisfy(set.contains) }) == true
-            ? .init("details.sources.silent",["source":source]) : nil
+        let isSilent = expected && recorded == "captured" && !ids.isEmpty && silentTracks.map({ set in ids.allSatisfy(set.contains) }) == true
+        let silent: Line? = isSilent ? .init("details.sources.silent",["source":source]) : nil
+        let detailSilent: Line? = isSilent ? .init("mac.details.source.silent") : nil
         var result = SourceRow(line:line,problem:problem,gapLines:gaps,silent:silent)
         result.computerBusy = busy
+        result.side = side
+        result.sourceName = .init(text: source)
+        result.recordedValue = recordedValue
+        result.statusNote = statusNote
+        result.detailGapLines = detailGaps
+        result.detailComputerBusy = detailBusy
+        result.detailSilent = detailSilent
         return result
     }
     /// D69.2: a source's summed D69 writer loss, rounded once (exact half-up across rates, as the
@@ -434,30 +477,32 @@ public struct RecordingDetailsReport: Equatable, Sendable {
 
     // MARK: How it ended
 
-    static func end(_ input: Inputs, events: JSON?) -> (Line,Bool) {
+    static func end(_ input: Inputs, events: JSON?) -> (Line, Bool, Line?, Int64?) {
         switch input.lifecycle {
-        case .recording: return (.init("details.end.recording"),true)
-        case .saving: return (.init("details.end.saving"),true)
+        case .recording: return (.init("details.end.recording"), true, .init("details.end.recording"), nil)
+        case .saving: return (.init("details.end.saving"), true, .init("details.end.saving"), nil)
         case .saved: break
         }
         // An end time past the format bound is not a valid end: fall back to the stored end, then unknown.
         if let last = CaptureEvent.read(events).last, last.type == "end", let reason = last.reason, let at = last.atMs,
            at.isFinite, (0...endBound).contains(at), CaptureEndReason(rawValue:reason) != nil {
+            let ms = Int64(at.rounded(.down))
             // D69.2: writer-only loss has no error end state. D69 stores reason error over the stop's
             // own: a native stop passes none, so it was the user's; a browser capture's is lost.
             if reason == CaptureEndReason.error.rawValue, let session = input.session, WriterLoss.isWriterOnly(session) {
-                guard session["source"]?.string != "chromium", liveRecord(session) == nil else { return (.init("details.unknown"),false) }
-                return (.init("details.end.at",["reason":.catalog("details.end.user"),"time":.position(Int64(at.rounded(.down)))]),true)
+                guard session["source"]?.string != "chromium", liveRecord(session) == nil else { return (.init("details.unknown"), false, nil, nil) }
+                return (.init("details.end.at",["reason":.catalog("details.end.user"),"time":.position(ms)]), true, .init("details.end.user"), ms)
             }
-            return (.init("details.end.at",["reason":.catalog("details.end."+reason),"time":.position(Int64(at.rounded(.down)))]),true)
+            return (.init("details.end.at",["reason":.catalog("details.end."+reason),"time":.position(ms)]), true, .init("details.end."+reason), ms)
         }
         if let end = input.storedEnd, let reason = end["reason"]?.string, CaptureEndReason(rawValue:reason) != nil {
             if case .number(let literal)? = end["atMs"], let at = Double(literal), at.rounded() == at, (0...endBound).contains(at), !literal.contains(".") {
-                return (.init("details.end.at",["reason":.catalog("details.end."+reason),"time":.position(Int64(at))]),true)
+                let ms = Int64(at)
+                return (.init("details.end.at",["reason":.catalog("details.end."+reason),"time":.position(ms)]), true, .init("details.end."+reason), ms)
             }
-            return (.init(text:.catalog("details.end."+reason)),true)
+            return (.init(text:.catalog("details.end."+reason)), true, .init("details.end."+reason), nil)
         }
-        return (.init("details.unknown"),false)
+        return (.init("details.unknown"), false, nil, nil)
     }
 
     // MARK: Recording page

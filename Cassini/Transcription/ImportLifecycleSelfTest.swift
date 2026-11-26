@@ -679,8 +679,9 @@ import SwiftUI
         let scanPrunedRunning = try require(LibraryScanner(root:root).scan().meetings.first(where:{ $0.id == scanPruned.manifest.id }))
         queue.consider([scanPrunedRunning], automatic:true)
         await queue.waitForFixturePreparation()
-        guard queue.containsPendingForTesting(scanPrunedRunning.folder) else {
-            throw NSError(domain:"ImportLifecycleSelfTest",code:25,userInfo:[NSLocalizedDescriptionKey:"Expected scanPrunedRunning in pending"])
+        guard queue.containsPendingForTesting(scanPrunedRunning.folder),
+              queue.isQueuedOrActive(scanPrunedRunning.folder) else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:25,userInfo:[NSLocalizedDescriptionKey:"Expected scanPrunedRunning in pending and queued"])
         }
         try completedSidecar.write(to:scanPrunedRunning.folder.appendingPathComponent("transcript.json"))
         try MeetingMetadataWriter(directory:scanPrunedRunning.folder,id:scanPruned.manifest.id).transaction { meta in
@@ -693,6 +694,9 @@ import SwiftUI
         queue.consider(try LibraryScanner(root:root).scan().meetings, automatic:true)
         guard !queue.containsPendingForTesting(scanPrunedRunning.folder) else {
             throw NSError(domain:"ImportLifecycleSelfTest",code:26,userInfo:[NSLocalizedDescriptionKey:"Completed automatic pending retry was not pruned by scan"])
+        }
+        guard !queue.isQueuedOrActive(scanPrunedRunning.folder) else {
+            throw NSError(domain:"ImportLifecycleSelfTest",code:27,userInfo:[NSLocalizedDescriptionKey:"Pruned automatic pending retry remained marked queued/active"])
         }
     }
 

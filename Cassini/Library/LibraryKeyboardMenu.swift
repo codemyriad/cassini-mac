@@ -53,19 +53,19 @@ import CassiniLibrary
         dateTimeItem.setAccessibilityIdentifier("library-keyboard-set-date-time"); menu.addItem(dateTimeItem)
         let exportItem = ActionItem(title:UXText.text("common.exportEllipsis")) { if let meeting { MeetingExportCoordinator.shared.show(meeting) } }
         exportItem.isEnabled = MeetingExportCoordinator.canExport(meeting); menu.addItem(exportItem)
-        if BulkZipExportCoordinator.shared.hasSelection {
+        if LibraryStore.shared.selectedKeys.count > 1 {
             let exportSelectedItem = ActionItem(title:UXText.text("export.zip.selected")) { BulkZipExportCoordinator.shared.exportSelected() }
             exportSelectedItem.isEnabled = BulkZipExportCoordinator.shared.canExportSelected
             exportSelectedItem.setAccessibilityIdentifier("library-keyboard-export-selected-zip")
             menu.addItem(exportSelectedItem)
         }
-        let exportAllItem = ActionItem(title:UXText.text("export.zip.all")) { BulkZipExportCoordinator.shared.exportAll() }
-        exportAllItem.isEnabled = BulkZipExportCoordinator.shared.canExportAll
-        exportAllItem.setAccessibilityIdentifier("library-keyboard-export-all-zip")
-        menu.addItem(exportAllItem)
+        let detailsItem = ActionItem(title:UXText.text("details.menu")) { if let meeting { RecordingDetailsCoordinator.shared.show(meeting) } }
+        detailsItem.isEnabled = meeting != nil && LibraryStore.shared.selectedKeys.count <= 1
+        detailsItem.setAccessibilityIdentifier("library-keyboard-recording-details")
+        menu.addItem(detailsItem)
         if let meeting, trash.canTrash(meeting) {
             menu.addItem(.separator())
-            let removeItem = ActionItem(title:UXText.text("meeting.moveToRecentlyDeleted")) { trash.move(meeting,undoManager:undo) }
+            let removeItem = ActionItem(title:UXText.text("common.moveToTrash")) { trash.move(meeting,undoManager:undo) }
             removeItem.identifier = NSUserInterfaceItemIdentifier("library-keyboard-trash")
             removeItem.setAccessibilityIdentifier("library-keyboard-trash")
             menu.addItem(removeItem)
