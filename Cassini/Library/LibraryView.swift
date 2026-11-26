@@ -266,7 +266,7 @@ struct LibraryView: View {
         .preferredColorScheme(LibraryLaunchContext.screenshotDark ? .dark : (store.context.screenshot ? .light : nil))
     }
     private func trashButton(_ meeting: LibraryMeeting) -> some View {
-        Button(UXText.text("meeting.moveToRecentlyDeleted")) {
+        Button(UXText.text("common.moveToTrash")) {
             store.selectedKey = meeting.libraryKey
             trash.move(meeting,undoManager:undoManager ?? NSApp.keyWindow?.undoManager)
         }.accessibilityIdentifier("move-to-trash")
@@ -689,8 +689,8 @@ struct LibraryView: View {
                     Image(systemName: "trash")
                 }
                 .disabled(!trash.canTrash(detail.meeting))
-                .help(UXText.text("meeting.moveToRecentlyDeleted"))
-                .accessibilityLabel(UXText.text("meeting.moveToRecentlyDeleted"))
+                .help(UXText.text("common.moveToTrash"))
+                .accessibilityLabel(UXText.text("common.moveToTrash"))
                 .accessibilityIdentifier("meeting-trash")
             }
         } else if recordingSelected, let meeting = store.selected {
@@ -800,14 +800,14 @@ struct LibraryView: View {
                                                         store.selectedKey = meeting.libraryKey
                                                     }
                                                 }
-                                            if !store.selectedKeys.isEmpty {
+                                            if store.selectedKeys.count > 1 {
                                                 Button(UXText.text("export.zip.selected")) { bulkExporter.exportSelected() }
                                                     .disabled(!bulkExporter.canExportSelected)
                                                     .accessibilityIdentifier("library-export-selected-zip")
                                             }
-                                            Button(UXText.text("export.zip.all")) { bulkExporter.exportAll() }
-                                                .disabled(!bulkExporter.canExportAll)
-                                                .accessibilityIdentifier("library-export-all-zip")
+                                            Button(UXText.text("details.menu")) { store.selectedKey = meeting.libraryKey; recordingDetails.show(meeting) }
+                                                .disabled(store.selectedKeys.count > 1)
+                                                .accessibilityIdentifier("library-recording-details")
                                             if store.selectedKeys.count <= 1 && trash.canTrash(meeting) { Divider(); trashButton(meeting) }
                                         }
                                         .listRowSeparator(.hidden)

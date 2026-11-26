@@ -38,52 +38,67 @@ struct RecordingDetailsSheet: View {
             // report scrolls within a bounded height, sized to its content when it fits.
             ScrollView(.vertical) {
                 VStack(alignment:.leading,spacing:16) {
-                    VStack(alignment:.leading,spacing:8) {
-                        Text(UXText.text("details.sources.title")).font(.system(size:13,weight:.semibold)).accessibilityAddTraits(.isHeader)
-                        if let report, !report.sourcesEmpty {
-                            ForEach(Array(report.sources.enumerated()),id:\.offset) { index,row in
-                                VStack(alignment:.leading,spacing:2) {
-                                    Text(text(row.line)).foregroundStyle(row.problem ? CassiniTheme.warningNotice : CassiniTheme.primaryInk)
-                                        .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-source-\(index)")
-                                    ForEach(Array(row.gapLines.enumerated()),id:\.offset) { gap,line in
-                                        Text(text(line)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.warningNotice)
-                                            .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-gap-\(index)-\(gap)")
-                                    }
-                                    // D69.2: computer-side loss of at least 1 s, a quiet line, never a warning.
-                                    if let busy = row.computerBusy {
-                                        Text(text(busy)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk)
-                                            .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-computer-busy-\(index)")
-                                    }
-                                    // R13 (D67.1): a role line after the gap lines, never a warning.
-                                    if let silent = row.silent {
-                                        Text(text(silent)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk)
-                                            .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-silent-\(index)")
-                                    }
-                                    // D58.3: the conditional permission hint, with its System Settings action.
-                                    if let hint = row.permissionHint {
-                                        Text(text(hint)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.secondaryInk)
-                                            .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-permission-hint-\(index)")
-                                        Button(UXText.text("errors.othersPermission.action")) { CaptureSettings.open(.others) }
-                                            .controlSize(.small).accessibilityIdentifier("recording-details-permission-settings-\(index)")
-                                    }
+                    if let report, !report.sourcesEmpty {
+                        let meRows = report.sources.enumerated().filter { $0.element.side == .me }
+                        let othersRows = report.sources.enumerated().filter { $0.element.side == .others }
+                        if !meRows.isEmpty {
+                            sourceGroup(title: UXText.text("details.side.me"), rows: meRows)
+                        }
+                        if !othersRows.isEmpty {
+                            sourceGroup(title: UXText.text("details.side.others"), rows: othersRows)
+                        }
+                        if !report.refusals.isEmpty {
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(Array(report.refusals.enumerated()), id: \.offset) { index, line in
+                                    if index > 0 { Divider() }
+                                    Text(text(line))
+                                        .foregroundStyle(CassiniTheme.warningNotice)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .padding(.horizontal, 14).padding(.vertical, 10)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .accessibilityIdentifier("recording-details-refusal-\(index)")
                                 }
                             }
-                            // D58: sides that were requested but never opened, after the rows.
-                            ForEach(Array(report.refusals.enumerated()),id:\.offset) { index,line in
-                                Text(text(line)).foregroundStyle(CassiniTheme.warningNotice)
-                                    .fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("recording-details-refusal-\(index)")
-                            }
-                        } else {
-                            Text(UXText.text("details.sources.empty")).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("recording-details-sources-empty")
+                            .background(CassiniTheme.surface, in: RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(CassiniTheme.cardStroke, lineWidth: 1))
                         }
-                        ForEach(Array((report?.notes ?? []).enumerated()),id:\.offset) { _,note in
-                            Text(text(note)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
+                    } else {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(UXText.text("details.sources.title")).font(.system(size:13,weight:.semibold)).accessibilityAddTraits(.isHeader)
+                            Text(UXText.text("details.sources.empty")).foregroundStyle(CassiniTheme.ink2)
+                                .padding(.horizontal, 14).padding(.vertical, 10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(CassiniTheme.surface, in: RoundedRectangle(cornerRadius: 10))
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(CassiniTheme.cardStroke, lineWidth: 1))
+                                .accessibilityIdentifier("recording-details-sources-empty")
                         }
                     }
-                    VStack(alignment:.leading,spacing:6) {
-                        Text(UXText.text("details.end.title")).font(.system(size:13,weight:.semibold)).accessibilityAddTraits(.isHeader)
-                        if let report {
-                            Text(text(report.ended)).foregroundStyle(report.endKnown ? CassiniTheme.primaryInk : CassiniTheme.ink2).accessibilityIdentifier("recording-details-end")
+                    if let notes = report?.notes, !notes.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(Array(notes.enumerated()), id: \.offset) { _, note in
+                                Text(text(note)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true)
+                            }
+                        }
+                    }
+                    if let report, report.endKnown {
+                        VStack(alignment:.leading,spacing:6) {
+                            Text(UXText.text("details.end.title")).font(.system(size:13,weight:.semibold)).accessibilityAddTraits(.isHeader)
+                            HStack(spacing: 12) {
+                                Text(report.endReason.map(text) ?? text(report.ended))
+                                    .foregroundStyle(CassiniTheme.primaryInk)
+                                Spacer(minLength: 8)
+                                if let ms = report.endTimeMs {
+                                    Text(LibraryFormat.compactPosition(ms, padMinutes: false, locale: UXText.locale))
+                                        .foregroundStyle(CassiniTheme.ink2)
+                                        .monospacedDigit()
+                                }
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(CassiniTheme.surface, in: RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(CassiniTheme.cardStroke, lineWidth: 1))
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("recording-details-end")
                         }
                     }
                 }.frame(maxWidth:.infinity,alignment:.leading)
@@ -98,6 +113,72 @@ struct RecordingDetailsSheet: View {
             .onExitCommand { coordinator.close() }
             .accessibilityElement(children:.contain).accessibilityIdentifier("recording-details-sheet")
             .task(id:"\(coordinator.key ?? "")#\(store.revision)") { await reload() }
+    }
+    private func sourceGroup(title: String, rows: [(offset: Int, element: RecordingDetailsReport.SourceRow)]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.system(size: 13, weight: .semibold)).accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.element.offset) { pos, item in
+                    let index = item.offset
+                    let row = item.element
+                    if pos > 0 { Divider() }
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            Text(text(row.sourceName))
+                                .foregroundStyle(row.problem ? CassiniTheme.warningNotice : CassiniTheme.primaryInk)
+                            Spacer(minLength: 8)
+                            if let recordedValue = row.recordedValue {
+                                Text(text(recordedValue))
+                                    .foregroundStyle(CassiniTheme.ink2)
+                                    .monospacedDigit()
+                            }
+                        }
+                        .accessibilityIdentifier("recording-details-source-\(index)")
+                        if let statusNote = row.statusNote {
+                            Text(text(statusNote))
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(row.problem ? CassiniTheme.warningNotice : CassiniTheme.secondaryInk)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        ForEach(Array(row.detailGapLines.enumerated()), id: \.offset) { gap, line in
+                            Text(text(line))
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(CassiniTheme.warningNotice)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("recording-details-gap-\(index)-\(gap)")
+                        }
+                        if let busy = row.detailComputerBusy {
+                            Text(text(busy))
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(CassiniTheme.secondaryInk)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("recording-details-computer-busy-\(index)")
+                        }
+                        if let silent = row.detailSilent {
+                            Text(text(silent))
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(CassiniTheme.secondaryInk)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("recording-details-silent-\(index)")
+                        }
+                        if let hint = row.permissionHint {
+                            Text(text(hint))
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(CassiniTheme.secondaryInk)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("recording-details-permission-hint-\(index)")
+                            Button(UXText.text("errors.othersPermission.action")) { CaptureSettings.open(.others) }
+                                .controlSize(.small)
+                                .accessibilityIdentifier("recording-details-permission-settings-\(index)")
+                        }
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .background(CassiniTheme.surface, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(CassiniTheme.cardStroke, lineWidth: 1))
+        }
     }
     /// Files are read off the main actor; a live meeting refreshes with each rescan.
     private func reload() async {
