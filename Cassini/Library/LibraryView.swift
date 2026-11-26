@@ -111,7 +111,7 @@ struct LibraryView: View {
                 }
             }
         }
-        .modifier(ConditionalFirstRunToolbarChrome(enabled: showsFirstRun && !search.visible))
+        .cassiniUnifiedToolbarChrome()
         .background(WindowAccessor { window in
             guard let window else { return }
             window.setAccessibilityIdentifier("cassini-library-window")
@@ -1124,19 +1124,6 @@ private struct InlineToolbarTitleField: NSViewRepresentable {
             guard !finished, let field = obj.object as? NSTextField else { return }
             finished = true
             onCommit(field.stringValue)
-        }
-    }
-}
-
-private struct ConditionalFirstRunToolbarChrome: ViewModifier {
-    let enabled: Bool
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if enabled {
-            content.cassiniUnifiedToolbarChrome()
-        } else {
-            content
         }
     }
 }
