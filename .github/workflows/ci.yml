@@ -66,6 +66,7 @@ jobs:
         python3 scripts/test-export-ux-boards.py
         python3 scripts/ci-test-xcode.py
         python3 scripts/test-ci-heavy.py
+        python3 scripts/test-check-acceptance-screenshots.py
         python3 scripts/verify-model-vendor.py
         python3 scripts/ci-changes.py
   build:

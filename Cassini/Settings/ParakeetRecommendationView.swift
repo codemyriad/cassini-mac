@@ -57,5 +57,14 @@ struct ParakeetDefaultNotice: View {
         .onChange(of:models.usesParakeet) { _, selected in if !selected { visible = false } }
         .onDisappear { visible = false }
     }
-    private func claim() { if models.takeDefaultAnnouncement() { visible = true } }
+    private func claim() {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
+           LibraryLaunchContext.argument("-CassiniShowParakeetNotice") == "YES" {
+            visible = true
+            return
+        }
+        #endif
+        if models.takeDefaultAnnouncement() { visible = true }
+    }
 }

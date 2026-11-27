@@ -37,7 +37,7 @@ struct LibraryLaunchContext {
            let name = argument("-CassiniScreenshot"), ["library", "first-run", "meeting", "voices-question", "record-first", "test-recording-testing", "test-recording-result", "test-recording-refused", "recording", "received", "export", "search", "settings-recording", "settings-transcription", "settings-library", "settings-browser", "settings-updates", "settings-voices", "about"].contains(name),
            let path = argument("-CassiniFixture"), let clock = argument("-CassiniNow"),
            let date = ISO8601DateFormatter().date(from: clock) {
-            let directory = ScreenshotFixture.longMeetingDirectory ?? URL(fileURLWithPath: path)
+            let directory = ScreenshotFixture.customDirectory ?? URL(fileURLWithPath: path)
             context.root = directory.appendingPathComponent("root")
             context.now = date; context.timeZone = TimeZone(identifier: "Europe/Rome")!; context.screenshot = true; context.screenshotDark = screenshotDark
             if let bytes = try? Data(contentsOf: directory.appendingPathComponent("activity.json")),
