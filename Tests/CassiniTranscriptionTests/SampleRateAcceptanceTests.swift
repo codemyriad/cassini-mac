@@ -22,19 +22,6 @@ final class SampleRateAcceptanceTests: XCTestCase {
         }
     }
 
-    private func expectStrictFailure(
-        _ reason: String,
-        matching marker: String,
-        _ assertions: () -> Void
-    ) {
-        let options = XCTExpectedFailure.Options()
-        options.isStrict = true
-        options.issueMatcher = { issue in
-            issue.type == .assertionFailure && issue.compactDescription.contains(marker)
-        }
-        XCTExpectFailure(reason, options: options, failingBlock: assertions)
-    }
-
     private func writeCanonicalWAV(samples: [Int16], sampleRate: Int, channels: Int = 1, to url: URL) throws {
         var header = Data()
         let dataSize = UInt32(samples.count * 2)
@@ -155,12 +142,15 @@ final class SampleRateAcceptanceTests: XCTestCase {
         try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
         let trackURL = sessionDir.appendingPathComponent("track-1.wav")
         try FileManager.default.copyItem(at: tempDir.appendingPathComponent("jfk-44100.wav"), to: trackURL)
+        let wavSize = try FileManager.default.attributesOfItem(atPath: trackURL.path)[.size] as? Int ?? 44
+        let trackFrames = max(0, wavSize - 44) / 2
         let sessionJSON: [String: Any] = [
             "version": 1,
             "id": UUID().uuidString,
             "title": "44.1 kHz follower test",
             "createdAt": "2026-11-27T10:00:00Z",
             "source": "macos",
+            "state": "recording",
             "tracks": [
                 [
                     "id": "microphone",
@@ -169,7 +159,8 @@ final class SampleRateAcceptanceTests: XCTestCase {
                     "file": "track-1.wav",
                     "sampleRate": 44_100,
                     "channels": 1,
-                    "startOffsetMs": 0
+                    "startOffsetMs": 0,
+                    "frames": trackFrames
                 ]
             ]
         ]
@@ -199,24 +190,22 @@ final class SampleRateAcceptanceTests: XCTestCase {
             followerOutcome = .audioFormatRejected
         }
 
-        expectStrictFailure("D-1196 item 4", matching: "[D-1196-item4]") {
-            for (rate, outcome) in outcomes {
-                switch outcome {
-                case .audioFormatRejected:
-                    XCTFail("[D-1196-item4] Rate \(rate) Hz rejected with TranscriptionFailure.audioFormat")
-                case let .segmented(segmentCount, sampleCount):
-                    XCTAssertGreaterThan(segmentCount, 0, "[D-1196-item4] Rate \(rate) Hz must decode and segment speech")
-                    XCTAssertEqual(Double(sampleCount), Double(baselineAudio.sampleCount), accuracy: 800, "[D-1196-item4] Rate \(rate) Hz resampled length must match 16 kHz baseline")
-                }
-            }
-            switch followerOutcome {
+        for (rate, outcome) in outcomes {
+            switch outcome {
             case .audioFormatRejected:
-                XCTFail("[D-1196-item4] SessionFollower rejected 44.1 kHz track with TranscriptionFailure.audioFormat")
-            case let .stepped(didWork, tracksFollowed, blocksDecoded):
-                XCTAssertTrue(didWork, "[D-1196-item4] SessionFollower must process a 44.1 kHz track instead of skipping it")
-                XCTAssertEqual(tracksFollowed, 1, "[D-1196-item4] SessionFollower must follow the 44.1 kHz track")
-                XCTAssertGreaterThan(blocksDecoded, 0, "[D-1196-item4] SessionFollower must decode blocks from 44.1 kHz track")
+                XCTFail("[D-1196-item4] Rate \(rate) Hz rejected with TranscriptionFailure.audioFormat")
+            case let .segmented(segmentCount, sampleCount):
+                XCTAssertGreaterThan(segmentCount, 0, "[D-1196-item4] Rate \(rate) Hz must decode and segment speech")
+                XCTAssertEqual(Double(sampleCount), Double(baselineAudio.sampleCount), accuracy: 800, "[D-1196-item4] Rate \(rate) Hz resampled length must match 16 kHz baseline")
             }
+        }
+        switch followerOutcome {
+        case .audioFormatRejected:
+            XCTFail("[D-1196-item4] SessionFollower rejected 44.1 kHz track with TranscriptionFailure.audioFormat")
+        case let .stepped(didWork, tracksFollowed, blocksDecoded):
+            XCTAssertTrue(didWork, "[D-1196-item4] SessionFollower must process a 44.1 kHz track instead of skipping it")
+            XCTAssertEqual(tracksFollowed, 1, "[D-1196-item4] SessionFollower must follow the 44.1 kHz track")
+            XCTAssertGreaterThan(blocksDecoded, 0, "[D-1196-item4] SessionFollower must decode blocks from 44.1 kHz track")
         }
     }
 
@@ -267,14 +256,12 @@ final class SampleRateAcceptanceTests: XCTestCase {
             }
         }
 
-        expectStrictFailure("D-1196 item 4 (Whistle)", matching: "[D-1196-item4-whistle]") {
-            for (rate, outcome) in outcomes {
-                switch outcome {
-                case .audioFormatRejected:
-                    XCTFail("[D-1196-item4-whistle] Whistle rejected \(rate) Hz with TranscriptionFailure.audioFormat")
-                case let .transcribed(words):
-                    XCTAssertEqual(words, baselineWords, "[D-1196-item4-whistle] Whistle words at \(rate) Hz must match 16 kHz baseline")
-                }
+        for (rate, outcome) in outcomes {
+            switch outcome {
+            case .audioFormatRejected:
+                XCTFail("[D-1196-item4-whistle] Whistle rejected \(rate) Hz with TranscriptionFailure.audioFormat")
+            case let .transcribed(words):
+                XCTAssertEqual(words, baselineWords, "[D-1196-item4-whistle] Whistle words at \(rate) Hz must match 16 kHz baseline")
             }
         }
     }

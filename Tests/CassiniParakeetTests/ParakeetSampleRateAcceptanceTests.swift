@@ -9,19 +9,6 @@ import CassiniWhistle
 final class ParakeetSampleRateAcceptanceTests: XCTestCase {
     private static let requestedRates = [44_100, 32_000, 24_000, 96_000]
 
-    private func expectStrictFailure(
-        _ reason: String,
-        matching marker: String,
-        _ assertions: () -> Void
-    ) {
-        let options = XCTExpectedFailure.Options()
-        options.isStrict = true
-        options.issueMatcher = { issue in
-            issue.type == .assertionFailure && issue.compactDescription.contains(marker)
-        }
-        XCTExpectFailure(reason, options: options, failingBlock: assertions)
-    }
-
     private func writeCanonicalWAV(samples: [Int16], sampleRate: Int, channels: Int = 1, to url: URL) throws {
         var header = Data()
         let dataSize = UInt32(samples.count * 2)
@@ -162,14 +149,12 @@ final class ParakeetSampleRateAcceptanceTests: XCTestCase {
             }
         }
 
-        expectStrictFailure("D-1196 item 4 (Parakeet)", matching: "[D-1196-item4-parakeet]") {
-            for (rate, outcome) in outcomes {
-                switch outcome {
-                case .audioFormatRejected:
-                    XCTFail("[D-1196-item4-parakeet] Parakeet rejected \(rate) Hz with TranscriptionFailure.audioFormat")
-                case let .transcribed(words):
-                    XCTAssertEqual(words, baselineWords, "[D-1196-item4-parakeet] Parakeet words at \(rate) Hz must match 16 kHz baseline")
-                }
+        for (rate, outcome) in outcomes {
+            switch outcome {
+            case .audioFormatRejected:
+                XCTFail("[D-1196-item4-parakeet] Parakeet rejected \(rate) Hz with TranscriptionFailure.audioFormat")
+            case let .transcribed(words):
+                XCTAssertEqual(words, baselineWords, "[D-1196-item4-parakeet] Parakeet words at \(rate) Hz must match 16 kHz baseline")
             }
         }
     }

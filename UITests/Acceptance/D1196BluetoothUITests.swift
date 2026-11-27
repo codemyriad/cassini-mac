@@ -31,7 +31,7 @@ final class D1196BluetoothUITests: AcceptanceTestCase {
         XCTAssertTrue(recorded, "Fixture recording should advance timer")
         window.buttons["recording-stop"].click()
 
-        // Observe transcription failure state, attach screenshot, then assert behavior inside strict wrapper.
+        // Observe transcription failure state, attach screenshot, then assert behavior.
         let retry = window.buttons["Try again"]
         let retryAppeared = retry.waitForExistence(timeout: 20)
 
@@ -45,9 +45,7 @@ final class D1196BluetoothUITests: AcceptanceTestCase {
 
         _ = attachWindowScreenshot(window, name: "b19-d1196-needs-attention-light")
 
-        expectStrictFailure("D-1196 item 5", matching: "[D-1196-item5]") {
-            XCTAssertTrue(retryAppeared, "[D-1196-item5] Meeting should show Try again after failed transcription")
-            XCTAssertTrue(settled, "[D-1196-item5] Within 2 s of failure, row must show Needs attention, meeting must show Try again, and transcribing-status must be gone")
-        }
+        XCTAssertTrue(retryAppeared, "[D-1196-item5] Meeting should show Try again after failed transcription")
+        XCTAssertTrue(settled, "[D-1196-item5] Within 2 s of failure, row must show Needs attention, meeting must show Try again, and transcribing-status must be gone")
     }
 }
