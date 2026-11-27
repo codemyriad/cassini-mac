@@ -99,7 +99,7 @@ import Observation
             #endif
             spectrogram = RecordingSpectrogram.enabled ? RecordingSpectrogram(originUptime:origin,observers:session.pcmObservers) : nil
             timelineStart = origin; lastMicSound = origin; completedElapsedMs = 0; microphoneSilent = false
-            let sink = RecordingSink(session: session, originHostTime: AVAudioTime.hostTime(forSeconds: origin)) { [weak self] message in
+            let sink = RecordingSink(session: session, originHostTime: AVAudioTime.hostTime(forSeconds: origin), targetSampleRate: 48_000) { [weak self] message in
                 Task { @MainActor in
                     guard let self, self.generation == attempt, self.phase != .saving else { return }
                     self.stop(problem: message)

@@ -8,9 +8,7 @@ enum MeetingInputError: Error { case microphoneUnavailable, microphoneChanged, s
 /// One microphone input per meeting. An Others-only capture never creates this
 /// object, requests its permission, or installs a microphone tap.
 @MainActor final class MeetingMicrophoneInput: CaptureInput {
-    private var engine: AVAudioEngine?
-    private var observer: NSObjectProtocol?
-    private var installed = false
+    private let microphone = MicrophoneCaptureDriver()
     /// D58: only the OS denial is permissionDenied (no message); nothing is inferred from silence.
     func authorize() async throws {
         let permitted: Bool
@@ -22,26 +20,16 @@ enum MeetingInputError: Error { case microphoneUnavailable, microphoneChanged, s
         guard permitted else { throw CaptureOpenRefusal.denied }
     }
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
-        let engine = AVAudioEngine(); self.engine = engine
-        let input = engine.inputNode, format = input.outputFormat(forBus:0)
-        guard format.sampleRate > 0, (1...64).contains(format.channelCount) else { throw MeetingInputError.microphoneUnavailable }
-        let label = UXText.text("common.yourMicrophone")
-        input.installTap(onBus:0,bufferSize:4096,format:format) { buffer,time in
-            sink.receive(buffer,hostTime:time.isHostTimeValid ? time.hostTime : 0,id:"microphone",label:label,kind:"microphone")
-        }
-        installed = true
-        try engine.start()
-        observer = NotificationCenter.default.addObserver(forName:.AVAudioEngineConfigurationChange,object:engine,queue:.main) { _ in
-            failure(String(describing:MeetingInputError.microphoneChanged))
-        }
+        try microphone.start(
+            sink: sink,
+            label: UXText.text("common.yourMicrophone"),
+            missingError: { MeetingInputError.microphoneUnavailable },
+            changedMessage: String(describing: MeetingInputError.microphoneChanged),
+            failure: failure
+        )
     }
     func stop() {
-        if let observer { NotificationCenter.default.removeObserver(observer); self.observer = nil }
-        if let engine {
-            engine.stop()
-            if installed { engine.inputNode.removeTap(onBus:0) }
-        }
-        installed = false; engine = nil
+        microphone.stop()
     }
 }
 

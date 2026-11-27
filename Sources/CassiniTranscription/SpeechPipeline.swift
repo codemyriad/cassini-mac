@@ -1,25 +1,102 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import AVFoundation
 import Foundation
 import CassiniWhistle
 import CassiniVAD
 
 public enum TranscriptionFailure: Error { case audioFormat, invalidMeeting, runtime(String) }
 
-/// D11's centred FIR, bounded to a decoder batch plus its 96-sample overlap.
+/// D11's centred FIR for 48 kHz -> 16 kHz, bounded to a decoder batch plus its 96-sample overlap.
+/// Other valid sample rates (e.g. 44.1, 24, 32, 96 kHz) stream through Core Audio's AVAudioConverter.
 public struct MeetingResampler {
+    private final class GeneralResampler {
+        let inputFormat: AVAudioFormat
+        let outputFormat: AVAudioFormat
+        let converter: AVAudioConverter
+        let rate: Int
+
+        init(rate: Int) throws {
+            guard let inputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: Double(rate), channels: 1, interleaved: false),
+                  let outputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
+                  let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
+                throw TranscriptionFailure.audioFormat
+            }
+            converter.sampleRateConverterQuality = AVAudioQuality.max.rawValue
+            self.inputFormat = inputFormat
+            self.outputFormat = outputFormat
+            self.converter = converter
+            self.rate = rate
+        }
+
+        func feed(_ input: [Float], final: Bool) -> [Float] {
+            var remaining = input
+            var result: [Float] = []
+            let expectedFrames = Int(ceil(Double(input.count) * 16000.0 / Double(rate)))
+            result.reserveCapacity(expectedFrames + (final ? 128 : 16))
+            let chunkCapacity = AVAudioFrameCount(max(expectedFrames + 256, 1024))
+            guard let outBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: chunkCapacity) else {
+                return []
+            }
+            var inputConsumed = remaining.isEmpty
+            while true {
+                outBuffer.frameLength = 0
+                var error: NSError?
+                let status = converter.convert(to: outBuffer, error: &error) { _, outStatus in
+                    if !inputConsumed {
+                        inputConsumed = true
+                        guard let inBuffer = AVAudioPCMBuffer(pcmFormat: self.inputFormat, frameCapacity: AVAudioFrameCount(remaining.count)),
+                              let dst = inBuffer.floatChannelData else {
+                            outStatus.pointee = final ? .endOfStream : .noDataNow
+                            return nil
+                        }
+                        inBuffer.frameLength = AVAudioFrameCount(remaining.count)
+                        remaining.withUnsafeBufferPointer { src in
+                            if let base = src.baseAddress {
+                                dst[0].update(from: base, count: remaining.count)
+                            }
+                        }
+                        remaining = []
+                        outStatus.pointee = .haveData
+                        return inBuffer
+                    }
+                    outStatus.pointee = final ? .endOfStream : .noDataNow
+                    return nil
+                }
+                if outBuffer.frameLength > 0, let channel = outBuffer.floatChannelData?[0] {
+                    result.append(contentsOf: UnsafeBufferPointer(start: channel, count: Int(outBuffer.frameLength)))
+                }
+                if error != nil || status == .error || status == .endOfStream || status == .inputRanDry || outBuffer.frameLength == 0 {
+                    break
+                }
+            }
+            return result
+        }
+    }
+
     private let coefficients: [Float]
     private let rate: Int
+    private let general: GeneralResampler?
     private var samples: [Float] = []
     private var base = 0, count = 0, next = 0
     public init(rate: Int) throws {
-        guard rate == 16000 || rate == 48000 else { throw TranscriptionFailure.audioFormat }
+        guard (8_000...192_000).contains(rate) else { throw TranscriptionFailure.audioFormat }
         self.rate = rate
-        struct Filter: Decodable { let coefficients: [Float] }
-        coefficients = try JSONDecoder().decode(Filter.self, from: Data(contentsOf: Bundle.module.url(forResource: "fir-48k-16k", withExtension: "json", subdirectory: "Resources")!)).coefficients
-        guard coefficients.count == 97 else { throw TranscriptionFailure.audioFormat }
+        if rate == 16000 {
+            coefficients = []
+            general = nil
+        } else if rate == 48000 {
+            struct Filter: Decodable { let coefficients: [Float] }
+            coefficients = try JSONDecoder().decode(Filter.self, from: Data(contentsOf: Bundle.module.url(forResource: "fir-48k-16k", withExtension: "json", subdirectory: "Resources")!)).coefficients
+            guard coefficients.count == 97 else { throw TranscriptionFailure.audioFormat }
+            general = nil
+        } else {
+            coefficients = []
+            general = try GeneralResampler(rate: rate)
+        }
     }
     public mutating func feed(_ input: [Float], final: Bool = false) -> [Float] {
         if rate == 16000 { return input }
+        if let general { return general.feed(input, final: final) }
         samples.append(contentsOf: input); count += input.count
         var output: [Float] = []
         let limit = final ? (count + 2) / 3 : max(0, (count - 49) / 3 + 1)

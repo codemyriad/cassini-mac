@@ -22,7 +22,7 @@ public enum MeetingAudioDecoder {
               data[36..<40] == Data("data".utf8),
               u32(16) == 16, u16(20) == 1, u16(34) == 16,
               [1, 2].contains(u16(22)),
-              [16000, 48000].contains(u32(24)),
+              (8_000...192_000).contains(u32(24)),
               u16(32) == u16(22) * 2 else { return nil }
         return CanonicalWAVHeader(channels: u16(22), sampleRate: u32(24))
     }
@@ -58,7 +58,7 @@ public enum MeetingAudioDecoder {
             guard url.pathExtension.lowercased() == "opus" else { throw TranscriptionFailure.audioFormat }
             let audio = try AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false)
             let format = audio.processingFormat, rate = Int(format.sampleRate), channels = Int(format.channelCount)
-            guard [16000, 48000].contains(rate), [1, 2].contains(channels), let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8192) else { throw TranscriptionFailure.audioFormat }
+            guard (8_000...192_000).contains(rate), [1, 2].contains(channels), let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8192) else { throw TranscriptionFailure.audioFormat }
             while audio.framePosition < audio.length {
                 try audio.read(into: buffer)
                 guard let data = buffer.floatChannelData, buffer.frameLength > 0 else { break }

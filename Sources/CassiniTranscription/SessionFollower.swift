@@ -271,7 +271,7 @@ public final class SessionFollower {
             guard track.file == URL(fileURLWithPath: track.file).lastPathComponent,
                   !track.file.contains("/"), track.file != ".", track.file != "..",
                   track.file.lowercased().hasSuffix(".wav"),
-                  [16000, 48000].contains(track.sampleRate),
+                  (8_000...192_000).contains(track.sampleRate),
                   [1, 2].contains(track.channels) else { continue }
             let url = directory.appendingPathComponent(track.file)
             var info = stat()

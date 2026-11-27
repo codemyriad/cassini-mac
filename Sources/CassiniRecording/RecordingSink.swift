@@ -54,7 +54,12 @@ struct NativeSourceTimeline {
     private(set) var frames: UInt64 = 0
 
     static func missingFrames(sampleRate: Double, hostOffsetMs: Double, previousHostMs: Double, previousInputFrames: UInt64) -> UInt64 {
-        let lag = hostOffsetMs - previousHostMs - Double(previousInputFrames) / sampleRate * 1000
+        missingFrames(sampleRate: sampleRate, hostOffsetMs: hostOffsetMs, previousHostMs: previousHostMs,
+                      previousInputDurationMs: Double(previousInputFrames) / sampleRate * 1000)
+    }
+
+    static func missingFrames(sampleRate: Double, hostOffsetMs: Double, previousHostMs: Double, previousInputDurationMs: Double) -> UInt64 {
+        let lag = hostOffsetMs - previousHostMs - previousInputDurationMs
         guard lag > 0 else { return 0 }
         let frames = (lag * sampleRate / 1000).rounded()
         return frames >= sampleRate ? UInt64(frames) : 0
@@ -97,17 +102,93 @@ package struct ACLevelWindow {
         self = Self(); return min(1,value)
     }
 }
+private final class CaptureResampler {
+    let targetRate: Double
+    let outputChannels: Int
+    private let outputFormat: AVAudioFormat
+    private var inputRate: Double = 0
+    private var inputChannels: Int = 0
+    private var converter: AVAudioConverter?
+
+    init(targetRate: Double, outputChannels: Int) {
+        self.targetRate = targetRate
+        self.outputChannels = outputChannels
+        self.outputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: targetRate, channels: AVAudioChannelCount(outputChannels), interleaved: false)!
+    }
+
+    func convert(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        let inRate = buffer.format.sampleRate
+        let rawChannels = Int(buffer.format.channelCount)
+        let effectiveChannels = min(2, rawChannels)
+        let inFrames = Int(buffer.frameLength)
+        guard inFrames > 0 else { return nil }
+
+        let sourceBuffer: AVAudioPCMBuffer
+        if !buffer.format.isInterleaved && rawChannels <= 2 {
+            sourceBuffer = buffer
+        } else {
+            let cleanFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: inRate, channels: AVAudioChannelCount(effectiveChannels), interleaved: false)!
+            guard let copy = AVAudioPCMBuffer(pcmFormat: cleanFormat, frameCapacity: AVAudioFrameCount(inFrames)),
+                  let dst = copy.floatChannelData, let src = buffer.floatChannelData else { return nil }
+            copy.frameLength = AVAudioFrameCount(inFrames)
+            for c in 0..<effectiveChannels {
+                for f in 0..<inFrames {
+                    dst[c][f] = buffer.format.isInterleaved ? src[0][f * rawChannels + c] : src[c][f]
+                }
+            }
+            sourceBuffer = copy
+        }
+
+        if inRate == targetRate && effectiveChannels == outputChannels {
+            converter = nil
+            inputRate = inRate
+            inputChannels = effectiveChannels
+            return sourceBuffer
+        }
+
+        if converter == nil || inputRate != inRate || inputChannels != effectiveChannels {
+            let inFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: inRate, channels: AVAudioChannelCount(effectiveChannels), interleaved: false)!
+            guard let created = AVAudioConverter(from: inFormat, to: outputFormat) else { return nil }
+            created.sampleRateConverterQuality = AVAudioQuality.high.rawValue
+            converter = created
+            inputRate = inRate
+            inputChannels = effectiveChannels
+        }
+
+        guard let converter else { return nil }
+        let ratio = targetRate / inRate
+        let capacity = max(AVAudioFrameCount(ceil(Double(inFrames) * ratio)) + 64, 64)
+        guard let output = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: capacity) else { return nil }
+
+        var supplied = false
+        var error: NSError?
+        let status = converter.convert(to: output, error: &error) { _, outStatus in
+            if supplied {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            supplied = true
+            outStatus.pointee = .haveData
+            return sourceBuffer
+        }
+        guard error == nil, status != .error else { return nil }
+        return output
+    }
+}
+
 public final class RecordingSink: @unchecked Sendable {
     private struct Source {
         let rate: Double
         let inputChannels: AVAudioChannelCount
         let outputChannels: Int
+        var resampler: CaptureResampler?
         var timeline: NativeSourceTimeline
         var pendingFrames: UInt64 = 0
         var droppedFrames: UInt64 = 0
         var gapFrames: UInt64 = 0
         var lastHostOffset: Double?
         var lastInputFrames: UInt64 = 0
+        var lastInputDurationMs: Double = 0
         var submittedEnd: UInt64 = 0
         var registered = false
         var tailRecorded = false
@@ -138,6 +219,7 @@ public final class RecordingSink: @unchecked Sendable {
     private let pcmPolicy: RecordedPCMPolicy?
     private let origin: UInt64
     private let capacitySeconds: Double
+    private let targetSampleRate: Double?
     private let onFailure: @Sendable (String) -> Void
     /// D58: asked once, at the first valid buffer, before it is queued for the writer (so before
     /// any disk write: a slow Library disk never makes a working input look unopened). False
@@ -150,10 +232,17 @@ public final class RecordingSink: @unchecked Sendable {
 
     public init(session: any RecordingSinkWriter, capacitySeconds: Double = 10,
                 originHostTime: UInt64 = AVAudioTime.hostTime(forSeconds: ProcessInfo.processInfo.systemUptime),
+                targetSampleRate: Double? = nil,
                 onFailure: @escaping @Sendable (String) -> Void, admit: (@Sendable () -> Bool)? = nil) {
         writer = session; pcmPolicy = session.recordedPCM
         origin = originHostTime
         self.capacitySeconds = max(0.01, min(60, capacitySeconds))
+        if let targetSampleRate, targetSampleRate.isFinite, targetSampleRate.rounded() == targetSampleRate,
+           (8_000...192_000).contains(targetSampleRate) {
+            self.targetSampleRate = targetSampleRate
+        } else {
+            self.targetSampleRate = nil
+        }
         self.onFailure = onFailure
         self.admit = admit
     }
@@ -162,7 +251,7 @@ public final class RecordingSink: @unchecked Sendable {
         lock.lock()
         guard accepting, !failed, buffer.frameLength > 0 else { lock.unlock(); return }
         guard buffer.frameLength <= 65_536, buffer.format.commonFormat == .pcmFormatFloat32,
-              let input = buffer.floatChannelData, (1...64).contains(buffer.format.channelCount),
+              buffer.floatChannelData != nil, (1...64).contains(buffer.format.channelCount),
               buffer.format.sampleRate.isFinite, buffer.format.sampleRate.rounded() == buffer.format.sampleRate, (8_000...192_000).contains(buffer.format.sampleRate) else {
             lock.unlock(); fail("The audio source changed to an unsupported format. The recorded audio was preserved."); return
         }
@@ -172,24 +261,49 @@ public final class RecordingSink: @unchecked Sendable {
             guard admit?() ?? true else { accepting = false; lock.unlock(); return }
             admitted = true
         }
-        let rate = buffer.format.sampleRate
+        let inputRate = buffer.format.sampleRate
         let inputChannels = buffer.format.channelCount
-        let outputChannels = min(2, Int(inputChannels))
-        let frames = UInt64(buffer.frameLength)
+        let inputFrames = UInt64(buffer.frameLength)
+        let inputDurationMs = Double(inputFrames) / inputRate * 1000
         let stamp = hostTime == 0 ? AVAudioTime.hostTime(forSeconds: ProcessInfo.processInfo.systemUptime) : hostTime
         let hostOffset = stamp > origin ? AVAudioTime.seconds(forHostTime: stamp - origin) * 1000 : 0
         if sources[id] == nil {
             guard sources.count < 64 else { lock.unlock(); fail("Too many native audio sources."); return }
-            sources[id] = Source(rate: rate, inputChannels: inputChannels, outputChannels: outputChannels,
-                                 timeline: NativeSourceTimeline(sampleRate: rate, startOffsetMs: hostOffset))
+            let trackRate = targetSampleRate ?? inputRate
+            let outputChannels = min(2, Int(inputChannels))
+            let resampler = targetSampleRate.map { CaptureResampler(targetRate: $0, outputChannels: outputChannels) }
+            sources[id] = Source(rate: trackRate, inputChannels: inputChannels, outputChannels: outputChannels,
+                                 resampler: resampler,
+                                 timeline: NativeSourceTimeline(sampleRate: trackRate, startOffsetMs: hostOffset))
             if inputChannels > 2 { warnings.insert("\(label): recording input channels 1 and 2.") }
         }
         var source = sources[id]!
         guard !source.tailRecorded else { lock.unlock(); return }
-        guard source.rate == rate, source.inputChannels == inputChannels else {
-            lock.unlock(); fail("The audio device format changed. Start a new recording with the current device."); return
+        let rate = source.rate
+        let outputChannels = source.outputChannels
+        let effectiveBuffer: AVAudioPCMBuffer
+        if let resampler = source.resampler {
+            if inputChannels > 2 { warnings.insert("\(label): recording input channels 1 and 2.") }
+            guard let converted = resampler.convert(buffer) else {
+                lock.unlock(); fail("The audio source changed to an unsupported format. The recorded audio was preserved."); return
+            }
+            effectiveBuffer = converted
+        } else {
+            guard source.rate == inputRate, source.inputChannels == inputChannels else {
+                lock.unlock(); fail("The audio device format changed. Start a new recording with the current device."); return
+            }
+            effectiveBuffer = buffer
         }
-        let interval = hostTime == 0 ? nil : source.lastHostOffset.map { hostOffset - $0 - Double(source.lastInputFrames) / rate * 1000 }
+        let frames = UInt64(effectiveBuffer.frameLength)
+        guard frames > 0, let input = effectiveBuffer.floatChannelData else {
+            source.lastHostOffset = hostTime == 0 ? nil : hostOffset
+            source.lastInputDurationMs = inputDurationMs
+            sources[id] = source
+            lock.unlock()
+            return
+        }
+        let effectiveChannels = Int(effectiveBuffer.format.channelCount)
+        let interval = hostTime == 0 ? nil : source.lastHostOffset.map { hostOffset - $0 - source.lastInputDurationMs }
         let lost: UInt64
         switch writerLoss {
         case .known(let frames): lost = source.lastInputFrames > 0 ? frames : 0
@@ -199,8 +313,9 @@ public final class RecordingSink: @unchecked Sendable {
         guard lost <= UInt64(rate * 86400) else { lock.unlock(); fail("Invalid native writer loss."); return }
         // Known frames do not require a host stamp. Only host-time inference does.
         if hostTime != 0, let previous = source.lastHostOffset {
+            let previousDurationMs = source.lastInputDurationMs + Double(lost) / rate * 1000
             let gap = NativeSourceTimeline.missingFrames(sampleRate:rate,hostOffsetMs:hostOffset,previousHostMs:previous,
-                                                         previousInputFrames:source.lastInputFrames+lost)
+                                                         previousInputDurationMs:previousDurationMs)
             if gap > 0 {
                 source.timeline.insertGap(frames:gap); source.gapFrames += gap
                 hole(id,"input",gap)
@@ -216,6 +331,7 @@ public final class RecordingSink: @unchecked Sendable {
         // an input discontinuity. Break the comparison chain until stamps return.
         source.lastHostOffset = hostTime == 0 ? nil : hostOffset
         source.lastInputFrames = frames
+        source.lastInputDurationMs = inputDurationMs
         let offset = source.timeline.advance(frames: frames)
         if abs(hostOffset - offset) >= 250 { warnings.insert("\(label): device time differs from the sample timeline; sample continuity was preserved.") }
         sourceFrames[id] = source.timeline.frames
@@ -240,7 +356,7 @@ public final class RecordingSink: @unchecked Sendable {
             let samples = raw.bindMemory(to: Int16.self)
             for frame in 0..<Int(frames) {
                 for channel in 0..<outputChannels {
-                    let value = buffer.format.isInterleaved ? input[0][frame * Int(inputChannels) + channel] : input[channel][frame]
+                    let value = effectiveBuffer.format.isInterleaved ? input[0][frame * effectiveChannels + channel] : input[channel][frame]
                     source.meter.receive(value,channel:channel)
                     samples[frame * outputChannels + channel] = Int16((max(-1, min(1, value.isFinite ? value : 0)) * 32767).rounded()).littleEndian
                 }
@@ -264,7 +380,18 @@ public final class RecordingSink: @unchecked Sendable {
                     try writer.padNative(id:id,frames:hole.frames,channels:outputChannels,rate:rate,offsetMs:timelineStart + Double(frame)/rate*1000,kind:hole.kind)
                     frame += hole.frames
                 }
-                try writer.appendNative(id: id, pcm: pcm, offsetMs: offset, gapKind: "input")
+                let maxChunkFrames = max(1, 262_144 / (outputChannels * 2))
+                var writtenFrames = 0
+                let totalFrames = Int(frames)
+                while writtenFrames < totalFrames {
+                    let chunkFrames = min(maxChunkFrames, totalFrames - writtenFrames)
+                    let byteStart = writtenFrames * outputChannels * 2
+                    let byteEnd = (writtenFrames + chunkFrames) * outputChannels * 2
+                    let slice = (writtenFrames == 0 && chunkFrames == totalFrames) ? pcm : Data(pcm[byteStart..<byteEnd])
+                    let chunkOffset = offset + Double(writtenFrames) / rate * 1000
+                    try writer.appendNative(id: id, pcm: slice, offsetMs: chunkOffset, gapKind: "input")
+                    writtenFrames += chunkFrames
+                }
             } catch { fail(error.localizedDescription) }
         }
         lock.unlock()
