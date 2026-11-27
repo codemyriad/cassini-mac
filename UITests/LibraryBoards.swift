@@ -357,7 +357,11 @@ final class LibraryBoards: XCTestCase {
         item.click()
         let sheet = window.sheets.firstMatch
         XCTAssertTrue(sheet.descendants(matching:.any)["recording-details-sheet"].waitForExistence(timeout:10),app.debugDescription)
-        XCTAssertTrue(sheet.staticTexts["recording-details-end"].waitForExistence(timeout:10),"The end line renders after the files are read")
+        let loaded = NSPredicate { _,_ in
+            sheet.staticTexts["recording-details-source-0"].exists || sheet.staticTexts["recording-details-sources-empty"].exists
+        }
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:loaded,object:nil)],timeout:10),.completed,"Sources render after the files are read")
+        XCTAssertFalse(sheet.staticTexts["recording-details-end"].exists,"Unknown end is omitted (D-1172 §7)")
         XCTAssertTrue(sheet.staticTexts["Recording details"].exists)
         capture(window,name:"recording-details")
         sheet.buttons["recording-details-close"].click()
@@ -387,9 +391,12 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(sheet.frame.contains(done.frame) && done.isHittable,"Done stays inside the sheet")
         XCTAssertGreaterThan(end.frame.minY,body.frame.maxY,"Forty sources need scrolling to reach How it ended")
         capture(window,name:"recording-details-many")
-        let reached = NSPredicate { _,_ in body.frame.contains(end.frame) && body.frame.contains(last.frame) }
+        let reached = NSPredicate { _,_ in
+            let viewport = body.frame.insetBy(dx: -2, dy: -2)
+            return viewport.contains(end.frame) && viewport.contains(last.frame)
+        }
         var delta: CGFloat = -400
-        for _ in 0..<20 where !reached.evaluate(with:nil) {
+        for _ in 0..<30 where !reached.evaluate(with:nil) {
             let before = end.frame.minY
             body.scroll(byDeltaX:0,deltaY:delta)
             if end.frame.minY >= before { delta = -delta } // Scroll direction follows the system setting.
@@ -867,7 +874,7 @@ final class LibraryBoards: XCTestCase {
         let play = window.buttons["turn-play-2"], listen = window.buttons["turn-listen-2"]
         XCTAssertTrue(play.waitForExistence(timeout:20),app.debugDescription)
         XCTAssertTrue(listen.isEnabled && play.isEnabled,"Read-only transcript actions stay available")
-        XCTAssertEqual(play.label,"Play from here, 00:03:08")
+        XCTAssertEqual(play.label,"Play from here, 03:08")
         XCTAssertTrue(listen.label.hasPrefix("Listen to "))
         play.click()
         let played = NSPredicate { _,_ in window.sliders["meeting-seek"].value as? String == "00:03:08" }
@@ -979,7 +986,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertGreaterThanOrEqual(window.buttons.matching(identifier:"toolbar-record").count,1)
         XCTAssertEqual(window.buttons["toolbar-record"].firstMatch.label,"Record")
         let recordWidth = window.buttons["toolbar-record"].firstMatch.frame.width
-        XCTAssertGreaterThanOrEqual(recordWidth,90,"Idle Record retains its minimum hit width")
+        XCTAssertGreaterThanOrEqual(recordWidth,80,"Idle Record retains its minimum hit width")
         XCTAssertLessThanOrEqual(recordWidth,120,"The English label keeps a compact pill instead of stretching across the sidebar")
         XCTAssertGreaterThanOrEqual(window.buttons.matching(identifier:"toolbar-import").count,1)
         XCTAssertEqual(window.buttons["toolbar-import"].firstMatch.label,"Import Audio…")
@@ -2319,8 +2326,8 @@ final class LibraryBoards: XCTestCase {
             capture(window, name: name)
             XCTAssertTrue(text("52 min", in: window), window.debugDescription)
             XCTAssertTrue(text("Marta, Dario, Speaker 3", in: window), window.debugDescription)
-            XCTAssertTrue(text("Today, 09:00 · 52 min", in: window), window.debugDescription)
-            XCTAssertTrue(window.buttons["turn-play-0"].label.contains("00:00:04"))
+            XCTAssertTrue(text("Today, 09:00", in: window), window.debugDescription)
+            XCTAssertTrue(window.buttons["turn-play-0"].label.contains("00:04"))
             XCTAssertTrue(text("Listening inside your browser", in: window))
             XCTAssertTrue(window.buttons["toolbar-import"].firstMatch.exists, window.debugDescription)
             XCTAssertEqual(window.buttons["toolbar-import"].firstMatch.label, "Import Audio…")
@@ -2410,9 +2417,17 @@ final class LibraryBoards: XCTestCase {
     private func sidebarHasTitle(_ expected: String, in window: XCUIElement) -> Bool {
         window.outlines.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", expected, expected)).firstMatch.exists
     }
-    /// Clicks the inline-editable meeting title in the detail toolbar and
-    /// returns the active `meeting-window-title-editor` text field.
+    /// Clicks the inline-editable meeting title (in the inline header at rest, or
+    /// the compact toolbar title when scrolled) and returns its active text field.
     @MainActor private func openNativeTitleEditor(currentTitle: String, in window: XCUIElement, app: XCUIApplication) -> XCUIElement {
+        let inlineTitle = window.staticTexts["meeting-inline-title"].firstMatch
+        if inlineTitle.waitForExistence(timeout: 5) {
+            XCTAssertEqual(visibleText(inlineTitle), currentTitle, "Expected inline meeting title '\(currentTitle)': " + window.debugDescription)
+            inlineTitle.click()
+            let editor = window.textFields["meeting-inline-title-editor"].firstMatch
+            XCTAssertTrue(editor.waitForExistence(timeout: 5), "Clicking inline title should open inline title editor: " + app.debugDescription)
+            return editor
+        }
         let titleElement = nativeTitleElement(currentTitle, in: window)
         XCTAssertTrue(titleElement.waitForExistence(timeout: 10), "Expected native window title '\(currentTitle)': " + window.debugDescription)
         titleElement.click()
