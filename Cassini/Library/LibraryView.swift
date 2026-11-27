@@ -17,6 +17,12 @@ struct LibraryView: View {
     @State private var screenshotTestSheet = false
     #endif
     private static let narrowSidebarThreshold: CGFloat = 920
+    private static var usesNativeSidebarSearch: Bool {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) { return true }
+        #endif
+        return false
+    }
     @State private var toolbarWidth: CGFloat = 1120
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var userHidSidebar = false
@@ -26,6 +32,9 @@ struct LibraryView: View {
     @State private var sidebarSearchPresented = false
     @State private var sidebarWidth: CGFloat = 390
     private var isNarrowWindow: Bool { toolbarWidth < Self.narrowSidebarThreshold }
+    private var showsEmbeddedSidebarSearch: Bool {
+        !Self.usesNativeSidebarSearch || (isNarrowWindow && floatingSidebarOpen)
+    }
     @State private var recordCoordinator = RecordCoordinator.shared
     @State private var recorder = RecordingController.shared
     @State private var companionSetup = CompanionSetup.shared
@@ -96,14 +105,17 @@ struct LibraryView: View {
             if !query.isEmpty {
                 if !search.visible { search.open() }
                 else { search.refresh() }
-            } else if search.visible && !search.hasActiveFilters {
+            } else if search.visible && !search.hasActiveFilters && !search.openedWithEmptyQuery {
                 search.close()
             } else if search.visible {
                 search.refresh()
             }
         }
+        .onChange(of: search.visible) { _, visible in
+            if !visible { sidebarSearchPresented = false }
+        }
         .onChange(of: sidebarSearchPresented) { _, presented in
-            if !presented && search.visible && search.query.isEmpty && !search.hasActiveFilters {
+            if !presented && search.visible && search.query.isEmpty && !search.hasActiveFilters && !search.openedWithEmptyQuery {
                 search.close()
             }
         }
@@ -323,17 +335,17 @@ struct LibraryView: View {
                 detailToolbar
             }
         }
+        .modifier(ConditionalNativeSidebarSearch(
+            enabled: Self.usesNativeSidebarSearch,
+            query: $search.query,
+            isPresented: $sidebarSearchPresented,
+            prompt: UXText.text("search.field.placeholder")
+        ))
         .overlay(alignment: .leading) {
             if isNarrowWindow && floatingSidebarOpen {
                 floatingSidebarOverlay
             }
         }
-        .searchable(
-            text: $search.query,
-            isPresented: $sidebarSearchPresented,
-            placement: .sidebar,
-            prompt: UXText.text("search.field.placeholder")
-        )
     }
 
     private func handleSidebarSearchFocusRequest() {
@@ -413,18 +425,6 @@ struct LibraryView: View {
                 .padding(.trailing, 10)
                 .padding(.top, 10)
                 .padding(.bottom, 6)
-                if !search.visible {
-                    LibrarySearchField(
-                        text: $search.query,
-                        large: false,
-                        focusRequest: search.focusRequest,
-                        onChange: { search.refresh() },
-                        onCancel: { search.close() }
-                    )
-                    .frame(height: 28)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 6)
-                }
                 sidebarColumn
             }
             .frame(width: overlayWidth)
@@ -814,25 +814,48 @@ struct LibraryView: View {
         }
     }
 
-    @ViewBuilder
     private var sidebarColumn: some View {
-        if search.visible {
-            LibrarySearchSidebarContent(
-                format: store.format,
-                showEmbeddedField: isNarrowWindow && floatingSidebarOpen,
-                onPickResult: {
-                    var presentation = LibrarySidebarSearchPresentation(
-                        floatingSidebarOpen: floatingSidebarOpen,
-                        userHidSidebar: userHidSidebar,
-                        showsSplitSidebar: columnVisibility != .detailOnly,
-                        sidebarSearchPresented: sidebarSearchPresented
-                    )
-                    presentation.didPickSearchResult()
-                    floatingSidebarOpen = presentation.floatingSidebarOpen
-                }
-            )
-        } else {
-            libraryListSidebarColumn
+        VStack(spacing: 0) {
+            if showsEmbeddedSidebarSearch {
+                LibrarySearchField(
+                    text: $search.query,
+                    large: false,
+                    focusRequest: search.focusRequest,
+                    onChange: {
+                        if !search.query.isEmpty {
+                            if !search.visible { search.open() }
+                            else { search.refresh() }
+                        } else if search.visible && !search.hasActiveFilters && !search.openedWithEmptyQuery {
+                            search.close()
+                        } else if search.visible {
+                            search.refresh()
+                        }
+                    },
+                    onCancel: { search.close() }
+                )
+                .frame(height: 28)
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
+                .padding(.bottom, 6)
+            }
+            if search.visible {
+                LibrarySearchSidebarContent(
+                    format: store.format,
+                    showEmbeddedField: false,
+                    onPickResult: {
+                        var presentation = LibrarySidebarSearchPresentation(
+                            floatingSidebarOpen: floatingSidebarOpen,
+                            userHidSidebar: userHidSidebar,
+                            showsSplitSidebar: columnVisibility != .detailOnly,
+                            sidebarSearchPresented: sidebarSearchPresented
+                        )
+                        presentation.didPickSearchResult()
+                        floatingSidebarOpen = presentation.floatingSidebarOpen
+                    }
+                )
+            } else {
+                libraryListSidebarColumn
+            }
         }
     }
 
@@ -965,11 +988,11 @@ struct LibraryView: View {
                     .contentMargins(.horizontal, 0, for: .scrollContent)
                     .scrollContentBackground(.hidden)
                     .modifier(SidebarBottomScrollEdgeModifier())
+                    .accessibilityLabel(UXText.text("library.listPane.a11y"))
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         LibraryDropHintFooter(entered: dropState.showsWindowOutline)
                     }
                     .opacity(dropState.dimsListContent ? 0.30 : 1.0)
-                    .accessibilityLabel(UXText.text("library.listPane.a11y"))
 
                     LibraryDropListOverlay(state: dropState)
                 }
@@ -1491,5 +1514,25 @@ private struct FirstRunWave: View {
                 context.fill(Path(roundedRect:bar,cornerRadius:1.5),with:.color(CassiniTheme.ink3.opacity(level.1)))
             }
         }.accessibilityHidden(true).allowsHitTesting(false)
+    }
+}
+
+private struct ConditionalNativeSidebarSearch: ViewModifier {
+    let enabled: Bool
+    @Binding var query: String
+    @Binding var isPresented: Bool
+    let prompt: String
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.searchable(
+                text: $query,
+                isPresented: $isPresented,
+                placement: .sidebar,
+                prompt: prompt
+            )
+        } else {
+            content
+        }
     }
 }

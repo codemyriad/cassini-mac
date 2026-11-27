@@ -361,6 +361,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            event.modifierFlags.intersection([.command,.option,.control,.shift]).isEmpty,
            trackingMenus.isEmpty,
            let window = event.window ?? NSApp.keyWindow,
+           window.accessibilityIdentifier() == "cassini-library-window",
+           window.attachedSheet == nil, NSApp.modalWindow == nil,
+           LibrarySearchModel.shared.visible {
+            LibrarySearchModel.shared.close()
+            if window.firstResponder is NSText { window.makeFirstResponder(nil) }
+            return nil
+        }
+        if event.keyCode == 53,
+           event.modifierFlags.intersection([.command,.option,.control,.shift]).isEmpty,
+           trackingMenus.isEmpty,
+           let window = event.window ?? NSApp.keyWindow,
            let detail = MeetingNavigation.shared.savedDetail,
            detail.canUseListeningShortcuts(in:window) {
             detail.stopListening()

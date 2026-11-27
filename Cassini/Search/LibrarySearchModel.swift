@@ -7,12 +7,13 @@ import CassiniSearch
 @MainActor @Observable final class LibrarySearchModel {
     static let shared = LibrarySearchModel()
     var visible = false
-    var query = ""
+    var query = "" { didSet { if !query.isEmpty { openedWithEmptyQuery = false } } }
     var speaker: String?
     var date = SearchDate.any
     var starred = false
     var own = false
     var selectedID: String?
+    private(set) var openedWithEmptyQuery = false
     private(set) var hits: [SearchHit] = []
     private(set) var meetings: [LibraryMeeting] = []
     private(set) var focusRequest = 0
@@ -47,11 +48,12 @@ import CassiniSearch
     func open() {
         guard !LibraryMoveCoordinator.shared.busy else { return }
         if !visible { starred = LibraryStore.shared.preferences.filter == .starred }
+        openedWithEmptyQuery = query.isEmpty
         visible = true; focusRequest &+= 1
         MeetingNavigation.shared.openLibrary?(); update(LibraryStore.shared.meetings)
     }
     func close() {
-        task?.cancel(); generation &+= 1; visible = false; query = ""; speaker = nil; date = .any; own = false; starred = false
+        task?.cancel(); generation &+= 1; visible = false; openedWithEmptyQuery = false; query = ""; speaker = nil; date = .any; own = false; starred = false
         selectedID = nil; hits = []; searching = false
     }
     func update(_ meetings: [LibraryMeeting]) { self.meetings = meetings; refresh() }

@@ -60,7 +60,7 @@ struct RecordingDetailsSheet: View {
                                 }
                             }
                             .background(CassiniTheme.surface, in: RoundedRectangle(cornerRadius: 10))
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(CassiniTheme.cardStroke, lineWidth: 1))
+                            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(CassiniTheme.cardStroke, lineWidth: 1))
                         }
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
@@ -69,7 +69,7 @@ struct RecordingDetailsSheet: View {
                                 .padding(.horizontal, 14).padding(.vertical, 10)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(CassiniTheme.surface, in: RoundedRectangle(cornerRadius: 10))
-                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(CassiniTheme.cardStroke, lineWidth: 1))
+                                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(CassiniTheme.cardStroke, lineWidth: 1))
                                 .accessibilityIdentifier("recording-details-sources-empty")
                         }
                     }
@@ -96,7 +96,7 @@ struct RecordingDetailsSheet: View {
                             .padding(.horizontal, 14).padding(.vertical, 10)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(CassiniTheme.surface, in: RoundedRectangle(cornerRadius: 10))
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(CassiniTheme.cardStroke, lineWidth: 1))
+                            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(CassiniTheme.cardStroke, lineWidth: 1))
                             .accessibilityElement(children: .combine)
                             .accessibilityIdentifier("recording-details-end")
                         }
