@@ -42,12 +42,9 @@ struct LibraryView: View {
     @State private var dateTime = MeetingDateTimeCoordinator.shared
     @State private var updates = ApplicationUpdates.shared
     @State private var speechModels = SpeechModelController.shared
-    @State private var transcriptionQueue = TranscriptionQueue.shared
     @State private var importer = LibraryImportCoordinator.shared
     @State private var dropState: LibraryDropState = .idle
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.openSettings) private var openSettings
-    @Environment(\.openWindow) private var openWindow
     private var showsFirstRun: Bool {
         store.loaded && store.meetings.isEmpty && importer.transientItems.isEmpty && !store.offline
     }
@@ -59,7 +56,16 @@ struct LibraryView: View {
         GeometryReader { geometry in
             Group {
                 if navigation.loading { ProgressView() }
-                else if showsFirstRun { firstRun }
+                else if showsFirstRun {
+                    LibraryFirstRunView(
+                        root: store.context.root,
+                        screenshot: store.context.screenshot,
+                        dropState: dropState
+                    ) {
+                        sessionPlayback.stop()
+                        RecordCoordinator.shared.request(parent: store.context.root)
+                    }
+                }
                 else { split }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onAppear { handleWindowWidthChange(geometry.size.width) }
@@ -291,10 +297,6 @@ struct LibraryView: View {
             }.padding(12).foregroundStyle(CassiniTheme.warnInk).background(CassiniTheme.warnTint)
                 .accessibilityIdentifier("trash-failure")
         }
-    }
-    private var toolbarTitle: some View {
-        Text(UXText.text(search.visible ? "search.title" : "library.title")).font(.system(size: 15, weight: .bold))
-            .accessibilityAddTraits(.isHeader).accessibilityIdentifier("library-toolbar-title")
     }
     // Attention takes precedence while failures remain. Only reveal an imported
     // selection once its row is present in the watcher snapshot.
@@ -1035,61 +1037,12 @@ struct LibraryView: View {
         }
     }
     private func transientImportRow(_ item: LibraryImportCoordinator.TransientItem) -> some View {
-        let isFailed: Bool
-        let failureDetail: String?
-        switch item.state {
-        case .importing:
-            isFailed = false
-            failureDetail = nil
-        case .failed(let detail):
-            isFailed = true
-            failureDetail = detail
-        }
-        let presentation = isFailed ? LibraryBadgeCatalog.needsAttentionPresentation : LibraryBadgeCatalog.importingPresentation
-        return MeetingCard(isSelected: false) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 10) {
-                    Text(item.title)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(CassiniTheme.ink)
-                        .lineLimit(1)
-                    Spacer(minLength: 2)
-                    if isFailed {
-                        Button(UXText.text("common.done")) {
-                            importer.dismissTransientItem(item.id)
-                        }
-                        .buttonStyle(.borderless)
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundStyle(CassiniTheme.accentInk)
-                        .accessibilityIdentifier("dismiss-failed-import-" + item.fileName)
-                    }
-                }
-                HStack(spacing: 6) {
-                    Text(store.format.rowTime(item.startedAt))
-                        .foregroundStyle(CassiniTheme.ink2)
-                        .monospacedDigit()
-                        .fixedSize()
-                    if let presentation {
-                        catalogStatusBadge(presentation, onAccent: false)
-                    }
-                    Text(failureDetail ?? item.fileName)
-                        .foregroundStyle(CassiniTheme.ink2)
-                        .lineLimit(1)
-                }
-                .font(.system(size: 11.5))
-            }
-        }
-        .id("import-" + item.id)
-        .help(failureDetail ?? "")
-        .contextMenu {
-            if isFailed {
-                Button(UXText.text("common.done")) { importer.dismissTransientItem(item.id) }
-            }
-        }
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
-        .accessibilityIdentifier((isFailed ? "failed-import-" : "importing-") + item.fileName)
+        LibraryTransientImportRowView(
+            item: item,
+            format: store.format,
+            isAnimatingBadges: !store.context.screenshot && scenePhase == .active,
+            onDismiss: { importer.dismissTransientItem(item.id) }
+        )
     }
     private var toolbarControl: some View {
         HStack(spacing: 4) {
@@ -1122,148 +1075,23 @@ struct LibraryView: View {
                     Text(UXText.text("common.stop")).font(.system(size: 12, weight: .semibold)).foregroundStyle(CassiniTheme.onRecord)
                         .padding(.horizontal, 12).frame(height: 26).background(CassiniTheme.record, in: Capsule())
                 }.fixedSize().padding(.leading, 13).padding(.trailing, 4).frame(height: 34).background(CassiniTheme.recordTint, in: Capsule())
-            } else if !showsFirstRun || search.visible { recordButton(big: false) }
+            } else if !showsFirstRun || search.visible {
+                let title = UXText.text("common.record")
+                LibraryToolbarAction(title: title, label: title, identifier: "toolbar-record", style: .record, enabled: RecordingOverview.canStart) {
+                    sessionPlayback.stop(); RecordCoordinator.shared.request(parent: store.context.root)
+                }.frame(minWidth: 90).fixedSize(horizontal: true, vertical: false)
+            }
         }.accessibilityElement(children: .contain)
     }
     private func row(_ meeting: LibraryMeeting) -> some View {
-        let selected = store.selectedKeys.contains(meeting.libraryKey)
-        let presentation = LibraryBadgeCatalog.presentation(for: meeting)
-        let showDuration = meeting.durationMs != nil && presentation?.kind != "recording" && presentation?.kind != "saving"
-        let trailingMeta = rowTrailingMeta(meeting, badgeKind: presentation?.kind)
-        return MeetingCard(isSelected: selected, isContextMenuTarget: contextMenuMeetingKey == meeting.libraryKey) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Text(meeting.title ?? UXText.text("library.untitled"))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(CassiniTheme.ink)
-                        .lineLimit(1)
-                    Spacer(minLength: 2)
-                    if store.isStarred(meeting) {
-                        Image(systemName:"star.fill")
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(CassiniTheme.accentInk)
-                            .accessibilityLabel(UXText.text("library.row.starred.a11y"))
-                            .accessibilityIdentifier("library-starred-" + meeting.libraryKey)
-                    }
-                    if showDuration, let durationMs = meeting.durationMs {
-                        Text(LibraryFormat.meetingDuration(durationMs))
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(CassiniTheme.ink2)
-                            .monospacedDigit()
-                            .fixedSize()
-                    }
-                }
-                HStack(spacing: 6) {
-                    if let start = meeting.meetingTime {
-                        Text(store.format.rowTime(start))
-                            .foregroundStyle(CassiniTheme.ink2)
-                            .monospacedDigit()
-                            .fixedSize()
-                    }
-                    if let presentation {
-                        catalogStatusBadge(presentation, onAccent: false)
-                            .layoutPriority(1)
-                        if let trailingMeta {
-                            Text(trailingMeta)
-                                .foregroundStyle(CassiniTheme.ink2)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                        }
-                    } else if let trailingMeta {
-                        if meeting.meetingTime != nil {
-                            Text("·")
-                                .foregroundStyle(CassiniTheme.ink2)
-                                .accessibilityHidden(true)
-                        }
-                        Text(trailingMeta)
-                            .foregroundStyle(CassiniTheme.ink2)
-                            .lineLimit(1)
-                    }
-                }
-                .font(.system(size: 11.5))
-            }
-        }
-    }
-    // L-51, L-53: duration sits top-right; line two shows time, optional status badge (no dot after a badge),
-    // and speaker names (with a standalone middle dot when no badge is present).
-    private func rowTrailingMeta(_ meeting: LibraryMeeting, badgeKind: String?) -> String? {
-        switch badgeKind {
-        case "recording":
-            return meeting.isBrowserCapture ? UXText.text("common.listeningInsideBrowser") : nil
-        case "saving", "transcribing":
-            return nil
-        default:
-            let names = LibraryFormat.rowMeta(durationMs: nil, names: meeting.speakerNames)
-            return names.isEmpty ? nil : names
-        }
-    }
-    private func catalogStatusBadge(_ presentation: CatalogBadgePresentation, onAccent: Bool = false) -> some View {
-        CatalogStatusBadge(presentation: presentation, isAnimating: !store.context.screenshot && scenePhase == .active, onAccent: onAccent)
-            .accessibilityAddTraits(.isStaticText)
-    }
-
-    private var autoTag: some View {
-        Text(UXText.text("common.autoTag")).font(.system(size: 10, weight: .medium)).foregroundStyle(CassiniTheme.ink2)
-            .padding(.horizontal, 4).overlay(RoundedRectangle(cornerRadius: 4).stroke(CassiniTheme.tagStroke))
-            .help(UXText.text("common.autoTag.tooltip"))
-    }
-    private var firstRun: some View {
-        GeometryReader { geometry in
-            let compact = geometry.size.height < FirstRunHeroMetrics.compactHeight
-            ScrollView {
-                VStack(alignment:.leading,spacing:compact ? FirstRunHeroMetrics.compactGap : FirstRunHeroMetrics.gap) {
-                    HStack(spacing:32) {
-                        CassiniBrandMark(height:FirstRunHeroMetrics.mark)
-                        FirstRunWave().frame(maxWidth:501).frame(height:FirstRunHeroMetrics.mark)
-                    }.padding(.bottom,4)
-                    VStack(alignment:.leading,spacing:0) {
-                        Text(UXText.text("firstRun.hero.title"))
-                            .foregroundStyle(CassiniTheme.ink).accessibilityIdentifier("first-run-hero-title")
-                        Text(UXText.text("firstRun.hero.subtitle.computer"))
-                            .foregroundStyle(CassiniTheme.ink3).accessibilityIdentifier("first-run-hero-subtitle")
-                    }.font(.system(size:FirstRunHeroMetrics.headline,weight:.bold)).tracking(-1.92)
-                        .lineLimit(1).minimumScaleFactor(0.45)
-                        .frame(maxWidth:.infinity,alignment:.leading).accessibilityAddTraits(.isHeader)
-                    if let line = RecordingOverview.libraryDiskLine {
-                        Text(line).foregroundStyle(CassiniTheme.warningNotice)
-                    }
-                    HStack(spacing:14) {
-                        recordButton(big:true).fixedSize()
-                        FirstRunShortcut()
-                    }
-                    FirstRunPrivacy(root:store.context.root,screenshot:store.context.screenshot)
-                }.padding(.horizontal,FirstRunHeroMetrics.horizontalPadding)
-                    .padding(.vertical,compact ? FirstRunHeroMetrics.compactPadding : FirstRunHeroMetrics.padding)
-                    .frame(maxWidth:FirstRunHeroMetrics.maxWidth + 2 * FirstRunHeroMetrics.horizontalPadding,alignment:.leading)
-                    .padding(.bottom,40)
-                    .frame(maxWidth:.infinity,minHeight:geometry.size.height,alignment:.center)
-            }.accessibilityElement(children:.contain).accessibilityLabel(UXText.text("library.title"))
-                .accessibilityAddTraits(.isHeader).accessibilityIdentifier("first-run-library")
-        }.background(CassiniTheme.surface)
-            .overlay { LibraryDropListOverlay(state:dropState) }
-    }
-    @ViewBuilder private func recordButton(big: Bool) -> some View {
-        let saving = big && RecordingOverview.saving
-        let enabled = RecordingOverview.canStart
-        let title = UXText.text(saving ? "states.badge.saving" : "common.record")
-        if !big {
-            LibraryToolbarAction(title:title,label:title,identifier:"toolbar-record",style:.record,enabled:enabled) {
-                sessionPlayback.stop(); RecordCoordinator.shared.request(parent: store.context.root)
-            }.frame(minWidth:90).fixedSize(horizontal:true,vertical:false)
-        } else {
-        Button { sessionPlayback.stop(); RecordCoordinator.shared.request(parent: store.context.root) } label: {
-            HStack(spacing: 9) {
-                if saving {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Circle().fill(enabled ? CassiniTheme.onRecord : CassiniTheme.ink3).frame(width:10,height:10)
-                }
-                Text(title).fontWeight(.semibold)
-            }.font(.system(size:15)).padding(.leading,20).padding(.trailing,24).frame(height:46)
-                .foregroundStyle(saving ? CassiniTheme.ink2 : enabled ? CassiniTheme.onRecord : CassiniTheme.ink3)
-                .background(saving || !enabled ? CassiniTheme.chipFill : CassiniTheme.record, in: Capsule())
-        }.buttonStyle(.plain).disabled(!enabled).accessibilityLabel(title).accessibilityIdentifier("first-run-record")
-        }
+        LibraryMeetingRowView(
+            meeting: meeting,
+            isSelected: store.selectedKeys.contains(meeting.libraryKey),
+            isContextMenuTarget: contextMenuMeetingKey == meeting.libraryKey,
+            isStarred: store.isStarred(meeting),
+            format: store.format,
+            isAnimatingBadges: !store.context.screenshot && scenePhase == .active
+        )
     }
     private func openSelection(userInitiated: Bool = false) {
         guard !search.visible, store.loaded, !LibraryMoveCoordinator.shared.busy, !trash.busy else { return }
@@ -1285,254 +1113,5 @@ struct LibraryView: View {
 
     private func readTranscript(_ meeting: LibraryMeeting) {
         sessionPlayback.stop(); navigation.open(meeting)
-    }
-}
-
-private struct LibraryWindowTitleModifier: ViewModifier {
-    let savedDetail: MeetingDetailModel?
-    let showsFirstRun: Bool
-    let searchVisible: Bool
-    let format: LibraryFormat
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if let detail = savedDetail, !showsFirstRun, !searchVisible {
-            let subtitle = format.previewSubtitle(
-                detail.meeting.meetingTime,
-                durationMs: detail.meeting.durationMs,
-                received: detail.meeting.state.origin == .received,
-                transcribedOnAnotherDevice: detail.meeting.transcribedOnAnotherDevice
-            )
-            content
-                .navigationTitle(detail.meeting.title ?? UXText.text("library.untitled"))
-                .navigationSubtitle(subtitle)
-                .toolbar(removing: .title)
-        } else {
-            content
-                .navigationTitle(UXText.text("app.name"))
-                .toolbar(removing: .title)
-        }
-    }
-}
-
-/// Inline-editable meeting title and subtitle hosted in the detail toolbar's
-/// leading `.navigation` placement. Clicking the title edits in place and routes
-/// commits through `MeetingRenameCoordinator.renameInline` on both macOS 15 and 26.
-private struct MeetingWindowTitleView: View {
-    let title: String
-    let subtitle: String
-    let canRename: Bool
-    var maxWidth: CGFloat = 280
-    let onCommit: (String) -> Void
-    @State private var editing = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            InlineEditableTitle(
-                title: title,
-                fontSize: 13,
-                weight: .semibold,
-                singleLine: true,
-                canRename: canRename,
-                identifier: "meeting-window-title",
-                editorIdentifier: "meeting-window-title-editor",
-                maxWidth: maxWidth,
-                editing: $editing,
-                onCommit: onCommit
-            )
-            if !editing {
-                Text(subtitle)
-                    .font(.system(size: 11))
-                    .foregroundStyle(CassiniTheme.secondaryInk)
-                    .lineLimit(1)
-                    .accessibilityIdentifier("meeting-window-subtitle")
-            }
-        }
-        .frame(maxWidth: maxWidth, alignment: .leading)
-        .onChange(of: title) { _, _ in editing = false }
-        .onChange(of: canRename) { _, allowed in if !allowed { editing = false } }
-    }
-}
-
-private struct SidebarGlassCircleModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
-            content.glassEffect(.regular, in: .circle)
-        } else {
-            content.background(CassiniTheme.chipFill, in: Circle())
-        }
-        #else
-        content.background(CassiniTheme.chipFill, in: Circle())
-        #endif
-    }
-}
-
-private struct SidebarBottomScrollEdgeModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
-            content.scrollEdgeEffectStyle(.soft, for: .bottom)
-        } else {
-            content
-        }
-        #else
-        content
-        #endif
-    }
-}
-
-struct UpdateReadyFooter: View {
-    let updates: ApplicationUpdates
-    var body: some View {
-        if updates.readyWhenIdle {
-            Text(UXText.text("updates.readyWhenIdle")).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
-                .frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,18).padding(.vertical,8)
-                .accessibilityIdentifier("library-update-ready")
-        }
-    }
-}
-
-// D105: desktop headline size is decided; narrow/short windows remain usable.
-private enum FirstRunHeroMetrics {
-    static let headline: CGFloat = 64
-    static let maxWidth: CGFloat = 860
-    static let horizontalPadding: CGFloat = 48
-    static let gap: CGFloat = 24
-    static let compactGap: CGFloat = 16
-    static let mark: CGFloat = 40
-    static let padding: CGFloat = 32
-    static let compactPadding: CGFloat = 24
-    static let compactHeight: CGFloat = 600
-}
-
-/// D105 keeps the placeholder in its localized position, rendered as one key chip.
-private struct FirstRunShortcut: View {
-    private var parts: [String] { UXText.text("firstRun.shortcutLine").components(separatedBy:"{shortcut}") }
-    var body: some View {
-        HStack(spacing:0) {
-            Text(parts[0])
-            Text(UXText.text("common.shortcut.record"))
-                .font(.system(size:13.5,weight:.semibold))
-                .padding(.horizontal,5).padding(.vertical,2)
-                .background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:4))
-                .overlay(RoundedRectangle(cornerRadius:4).stroke(CassiniTheme.tagStroke))
-                .fixedSize()
-            Text(parts.dropFirst().joined(separator:"{shortcut}"))
-                .fixedSize(horizontal:false,vertical:true)
-        }.font(.system(size:15)).foregroundStyle(CassiniTheme.ink2)
-            .accessibilityElement(children:.ignore)
-            .accessibilityLabel(UXText.text("firstRun.shortcutLine",["shortcut":UXText.text("common.shortcut.record")]))
-            .accessibilityIdentifier("first-run-shortcut")
-    }
-}
-
-private struct FirstRunPrivacy: View {
-    // The observed Library context republishes this after Move completes, so
-    // the displayed folder and the link target change together.
-    let root: URL
-    let screenshot: Bool
-    private var move: LibraryMoveCoordinator { .shared }
-    private static let folderLink = URL(string:"cassini-first-run://library")!
-    private var line: AttributedString {
-        // Build attributed text directly: folder names are literal, including
-        // Markdown, braces, and punctuation. Only the catalog placeholder links.
-        let parts = UXText.text("firstRun.privacy.computer").components(separatedBy:"{folder}")
-        let folder = LibraryLocationModel.display(screenshot ? LibraryLocation.standardRoot : root)
-            .replacingOccurrences(of:" › ",with:"/")
-        var result = AttributedString(parts[0])
-        var link = AttributedString(folder)
-        link.link = Self.folderLink
-        link.foregroundColor = CassiniTokens.accent
-        link.font = .system(size:14,weight:.semibold)
-        link.underlineStyle = .single
-        result.append(link)
-        result.append(AttributedString(parts.dropFirst().joined(separator:"{folder}")))
-        return result
-    }
-    var body: some View {
-        HStack(alignment:.firstTextBaseline,spacing:6) {
-            Image(systemName:"shield").font(.system(size:15)).foregroundStyle(CassiniTokens.accent).accessibilityHidden(true)
-            Text(line).fixedSize(horizontal:false,vertical:true)
-                .help(UXText.text("firstRun.openFolder.tooltip"))
-                .environment(\.openURL,OpenURLAction { url in
-                    guard url == Self.folderLink else { return .discarded }
-                    openFolder()
-                    return .handled
-                })
-                .accessibilityIdentifier("first-run-privacy")
-            Button { move.choose(parent:NSApp.keyWindow) } label: {
-                Image(systemName:"pencil").font(.system(size:12)).frame(width:20,height:20)
-                    .contentShape(Rectangle())
-            }.buttonStyle(.plain).foregroundStyle(CassiniTheme.ink3)
-                .help(UXText.text("firstRun.changeFolder.tooltip"))
-                .accessibilityLabel(UXText.text("firstRun.changeFolder"))
-                .accessibilityIdentifier("first-run-change-folder").disabled(!move.canChoose)
-        }.font(.system(size:14)).foregroundStyle(CassiniTheme.ink2)
-    }
-    private func openFolder() {
-        let root = root
-        Task {
-            do {
-                // A new default Library need not exist yet. Prepare it off the
-                // main actor; a disconnected custom Library must not be recreated.
-                try await Task.detached(priority:.utility) {
-                    if root == LibraryLocation.standardRoot {
-                        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
-                    } else {
-                        guard try root.resourceValues(forKeys:[.isDirectoryKey]).isDirectory == true else { throw POSIXError(.ENOENT) }
-                    }
-                }.value
-                NSWorkspace.shared.open(root)
-            } catch { NSApp.presentError(error) }
-        }
-    }
-}
-
-/// Decorative and static: verbatim heights/fades from P2FirstRun-Desktop,
-/// canvas 1794987301-5bc7. Four phrases, three pauses, then a fading tail.
-private struct FirstRunWave: View {
-    private static let bars: [(CGFloat,Double)] = [
-        (7,1.00),(22,1.00),(12,1.00),(23,1.00),(22,1.00),(25,1.00),(30,1.00),(19,1.00),
-        (30,1.00),(24,1.00),(14,1.00),(15,1.00),(22,1.00),(8,1.00),(10,1.00),(15,1.00),
-        (25,1.00),(19,1.00),(23,1.00),(18,1.00),(19,0.93),(8,0.83),(6,0.78),(6,0.78),
-        (8,0.83),(13,0.93),(14,1.00),(18,1.00),(17,1.00),(14,1.00),(19,1.00),(15,1.00),
-        (11,1.00),(13,1.00),(11,1.00),(16,1.00),(22,1.00),(22,1.00),(16,1.00),(12,1.00),
-        (13,1.00),(8,1.00),(15,1.00),(20,1.00),(15,1.00),(25,1.00),(18,1.00),(18,0.93),
-        (6,0.78),(12,0.93),(19,1.00),(15,1.00),(15,1.00),(17,1.00),(16,1.00),(9,1.00),
-        (17,1.00),(25,1.00),(27,1.00),(32,1.00),(19,1.00),(18,1.00),(35,1.00),(16,1.00),
-        (16,1.00),(15,1.00),(22,1.00),(10,0.85),(6,0.78),(6,0.76),(8,0.81),(17,0.90),
-        (22,0.87),(23,0.83),(19,0.80),(15,0.77),(8,0.73),(11,0.70),(6,0.67),(6,0.63),
-        (6,0.60),(6,0.57),(6,0.53),(6,0.50),
-    ]
-    var body: some View {
-        Canvas { context,size in
-            // Preserve all phrases on narrow windows by reducing the gap only.
-            let pitch = min(6,max(3,(size.width - 3) / CGFloat(Self.bars.count - 1)))
-            for (index,level) in Self.bars.enumerated() {
-                let bar = CGRect(x:CGFloat(index) * pitch,y:(size.height - level.0) / 2,width:3,height:level.0)
-                context.fill(Path(roundedRect:bar,cornerRadius:1.5),with:.color(CassiniTheme.ink3.opacity(level.1)))
-            }
-        }.accessibilityHidden(true).allowsHitTesting(false)
-    }
-}
-
-private struct ConditionalNativeSidebarSearch: ViewModifier {
-    let enabled: Bool
-    @Binding var query: String
-    @Binding var isPresented: Bool
-    let prompt: String
-
-    func body(content: Content) -> some View {
-        if enabled {
-            content.searchable(
-                text: $query,
-                isPresented: $isPresented,
-                placement: .sidebar,
-                prompt: prompt
-            )
-        } else {
-            content
-        }
     }
 }

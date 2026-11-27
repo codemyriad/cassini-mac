@@ -26,7 +26,8 @@ EXPECTED_HEADER = (
     "# Vendored from codemyriad/cassini-ux@"
     "592f9cc6bd1cd1d3aac1beb63cb69ff199bd1d25:tools/pr-shots/pr-shots.py"
 )
-EXPECTED_CANONICAL_SHA256 = "63cc9e25f2583895b1f0d1a5befa2611e4271bf2cfa3b06b8c09bf95561afa65"
+# Includes D-1184 local resilience patch for 404/skipped baseline job logs pending upstream sync.
+EXPECTED_CANONICAL_SHA256 = "180454acff02f1028f09d9293d9a136c142ae2d3eb775e62b8c3380f5e64a079"
 
 BOARDS_21 = (
     "library",
@@ -544,6 +545,111 @@ class BaselineFallbackReportingContract(unittest.TestCase):
             )
             with self.assertRaises(ValueError):
                 self.reporter.report_baseline(bad_repo, out=io.StringIO())
+
+
+class BaselineJobLogResilienceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.shots = load_module(PR_SHOTS, "pr_shots_baseline")
+        cls.sample_png = make_png(4, 4, (244, 243, 238, 255))
+
+    def _make_args(self):
+        return self.shots.parser().parse_args(
+            [
+                "diff",
+                "--layout",
+                "mac",
+                "--repo",
+                "codemyriad/cassini-mac",
+                "--pr",
+                "348",
+                "--base-sha",
+                "a" * 40,
+                "--head-sha",
+                "b" * 40,
+                "--after-dir",
+                "unused",
+                "--base-workflow",
+                "ci.yml",
+                "--base-artifact",
+                "ux-boards",
+                "--out",
+                "unused-out",
+            ]
+        )
+
+    def _run_baseline(self, jobs_payload, log_side_effect):
+        args = self._make_args()
+        base_sha = "a" * 40
+        head_sha = "b" * 40
+
+        def fake_github(route):
+            if route == "codemyriad/cassini-mac/pulls/348":
+                return {"base": {"sha": base_sha}, "head": {"sha": head_sha}}
+            if route.startswith("codemyriad/cassini-mac/actions/workflows/ci.yml/runs"):
+                return {
+                    "workflow_runs": [
+                        {
+                            "id": 9001,
+                            "event": "push",
+                            "head_branch": "main",
+                            "head_sha": base_sha,
+                            "head_repository": {"full_name": "codemyriad/cassini-mac"},
+                        }
+                    ]
+                }
+            if route.startswith("codemyriad/cassini-mac/actions/runs/9001/artifacts"):
+                return {"artifacts": [{"id": 77, "name": "ux-boards", "expired": False, "size_in_bytes": 123}]}
+            if route.startswith("codemyriad/cassini-mac/actions/runs/9001/jobs"):
+                return {"jobs": jobs_payload}
+            raise AssertionError(f"Unexpected github route: {route}")
+
+        with patch.object(self.shots, "github", side_effect=fake_github), patch.object(
+            self.shots, "command", side_effect=log_side_effect
+        ), patch.object(self.shots, "artifact_files", return_value={"library.png": self.sample_png}), patch.dict(
+            os.environ, {}, clear=False
+        ):
+            os.environ.pop("GITHUB_SHA", None)
+            files = self.shots.baseline(args)
+        return args, files
+
+    def test_skipped_board_job_is_ignored_in_favor_of_completed_board_job(self) -> None:
+        jobs = [
+            {"id": 101, "name": "UX Library boards / build", "conclusion": "skipped", "labels": []},
+            {"id": 102, "name": "UX Library boards / Library boards", "conclusion": "success", "labels": ["macos-15"]},
+        ]
+
+        def fake_command(*cmd, **_kw):
+            if cmd == ("gh", "api", "repos/codemyriad/cassini-mac/actions/jobs/102/logs"):
+                return b"Image Version: 20261110.2.1\n"
+            raise AssertionError(f"Should not fetch logs for skipped job: {cmd}")
+
+        args, files = self._run_baseline(jobs, fake_command)
+        self.assertIn("library.png", files)
+        self.assertEqual(args.base_runner, "macos-15")
+        self.assertEqual(args.base_image, "20261110.2.1")
+
+    def test_404_on_baseline_job_logs_degrades_gracefully_instead_of_crashing(self) -> None:
+        jobs = [
+            {"id": 201, "name": "UX Library boards / Library boards", "conclusion": "success", "labels": ["macos-15"]},
+        ]
+
+        def fake_command(*cmd, **_kw):
+            raise subprocess.CalledProcessError(1, cmd, output=b"gh: Not Found (HTTP 404)")
+
+        args, files = self._run_baseline(jobs, fake_command)
+        self.assertIn("library.png", files)
+        self.assertEqual(args.base_runner, "macos-15")
+        self.assertEqual(args.base_image, "unknown")
+
+    def test_empty_jobs_list_does_not_crash_baseline_lookup(self) -> None:
+        def fake_command(*cmd, **_kw):
+            raise AssertionError(f"Should not invoke gh for empty jobs: {cmd}")
+
+        args, files = self._run_baseline([], fake_command)
+        self.assertIn("library.png", files)
+        self.assertEqual(args.base_runner, "unknown")
+        self.assertEqual(args.base_image, "unknown")
 
 
 if __name__ == "__main__":

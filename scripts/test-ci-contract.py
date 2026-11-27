@@ -1570,9 +1570,12 @@ class PullRequestFourJobBudget(unittest.TestCase):
         self.assertIn('runs-on: macos-15\n', smoke)
         self.assertNotIn('vars.CM_MAC', smoke)
         self.assertIn('ditto build/Build/Products/Debug/Cassini.app "$RUNNER_TEMP/clean-Debug-Cassini.app"', smoke)
-        self.assertEqual(smoke.count('ditto "$RUNNER_TEMP/clean-Debug-Cassini.app" build/Build/Products/Debug/Cassini.app'), 3)
+        self.assertEqual(smoke.count('ditto "$RUNNER_TEMP/clean-Debug-Cassini.app" build/Build/Products/Debug/Cassini.app'), 4)
         for marker in [
             'scripts/run-native-ci.py --mode sink-only',
+            'scripts/test-search-app.py',
+            'scripts/test-meeting-preparation-app.py',
+            'scripts/test-settings-app.py',
             'scripts/test-export-sandbox.py',
             'scripts/check-whistle-bundle.py',
             '--whistle-self-test',
