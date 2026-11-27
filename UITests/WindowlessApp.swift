@@ -233,8 +233,9 @@ extension LibraryBoards {
         try await dockReopen(app)
         XCTAssertTrue(window.buttons["meeting-find-button"].firstMatch.waitForExistence(timeout:10),"Minimized meeting stays open")
         waitForWindowless { window.buttons["meeting-find-button"].firstMatch.isHittable }
-        window.searchFields.firstMatch.click(); app.typeText("budget")
-        let field=window.searchFields.firstMatch
+        let field = sidebarSearchField(in: window)
+        XCTAssertTrue(field.waitForExistence(timeout:10),window.debugDescription)
+        field.click(); app.typeText("budget")
         XCTAssertEqual(field.value as? String,"budget")
         window.buttons["_XCUI:MinimizeWindow"].click()
         try await dockReopen(app)

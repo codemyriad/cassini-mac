@@ -162,7 +162,7 @@ final class LibraryBoards: XCTestCase {
         let starredChoice = window.descendants(matching:.any)["library-filters"].radioButtons["Starred"]
         XCTAssertTrue(starredChoice.waitForExistence(timeout:20),relaunched.debugDescription)
         XCTAssertTrue(selected(starredChoice),starredChoice.debugDescription)
-        let activeSearch = window.searchFields.firstMatch
+        let activeSearch = sidebarSearchField(in: window)
         XCTAssertTrue(activeSearch.waitForExistence(timeout:5),relaunched.debugDescription)
         activeSearch.click()
         activeSearch.typeText("budget")
@@ -926,8 +926,10 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(window.buttons["meeting-find-button"].firstMatch.waitForExistence(timeout:5))
         XCTAssertFalse(window.textFields["meeting-find"].exists)
         XCTAssertTrue(window.buttons["meeting-export"].firstMatch.exists,"Find keeps the meeting open")
-        window.searchFields.firstMatch.click()
-        window.searchFields.firstMatch.typeText("budget")
+        let searchField = sidebarSearchField(in: window)
+        XCTAssertTrue(searchField.waitForExistence(timeout:5),window.debugDescription)
+        searchField.click()
+        searchField.typeText("budget")
         XCTAssertTrue(window.staticTexts["search-count"].waitForExistence(timeout:5))
         app.menuBars.menuBarItems["Playback"].click()
         XCTAssertFalse(app.menuItems["Play this turn"].isEnabled,"Global search clears the focused transcript action")
@@ -1246,7 +1248,7 @@ final class LibraryBoards: XCTestCase {
     @MainActor func testSearchClickOpensSidebarBeforeTyping() throws {
         let app = try launch("library",fixture:"main"); defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
-        let searchField = window.searchFields.firstMatch
+        let searchField = sidebarSearchField(in: window)
         XCTAssertTrue(searchField.waitForExistence(timeout:20),app.debugDescription)
         searchField.click()
         app.typeText("budget")
@@ -1347,7 +1349,7 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(localFind.waitForExistence(timeout:5))
         app.typeText("budget")
         XCTAssertEqual(localFind.value as? String,"budget","Cmd-F after opening a hit searches the meeting")
-        let activeSearch = window.searchFields.firstMatch
+        let activeSearch = sidebarSearchField(in: window)
         XCTAssertTrue(activeSearch.waitForExistence(timeout:5),window.debugDescription)
         activeSearch.click()
         app.typeText("budget")
@@ -1487,7 +1489,7 @@ final class LibraryBoards: XCTestCase {
         let dismissed = NSPredicate { _,_ in !keyboardMenu.exists }
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:dismissed,object:nil)],timeout:5),.completed)
         app.typeKey("f",modifierFlags:.command)
-        XCTAssertTrue(window.searchFields.firstMatch.waitForExistence(timeout:5))
+        XCTAssertTrue(sidebarSearchField(in: window).waitForExistence(timeout:5))
         app.typeText("budget")
         XCTAssertTrue(window.staticTexts["search-count"].waitForExistence(timeout:5))
         app.typeKey(.escape,modifierFlags:[])
@@ -1602,7 +1604,7 @@ final class LibraryBoards: XCTestCase {
         app.typeKey("a",modifierFlags:.command); editor.typeText("Title from the live page"); app.typeKey(.return,modifierFlags:[])
         XCTAssertFalse(window.textViews["recording-notes"].exists)
         app.typeKey("f",modifierFlags:.command)
-        XCTAssertTrue(window.searchFields.firstMatch.waitForExistence(timeout:5))
+        XCTAssertTrue(sidebarSearchField(in: window).waitForExistence(timeout:5))
         app.typeText("Title")
         XCTAssertTrue(window.staticTexts["search-count"].waitForExistence(timeout:5))
         app.typeKey(.escape,modifierFlags:[])
@@ -2388,6 +2390,10 @@ final class LibraryBoards: XCTestCase {
     }
     /// Native window titlebar text element for `expected`, excluding sidebar and
     /// transcript descendants (which live inside the split view).
+    ///
+    /// macOS 15 vs macOS 26 AX difference: macOS 15 exposes window title/subtitle
+    /// as direct `window.children`, whereas macOS 26 unified toolbar chrome hosts
+    /// them inside `window.toolbars`. Both locations are checked in order.
     private func nativeTitleElement(_ expected: String, in window: XCUIElement) -> XCUIElement {
         let match = NSPredicate(format: "value == %@ OR label == %@", expected, expected)
         let directStatic = window.children(matching: .staticText).matching(match).firstMatch
@@ -2405,13 +2411,20 @@ final class LibraryBoards: XCTestCase {
         let title = window.title
         return title == expected || title.hasPrefix(expected + " – ") || title.hasPrefix(expected + " - ")
     }
-    /// True only when the native window titlebar subtitle displays `expected`.
+    /// True only when the native window titlebar subtitle displays `expected`
+    /// (checking both macOS 15 `window.children` and macOS 26 `window.toolbars`).
     private func hasWindowSubtitle(_ expected: String, in window: XCUIElement) -> Bool {
         let match = NSPredicate(format: "value == %@ OR label == %@", expected, expected)
         if window.children(matching: .staticText).matching(match).firstMatch.exists { return true }
         if window.toolbars.staticTexts.matching(match).firstMatch.exists { return true }
         let title = window.title
         return title.hasSuffix(" – " + expected) || title.hasSuffix(" - " + expected)
+    }
+    /// Sidebar search field across macOS 15 (embedded `LibrarySearchField` inside
+    /// the sidebar) and macOS 26 (native `.searchable(placement: .sidebar)` hosted
+    /// in the toolbar). Window-wide `searchFields.firstMatch` resolves both.
+    func sidebarSearchField(in window: XCUIElement) -> XCUIElement {
+        window.searchFields.firstMatch
     }
     /// True when a sidebar row in the outline displays `expected`.
     private func sidebarHasTitle(_ expected: String, in window: XCUIElement) -> Bool {
