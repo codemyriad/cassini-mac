@@ -301,7 +301,7 @@ jobs:
       if: env.WHISTLE == 'true'
       env:
         CASSINI_PIPELINE_REPORT_DIR: ${{ github.workspace }}/build/pipeline
-      run: swift test --skip-build --filter 'PipelineTests|TranscriptionMeetingTests'
+      run: swift test --skip-build --filter 'PipelineTests|TranscriptionMeetingTests|SampleRateAcceptanceTests'
     - name: Constructor privacy guard and persistent worker JFK golden
       if: env.WHISTLE == 'true'
       run: python3 scripts/test-whistle-worker.py --worker .build/debug/cassini-whistle-worker --bundle build/Whistle --report build/whistle-macos-15.json

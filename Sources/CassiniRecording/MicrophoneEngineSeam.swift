@@ -50,6 +50,11 @@ public final class AVAudioMicrophoneEngine: MicrophoneAudioEngine {
     private var engine: (any MicrophoneAudioEngine)?
     private var observer: NSObjectProtocol?
 
+    /// Invoked on the main actor after a configuration-change notification has been
+    /// handled (recovery finished or `failure` reported), allowing deterministic
+    /// synchronization in tests without fixed sleeps.
+    public var onConfigurationChangeHandled: (@MainActor () -> Void)?
+
     public init(
         makeEngine: @escaping () -> any MicrophoneAudioEngine = { AVAudioMicrophoneEngine() },
         notificationCenter: NotificationCenter = .default,
@@ -88,8 +93,11 @@ public final class AVAudioMicrophoneEngine: MicrophoneAudioEngine {
             forName: .AVAudioEngineConfigurationChange,
             object: engine.notificationObject,
             queue: .main
-        ) { _ in
+        ) { [weak self] _ in
             failure(changedMessage)
+            MainActor.assumeIsolated {
+                self?.onConfigurationChangeHandled?()
+            }
         }
     }
 

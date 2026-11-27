@@ -233,16 +233,20 @@ struct PixelImage {
 
 /// Shared base class for Beta 19 acceptance tests (D-1195).
 class AcceptanceTestCase: XCTestCase {
-    func expectStrictFailure(_ reason: String, _ block: () throws -> Void) {
+    /// Wraps only the intended behavioral assertion(s) in a strict expected-failure scope.
+    /// Prerequisites (fixture loading, app launch, element lookup, screenshots) must run
+    /// outside this helper so unrelated errors or broken selectors fail the test immediately.
+    func expectStrictFailure(
+        _ reason: String,
+        matching marker: String,
+        _ assertions: () -> Void
+    ) {
         let options = XCTExpectedFailure.Options()
         options.isStrict = true
-        XCTExpectFailure(reason, options: options) {
-            do {
-                try block()
-            } catch {
-                XCTFail("Unexpected error: \(error)")
-            }
+        options.issueMatcher = { issue in
+            issue.type == .assertionFailure && issue.compactDescription.contains(marker)
         }
+        XCTExpectFailure(reason, options: options, failingBlock: assertions)
     }
 
     @MainActor func launchAcceptance(

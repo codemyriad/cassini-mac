@@ -2,3 +2,4 @@
 UITests/Acceptance/ @desouso
 Tests/CassiniRecordingTests/BluetoothAcceptanceTests.swift @desouso
 Tests/CassiniTranscriptionTests/SampleRateAcceptanceTests.swift @desouso
+Tests/CassiniParakeetTests/ParakeetSampleRateAcceptanceTests.swift @desouso

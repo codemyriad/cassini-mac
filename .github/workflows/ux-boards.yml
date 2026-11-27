@@ -88,6 +88,37 @@ jobs:
         path: |
           build/qa-attachments-light
           build/qa-attachments-dark
+    - name: Beta 19 acceptance UI tests
+      timeout-minutes: 15
+      env:
+        TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
+      run: |
+        set -o pipefail
+        xcodebuild test-without-building \
+          -xctestrun "$(find build/Build/Products -maxdepth 1 -name '*.xctestrun' -print -quit)" \
+          -destination 'platform=macOS' -parallel-testing-enabled NO \
+          -only-testing:CassiniWindowScreenshots/D1196BluetoothUITests \
+          -only-testing:CassiniWindowScreenshots/D1197FocusAndControlsTests \
+          -only-testing:CassiniWindowScreenshots/D1198MeetingListTests \
+          -only-testing:CassiniWindowScreenshots/D1199SidebarAndToolbarTests \
+          -only-testing:CassiniWindowScreenshots/D1200MeetingAndRecordingPageTests \
+          -resultBundlePath build/B19Acceptance.xcresult \
+          2>&1 | tee build/b19-acceptance.log
+    - name: Export and verify Beta 19 acceptance screenshots
+      if: ${{ !cancelled() }}
+      run: |
+        xcrun xcresulttool export attachments --path build/B19Acceptance.xcresult \
+          --output-path build/b19-acceptance-attachments
+        python3 scripts/check-acceptance-screenshots.py build/b19-acceptance-attachments
+    - uses: actions/upload-artifact@v5
+      if: always()
+      continue-on-error: true
+      with:
+        retention-days: 14
+        name: b19-acceptance-screenshots
+        path: |
+          build/b19-acceptance-attachments
+          build/b19-acceptance.log
     - name: Filter and export control regressions
       timeout-minutes: 3
       env:

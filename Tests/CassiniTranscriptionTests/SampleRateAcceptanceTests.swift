@@ -7,6 +7,8 @@ import CassiniWhistle
 @testable import CassiniTranscription
 
 final class SampleRateAcceptanceTests: XCTestCase {
+    private static let requestedRates = [44_100, 32_000, 24_000, 96_000]
+
     private final class DeterministicSpeechDetector: SpeechProbabilityProvider {
         private var hpf = SileroInputHighPass()
         func reset() { hpf = SileroInputHighPass() }
@@ -18,6 +20,19 @@ final class SampleRateAcceptanceTests: XCTestCase {
             let rms = (sumSq / Float(filtered.count)).squareRoot()
             return rms >= 0.02 ? 0.92 : 0.02
         }
+    }
+
+    private func expectStrictFailure(
+        _ reason: String,
+        matching marker: String,
+        _ assertions: () -> Void
+    ) {
+        let options = XCTExpectedFailure.Options()
+        options.isStrict = true
+        options.issueMatcher = { issue in
+            issue.type == .assertionFailure && issue.compactDescription.contains(marker)
+        }
+        XCTExpectFailure(reason, options: options, failingBlock: assertions)
     }
 
     private func writeCanonicalWAV(samples: [Int16], sampleRate: Int, channels: Int = 1, to url: URL) throws {
@@ -50,11 +65,22 @@ final class SampleRateAcceptanceTests: XCTestCase {
         try (header + body).write(to: url, options: .atomic)
     }
 
-    private func resample16kWAV(_ inputURL: URL, toRate targetRate: Int, outputURL: URL) throws {
-        var sourceSamples: [Float] = []
-        try MeetingAudioDecoder.decode(inputURL) { pcm, rate in
-            XCTAssertEqual(rate, 16_000)
-            sourceSamples.append(contentsOf: pcm)
+    private func decodeSource16kSamples(_ inputURL: URL) throws -> [Float] {
+        let audio = try AVAudioFile(forReading: inputURL, commonFormat: .pcmFormatFloat32, interleaved: false)
+        let format = audio.processingFormat
+        XCTAssertEqual(Int(format.sampleRate), 16_000, "Source fixture must be 16 kHz")
+        let frameCount = AVAudioFrameCount(audio.length)
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount))
+        try audio.read(into: buffer)
+        let data = try XCTUnwrap(buffer.floatChannelData)
+        return Array(UnsafeBufferPointer(start: data[0], count: Int(buffer.frameLength)))
+    }
+
+    private func writeResampledWAV(from16k sourceSamples: [Float], toRate targetRate: Int, outputURL: URL) throws {
+        if targetRate == 16_000 {
+            let int16Samples = sourceSamples.map { Int16((max(-1.0, min(1.0, $0)) * 32767.0).rounded()) }
+            try writeCanonicalWAV(samples: int16Samples, sampleRate: 16_000, to: outputURL)
+            return
         }
         let inFormat = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
         let outFormat = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: Double(targetRate), channels: 1))
@@ -88,70 +114,43 @@ final class SampleRateAcceptanceTests: XCTestCase {
         try writeCanonicalWAV(samples: int16Samples, sampleRate: targetRate, to: outputURL)
     }
 
-    func testTranscriberAcceptsAnyRate() throws {
-        let options = XCTExpectedFailure.Options()
-        options.isStrict = true
-        XCTExpectFailure("D-1196 item 4", options: options) {
-            do {
-                try runTranscriberAcceptsAnyRate()
-            } catch {
-                XCTFail("Unexpected error: \(error)")
-            }
-        }
+    private func normalizeWords(_ words: [WhistleTranscript.Word]) -> [String] {
+        words.map { $0.word.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
     }
 
-    private func runTranscriberAcceptsAnyRate() throws {
+    func testTranscriberAcceptsAnyRate() throws {
         let jfkURL = try XCTUnwrap(Bundle.module.url(forResource: "jfk", withExtension: "wav", subdirectory: "Goldens"))
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("SampleRateAcceptance-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
-        // Baseline 16 kHz segmentation.
-        let baselineAudio = try SegmentedAudio(url: jfkURL, detector: DeterministicSpeechDetector())
+        // Prerequisite: write canonical 16 kHz baseline WAV and verify segmentation succeeds outside expected-failure scope.
+        let source16k = try decodeSource16kSamples(jfkURL)
+        let baseline16kURL = tempDir.appendingPathComponent("jfk-16000.wav")
+        try writeResampledWAV(from16k: source16k, toRate: 16_000, outputURL: baseline16kURL)
+
+        let baselineAudio = try SegmentedAudio(url: baseline16kURL, detector: DeterministicSpeechDetector())
         XCTAssertFalse(baselineAudio.segments.isEmpty, "Baseline 16 kHz jfk.wav must produce speech segments")
 
-        // Optional real Whistle engine when offline assets are supplied in CI.
-        let whistleEngine: WhistleEngine?
-        let realDetector: SpeechDetector?
-        if let assetsDir = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] {
-            let args = ["--assets", assetsDir]
-            realDetector = try SpeechDetector(assets: VADAssets.forWorker(arguments: args))
-            whistleEngine = try WhistleEngine(assets: WhistleAssets.forWorker(arguments: args))
-        } else {
-            realDetector = nil
-            whistleEngine = nil
+        enum SegmentationOutcome {
+            case audioFormatRejected
+            case segmented(segmentCount: Int, sampleCount: Int)
         }
 
-        let baselineWords: [String]? = try {
-            guard let engine = whistleEngine, let detector = realDetector else { return nil }
-            let seg = try SegmentedAudio(url: jfkURL, detector: detector)
-            return try seg.segments.flatMap { segment in
-                let transcript = try engine.transcribe(samples: try seg.samples(segment))
-                return (transcript.words ?? []).map { $0.word.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }.filter { !$0.isEmpty }
-            }
-        }()
-
-        // Resample jfk.wav to 44.1, 32, 24 and 96 kHz and run each through the transcription pipeline.
-        for rate in [44_100, 32_000, 24_000, 96_000] {
+        var outcomes: [(rate: Int, outcome: SegmentationOutcome)] = []
+        for rate in Self.requestedRates {
             let resampledURL = tempDir.appendingPathComponent("jfk-\(rate).wav")
-            try resample16kWAV(jfkURL, toRate: rate, outputURL: resampledURL)
-
-            let segmented = try SegmentedAudio(url: resampledURL, detector: DeterministicSpeechDetector())
-            XCTAssertFalse(segmented.segments.isEmpty, "Rate \(rate) Hz must decode and segment speech")
-            XCTAssertEqual(Double(segmented.sampleCount), Double(baselineAudio.sampleCount), accuracy: 800, "Rate \(rate) Hz resampled length must match 16 kHz baseline")
-
-            if let engine = whistleEngine, let detector = realDetector, let expectedWords = baselineWords {
-                detector.reset()
-                let realSeg = try SegmentedAudio(url: resampledURL, detector: detector)
-                let words = try realSeg.segments.flatMap { segment in
-                    let transcript = try engine.transcribe(samples: try realSeg.samples(segment))
-                    return (transcript.words ?? []).map { $0.word.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }.filter { !$0.isEmpty }
-                }
-                XCTAssertEqual(words, expectedWords, "Whistle words at \(rate) Hz must match 16 kHz baseline")
+            try writeResampledWAV(from16k: source16k, toRate: rate, outputURL: resampledURL)
+            do {
+                let segmented = try SegmentedAudio(url: resampledURL, detector: DeterministicSpeechDetector())
+                outcomes.append((rate, .segmented(segmentCount: segmented.segments.count, sampleCount: segmented.sampleCount)))
+            } catch TranscriptionFailure.audioFormat {
+                outcomes.append((rate, .audioFormatRejected))
             }
         }
 
-        // SessionFollower must follow a 44.1 kHz track instead of skipping it.
+        // Prerequisite: prepare 44.1 kHz session for SessionFollower outside expected-failure scope.
         let sessionDir = tempDir.appendingPathComponent("session-44k")
         try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
         let trackURL = sessionDir.appendingPathComponent("track-1.wav")
@@ -183,9 +182,100 @@ final class SampleRateAcceptanceTests: XCTestCase {
             makeDetector: { DeterministicSpeechDetector() },
             recognize: { _ in WhistleTranscript(text: "ok", language: "en", words: []) }
         )
-        let didWork = try follower.step()
-        XCTAssertTrue(didWork, "SessionFollower must process a 44.1 kHz track instead of skipping it")
-        XCTAssertEqual(follower.stats.tracksFollowed, 1, "SessionFollower must follow the 44.1 kHz track")
-        XCTAssertGreaterThan(follower.stats.blocksDecoded, 0)
+        enum FollowerOutcome {
+            case audioFormatRejected
+            case stepped(didWork: Bool, tracksFollowed: Int, blocksDecoded: Int)
+        }
+
+        let followerOutcome: FollowerOutcome
+        do {
+            let didWork = try follower.step()
+            followerOutcome = .stepped(
+                didWork: didWork,
+                tracksFollowed: follower.stats.tracksFollowed,
+                blocksDecoded: follower.stats.blocksDecoded
+            )
+        } catch TranscriptionFailure.audioFormat {
+            followerOutcome = .audioFormatRejected
+        }
+
+        expectStrictFailure("D-1196 item 4", matching: "[D-1196-item4]") {
+            for (rate, outcome) in outcomes {
+                switch outcome {
+                case .audioFormatRejected:
+                    XCTFail("[D-1196-item4] Rate \(rate) Hz rejected with TranscriptionFailure.audioFormat")
+                case let .segmented(segmentCount, sampleCount):
+                    XCTAssertGreaterThan(segmentCount, 0, "[D-1196-item4] Rate \(rate) Hz must decode and segment speech")
+                    XCTAssertEqual(Double(sampleCount), Double(baselineAudio.sampleCount), accuracy: 800, "[D-1196-item4] Rate \(rate) Hz resampled length must match 16 kHz baseline")
+                }
+            }
+            switch followerOutcome {
+            case .audioFormatRejected:
+                XCTFail("[D-1196-item4] SessionFollower rejected 44.1 kHz track with TranscriptionFailure.audioFormat")
+            case let .stepped(didWork, tracksFollowed, blocksDecoded):
+                XCTAssertTrue(didWork, "[D-1196-item4] SessionFollower must process a 44.1 kHz track instead of skipping it")
+                XCTAssertEqual(tracksFollowed, 1, "[D-1196-item4] SessionFollower must follow the 44.1 kHz track")
+                XCTAssertGreaterThan(blocksDecoded, 0, "[D-1196-item4] SessionFollower must decode blocks from 44.1 kHz track")
+            }
+        }
+    }
+
+    func testWhistleTranscriberAcceptsAnyRate() throws {
+        guard let assetsDir = ProcessInfo.processInfo.environment["CASSINI_PIPELINE_ASSETS"] else {
+            throw XCTSkip("Pinned Whistle and VAD assets supplied by Whistle CI")
+        }
+        let jfkURL = try XCTUnwrap(Bundle.module.url(forResource: "jfk", withExtension: "wav", subdirectory: "Goldens"))
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("WhistleSampleRateAcceptance-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let args = ["--assets", assetsDir]
+        let detector = try SpeechDetector(assets: VADAssets.forWorker(arguments: args))
+        let engine = try WhistleEngine(assets: WhistleAssets.forWorker(arguments: args))
+
+        let source16k = try decodeSource16kSamples(jfkURL)
+        let baseline16kURL = tempDir.appendingPathComponent("jfk-16000.wav")
+        try writeResampledWAV(from16k: source16k, toRate: 16_000, outputURL: baseline16kURL)
+
+        // Prerequisite: 16 kHz baseline Whistle transcription must succeed outside expected-failure scope.
+        let baselineSeg = try SegmentedAudio(url: baseline16kURL, detector: detector)
+        let baselineWords = try baselineSeg.segments.flatMap { segment in
+            let transcript = try engine.transcribe(samples: try baselineSeg.samples(segment))
+            return normalizeWords(transcript.words ?? [])
+        }
+        XCTAssertFalse(baselineWords.isEmpty, "Baseline 16 kHz Whistle transcription must produce words")
+
+        enum WhistleRateOutcome {
+            case audioFormatRejected
+            case transcribed([String])
+        }
+
+        var outcomes: [(rate: Int, outcome: WhistleRateOutcome)] = []
+        for rate in Self.requestedRates {
+            let resampledURL = tempDir.appendingPathComponent("jfk-\(rate).wav")
+            try writeResampledWAV(from16k: source16k, toRate: rate, outputURL: resampledURL)
+            detector.reset()
+            do {
+                let seg = try SegmentedAudio(url: resampledURL, detector: detector)
+                let words = try seg.segments.flatMap { segment in
+                    let transcript = try engine.transcribe(samples: try seg.samples(segment))
+                    return normalizeWords(transcript.words ?? [])
+                }
+                outcomes.append((rate, .transcribed(words)))
+            } catch TranscriptionFailure.audioFormat {
+                outcomes.append((rate, .audioFormatRejected))
+            }
+        }
+
+        expectStrictFailure("D-1196 item 4 (Whistle)", matching: "[D-1196-item4-whistle]") {
+            for (rate, outcome) in outcomes {
+                switch outcome {
+                case .audioFormatRejected:
+                    XCTFail("[D-1196-item4-whistle] Whistle rejected \(rate) Hz with TranscriptionFailure.audioFormat")
+                case let .transcribed(words):
+                    XCTAssertEqual(words, baselineWords, "[D-1196-item4-whistle] Whistle words at \(rate) Hz must match 16 kHz baseline")
+                }
+            }
+        }
     }
 }

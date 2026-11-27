@@ -23,6 +23,8 @@
     "project.yml",
     "scripts/export-ux-boards.py",
     "scripts/test-export-ux-boards.py",
+    "scripts/check-acceptance-screenshots.py",
+    "scripts/test-check-acceptance-screenshots.py",
     "scripts/pr-shots.py",
     "scripts/report-pr-shots-baseline.py",
     "scripts/test-pr-shots.py",
