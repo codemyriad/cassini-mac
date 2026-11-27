@@ -424,6 +424,8 @@ jobs:
     - name: Fast app self-tests (search, meeting preparation, settings)
       if: env.APP_SELF_TESTS == 'true'
       run: |
+        command -v displayplacer >/dev/null || brew install displayplacer
+        python3 scripts/hosted-display.py
         rm -rf build/Build/Products/Debug/Cassini.app
         ditto "$RUNNER_TEMP/clean-Debug-Cassini.app" build/Build/Products/Debug/Cassini.app
         python3 scripts/test-search-app.py build/Build/Products/Debug/Cassini.app --output build/app-self-tests/search-app.json
