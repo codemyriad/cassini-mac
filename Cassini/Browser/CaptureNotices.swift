@@ -41,6 +41,8 @@ struct CapturePermissionNotice: View {
                     NSWorkspace.shared.open(URL(string:"x-apple.systempreferences:com.apple.Sound-Settings.extension?input")!)
                 } else { CaptureSettings.open(side) }
             }
+            .buttonStyle(PageSecondaryButtonStyle())
+            .controlSize(.small)
         }.font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2)
             .accessibilityIdentifier(side == .me ? "capture-microphone-permission" : "capture-others-permission")
     }
@@ -79,7 +81,9 @@ struct CaptureFailureBanner: View {
                 ForEach(captions,id:\.self) { Text(UXText.text($0)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true) }
             }
             Spacer(minLength:8)
-            Button(UXText.text("common.tryAgain"),action:retry).disabled(captures.starting)
+            Button(UXText.text("common.tryAgain"),action:retry)
+                .buttonStyle(PageSecondaryButtonStyle())
+                .disabled(captures.starting)
         }.font(.system(size:13)).padding(.horizontal,18).padding(.vertical,10).background(CassiniTheme.warnTint)
     }
 }

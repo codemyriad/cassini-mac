@@ -150,6 +150,14 @@ struct LibraryView: View {
                 ScrollEdgeChrome.configureUnifiedWindow(window)
                 window.titleVisibility = .hidden
                 RecordingConfirmation.attach(to: window)
+                WindowClickAwayFocusController.attach(to: window) { endedControl in
+                    if endedControl is NSSearchField,
+                       search.visible,
+                       search.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       !search.hasActiveFilters {
+                        search.close()
+                    }
+                }
                 SpeakerEditorChrome.update(window,visible:rename.presentation == .speakers)
                 #if DEBUG
                 if store.loaded { ScreenshotFixture.prepareLibrary(window) }
@@ -291,8 +299,11 @@ struct LibraryView: View {
                 Spacer()
                 if trash.unsupported {
                     Button(UXText.text("meeting.showInFiles")) { NSWorkspace.shared.activateFileViewerSelecting([meeting.folder]) }
+                        .buttonStyle(PageSecondaryButtonStyle())
                 } else {
-                    Button(UXText.text("common.tryAgain")) { trash.move(meeting,undoManager:undoManager) }.disabled(!trash.canTrash(meeting))
+                    Button(UXText.text("common.tryAgain")) { trash.move(meeting,undoManager:undoManager) }
+                        .buttonStyle(PageSecondaryButtonStyle())
+                        .disabled(!trash.canTrash(meeting))
                 }
             }.padding(12).foregroundStyle(CassiniTheme.warnInk).background(CassiniTheme.warnTint)
                 .accessibilityIdentifier("trash-failure")
@@ -868,19 +879,11 @@ struct LibraryView: View {
         let firstGroupIsToday = store.groups.first?.title == todayTitle
         return VStack(spacing: 0) {
             HStack {
-                Picker(UXText.text("library.filters.a11y"), selection: $store.preferences.filter) {
-                    Text(UXText.text("library.filter.all")).tag(LibraryPreferences.Filter.all)
-                    Text(UXText.text("library.filter.starred")).tag(LibraryPreferences.Filter.starred)
-                }
-                .pickerStyle(.segmented)
-                .controlSize(.regular)
-                .tint(nil)
-                .labelsHidden()
-                .fixedSize()
-                .accessibilityIdentifier("library-filters")
-                .onChange(of: store.preferences.filter) { _, _ in
-                    store.selectedKeys.formIntersection(Set(store.visibleMeetings.map(\.libraryKey)))
-                }
+                LibraryFilterSegmentedControl(selection: $store.preferences.filter)
+                    .fixedSize()
+                    .onChange(of: store.preferences.filter) { _, _ in
+                        store.selectedKeys.formIntersection(Set(store.visibleMeetings.map(\.libraryKey)))
+                    }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)

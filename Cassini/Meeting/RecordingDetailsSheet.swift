@@ -168,6 +168,7 @@ struct RecordingDetailsSheet: View {
                                 .fixedSize(horizontal: false, vertical: true)
                                 .accessibilityIdentifier("recording-details-permission-hint-\(index)")
                             Button(UXText.text("errors.othersPermission.action")) { CaptureSettings.open(.others) }
+                                .buttonStyle(PageSecondaryButtonStyle())
                                 .controlSize(.small)
                                 .accessibilityIdentifier("recording-details-permission-settings-\(index)")
                         }
