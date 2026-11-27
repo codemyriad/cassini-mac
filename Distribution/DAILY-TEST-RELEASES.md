@@ -44,8 +44,11 @@ its60-minute lock wait and10-minute image task. The complete signed job has a
 6-hour bound covering both lock waits, both notarizations and build time. Network/notary
 waits hold no heavy lock. Build admission requires25GiB free, preserving a10GiB
 reserve (when DerivedData is configured on an external volume via the Aqua
-runner, `disk reserve` keeps13GiB on the internal disk and preflights external
-mount,25GiB space and write access before reserving a build number); DMG admission requires13GiB and both reject memory pressure/growing swap.
+runner, `external-derived-build.py --stage-output` stages both DerivedData and
+release/notarization output on the external volume, `disk reserve` keeps2GiB on
+the internal disk for the finished DMG and bounded log tails, and preflights
+external mount,25GiB space and write access before reserving a build number);
+DMG admission requires13GiB on the output disk and both reject memory pressure/growing swap.
 Outputs stay on drmeyers's internal disk while DrMeyers2 is unavailable. Successful
 job outputs are removed after publication. Failed owned job directories are
 marked only after the child exits, then their products/DerivedData are pruned.

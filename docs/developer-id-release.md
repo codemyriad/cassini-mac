@@ -128,11 +128,12 @@ python3 scripts/install-daily-test-release.py \
 - A LaunchAgent has no access to removable volumes, so the scheduler does not touch that folder. It starts
   `scripts/external-derived-build.py` through the `--aqua` program, which runs a command in the logged-in session.
 - The helper refuses a path outside `/Volumes/<volume>`, a volume that is not mounted (it never writes to a stale
-  mount point), a symlinked folder, or less than 25 GiB free there. It makes one private folder per build and
-  removes it afterwards, whatever the outcome.
-- Products, logs and notary files stay in the scheduler's folder on the internal disk, which then needs 13 GiB free
-  (10 GiB host reserve plus 3 GiB) instead of 25. `release.py` passes each phase's disks to
-  `release-resources.py`: 25 GiB where DerivedData goes, 13 GiB where the products go.
+  mount point), a symlinked folder, or less than 25 GiB free there. It makes one private folder per build for both
+  `DerivedData` and release/notarization staging, copies only the finished DMG, reports and bounded diagnostic tails
+  back into the scheduler's internal folder, and removes the external folder afterwards, whatever the outcome.
+- Because `DerivedData`, `Cassini talk.app`, the notarization ZIP and DMG scratch files all stay on the external volume,
+  `release-resources.py` checks 25 GiB (compile) and 13 GiB (DMG) on the external volume, while the internal disk only
+  needs 2 GiB free for the finished DMG (~100 MiB) and logs.
 - When the build ends, in any way, the helper stops every process left in the build's own process group before it
   removes the folder.
 - Setting only one of the two options fails the job before a build number is used.
