@@ -988,11 +988,11 @@ struct LibraryView: View {
                     .contentMargins(.horizontal, 0, for: .scrollContent)
                     .scrollContentBackground(.hidden)
                     .modifier(SidebarBottomScrollEdgeModifier())
+                    .accessibilityLabel(UXText.text("library.listPane.a11y"))
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         LibraryDropHintFooter(entered: dropState.showsWindowOutline)
                     }
                     .opacity(dropState.dimsListContent ? 0.30 : 1.0)
-                    .accessibilityLabel(UXText.text("library.listPane.a11y"))
 
                     LibraryDropListOverlay(state: dropState)
                 }

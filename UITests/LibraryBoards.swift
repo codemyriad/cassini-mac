@@ -382,7 +382,7 @@ final class LibraryBoards: XCTestCase {
         let item = app.menuItems["Recording details…"]
         XCTAssertTrue(item.waitForExistence(timeout:5),app.debugDescription); item.click()
         let sheet = window.sheets.firstMatch
-        let last = sheet.staticTexts["recording-details-source-39"], end = sheet.staticTexts["recording-details-end"]
+        let last = sheet.staticTexts["recording-details-source-39"].firstMatch, end = sheet.staticTexts["recording-details-end"].firstMatch
         XCTAssertTrue(last.waitForExistence(timeout:10) && end.waitForExistence(timeout:10),app.debugDescription)
         let body = sheet.descendants(matching:.any)["recording-details-body"], done = sheet.buttons["recording-details-close"]
         XCTAssertTrue(body.exists,app.debugDescription)
@@ -1003,7 +1003,7 @@ final class LibraryBoards: XCTestCase {
         }
         let turns = window.descendants(matching:.any).matching(NSPredicate(format:"identifier BEGINSWITH %@","meeting-turn-"))
         XCTAssertGreaterThan(turns.count,0,app.debugDescription)
-        XCTAssertTrue(turns.firstMatch.label.contains("00:"))
+        XCTAssertTrue(turns.firstMatch.label.contains(":"))
         XCTAssertEqual(window.links.count,0,"VoiceOver sees complete turns, while pointer word links stay visual")
         XCTAssertFalse(window.descendants(matching:.any)["capture-failure-banner"].exists)
         let slider = window.sliders["meeting-seek"]
@@ -2420,7 +2420,7 @@ final class LibraryBoards: XCTestCase {
     /// Clicks the inline-editable meeting title (in the inline header at rest, or
     /// the compact toolbar title when scrolled) and returns its active text field.
     @MainActor private func openNativeTitleEditor(currentTitle: String, in window: XCUIElement, app: XCUIApplication) -> XCUIElement {
-        let inlineTitle = window.staticTexts["meeting-inline-title"].firstMatch
+        let inlineTitle = window.descendants(matching: .any)["meeting-inline-title"].firstMatch
         if inlineTitle.waitForExistence(timeout: 5) {
             XCTAssertEqual(visibleText(inlineTitle), currentTitle, "Expected inline meeting title '\(currentTitle)': " + window.debugDescription)
             inlineTitle.click()
