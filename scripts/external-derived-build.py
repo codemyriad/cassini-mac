@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Run one release build with its DerivedData on an external volume.
+"""Run one release build with its DerivedData (and optionally staged output) on an external volume.
 
     external-derived-build.py --preflight ROOT
-    external-derived-build.py ROOT COMMAND [ARG...]
+    external-derived-build.py [--stage-output DEST] ROOT COMMAND [ARG...]
 
 Started by the test-release scheduler through the logged-in (Aqua) session's runner, because a LaunchAgent has no
 access to removable volumes. `--preflight` verifies in that session that ROOT is mounted, has space and is writable
 before the scheduler reserves a build number. Build mode makes a private folder under ROOT, appends
-`--derived-data FOLDER` to COMMAND, waits for it and removes the folder again, whatever the outcome. The scheduler
-itself never touches ROOT.
+`--derived-data FOLDER` (and `--output STAGED` when `--stage-output DEST` is given) to COMMAND, waits for it,
+copies only the finished DMG/reports (or bounded diagnostic tails on failure) into DEST, and removes the external
+folder again, whatever the outcome. The scheduler itself never touches ROOT.
 """
+import json
 import os
 from pathlib import Path
 import shutil
@@ -22,6 +24,8 @@ import time
 
 VOLUMES=Path('/Volumes')
 RESERVE=25*1024**3
+DIAGNOSTIC_TAIL=1024**2
+DIAGNOSTIC_FILES=('build.log','app-notary.json','dmg-notary.json')
 # Below the scheduler's own six-hour limit, so this process still removes its folder and reports the timeout.
 TIMEOUT=21000
 
@@ -81,40 +85,107 @@ def preflight(root,reserve=RESERVE,free=lambda path:shutil.disk_usage(path).free
     return root
 
 
-def build(root,command,reserve=RESERVE,timeout=TIMEOUT,free=lambda path:shutil.disk_usage(path).free,started=None,grace=30):
+def stage_destination(text):
+    dest=Path(text)
+    if not dest.is_absolute() or '..' in dest.parts:
+        raise ValueError('Staged output destination must be an absolute path without ..')
+    if dest.exists() or dest.is_symlink():
+        raise ValueError('Staged output destination already exists')
+    parent=dest.parent
+    if parent.is_symlink() or not parent.is_dir():
+        raise ValueError('Staged output parent must be an existing directory without symlinks')
+    return dest
+
+
+def _copy_tail(source,target,staged_root,limit=DIAGNOSTIC_TAIL):
+    if source.is_symlink() or not source.is_file() or not source.resolve().is_relative_to(staged_root):
+        return
+    with source.open('rb') as stream:
+        stream.seek(max(0,source.stat().st_size-limit))
+        data=stream.read(limit)
+    with target.open('wb') as stream:
+        stream.write(data)
+
+
+def collect_staged_output(staged,dest,succeeded):
+    """Copy only the finished publishable artifacts (or bounded diagnostic tails) from the external staging dir."""
+    if staged.is_symlink() or not staged.is_dir():
+        if succeeded:
+            raise ValueError('Staged release output is missing')
+        return
+    staged_root=staged.resolve()
+    dest.mkdir(mode=0o700,exist_ok=False)
+    for name in DIAGNOSTIC_FILES:
+        _copy_tail(staged/name,dest/name,staged_root)
+    if not succeeded:
+        _copy_tail(staged/'test-release.json',dest/'test-release.json',staged_root)
+        return
+    report_src=staged/'test-release.json'
+    sums_src=staged/'SHA256SUMS'
+    for path in (report_src,sums_src):
+        if path.is_symlink() or not path.is_file() or path.resolve().parent!=staged_root:
+            raise ValueError('Staged release report is missing or invalid')
+    report=json.loads(report_src.read_text())
+    dmg_name=report.get('dmg') if isinstance(report,dict) else None
+    if not isinstance(dmg_name,str) or Path(dmg_name).name!=dmg_name or dmg_name in ('','.','..'):
+        raise ValueError('Staged release DMG name is invalid')
+    dmg_src=staged/dmg_name
+    if dmg_src.is_symlink() or not dmg_src.is_file() or dmg_src.resolve().parent!=staged_root:
+        raise ValueError('Staged release DMG is missing or invalid')
+    for src in (report_src,sums_src,dmg_src):
+        shutil.copyfile(src,dest/src.name)
+
+
+def build(root,command,reserve=RESERVE,timeout=TIMEOUT,free=lambda path:shutil.disk_usage(path).free,started=None,grace=30,stage_output=None):
     """`started` is called with the running process (tests wait there for the build to be ready)."""
     root=external_root(root)
+    dest=stage_destination(stage_output) if stage_output is not None else None
     if free(root)<reserve:
         raise ValueError('At least25GiB free required on the external build volume')
-    derived=Path(tempfile.mkdtemp(prefix='derived-',dir=root))
+    work=Path(tempfile.mkdtemp(prefix='derived-',dir=root))
+    derived=(work/'derived') if dest is not None else work
+    staged=(work/'release') if dest is not None else None
+    argv=[*command,'--output',str(staged),'--derived-data',str(derived)] if dest is not None else [*command,'--derived-data',str(derived)]
     process=None
     try:
-        process=subprocess.Popen([*command,'--derived-data',str(derived)],start_new_session=True)
+        process=subprocess.Popen(argv,start_new_session=True)
         if started:started(process)
         try:
-            return process.wait(timeout=timeout)
+            code=process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             print('Test build timed out; stopping its process group',file=sys.stderr)
-            return 124
+            code=124
+        stop_group(process,grace)
+        process=None
+        if dest is not None:
+            collect_staged_output(staged,dest,code==0)
+        return code
     finally:
         # Also after an ordinary exit: whatever the build left running in its own group (its heavy-lock wrapper,
         # a compiler) ends before the folder under it goes, so no compiler keeps the shared lock or writes there.
         if process is not None:stop_group(process,grace)
-        shutil.rmtree(derived,ignore_errors=True)
+        shutil.rmtree(work,ignore_errors=True)
 
 
 if __name__=='__main__':
-    if len(sys.argv)==3 and sys.argv[1]=='--preflight':
+    args=sys.argv[1:]
+    if len(args)==2 and args[0]=='--preflight':
         try:
-            preflight(sys.argv[2])
+            preflight(args[1])
         except (ValueError,OSError) as error:
             print(str(error),file=sys.stderr)
             raise SystemExit(2)
         raise SystemExit(0)
-    if len(sys.argv)<3:
+    stage_output=None
+    if args[:1]==['--stage-output']:
+        if len(args)<4:
+            raise SystemExit(__doc__)
+        stage_output=args[1]
+        args=args[2:]
+    if len(args)<2:
         raise SystemExit(__doc__)
     try:
-        raise SystemExit(build(sys.argv[1],sys.argv[2:]))
+        raise SystemExit(build(args[0],args[1:],stage_output=stage_output))
     except (ValueError,OSError) as error:
         print(str(error),file=sys.stderr)
         raise SystemExit(2)

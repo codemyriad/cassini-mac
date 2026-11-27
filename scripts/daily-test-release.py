@@ -243,9 +243,9 @@ def publish(tag,version,build,sha,output,release_notes):
     command(['gh','release','edit',tag,'-R',REPO,'--draft=false','--prerelease','--latest=false'])
 
 
-# With DerivedData on the external volume the internal disk holds only the job's products, logs and notary files:
-# the 13 GiB (10 GiB host reserve + 3 GiB) that release.py's own checks then ask of the products' disk.
-EXTERNAL_INTERNAL_RESERVE=13*1024**3
+# With DerivedData and release staging on the external volume, the internal disk receives only the finished DMG
+# (~100 MiB) and bounded diagnostic tails (~3 MiB), deleted right after GitHub publication.
+EXTERNAL_INTERNAL_RESERVE=2*1024**3
 
 
 def external_build():
@@ -466,7 +466,7 @@ def tick(now):
             raise ValueError('At least25GiB free required before a signed test build')
         if external is not None:
             if shutil.disk_usage(BASE).free < EXTERNAL_INTERNAL_RESERVE:
-                raise ValueError('At least13GiB free required for the products of a signed test build')
+                raise ValueError('At least2GiB free required on the internal disk for the finished test DMG')
             external_preflight(*external)
         build=next_build(version,initial,releases,state)
         state.update(build=build,head=head,phase='building');atomic(state_file,state)
@@ -481,14 +481,16 @@ def tick(now):
         state['job']=str(job);atomic(state_file,state)
         with (job/'release-driver.log').open('w') as log:
             release=[sys.executable,str(SOURCE/'scripts/release.py'),'--test-release','--version',version,
-                '--build',str(build),'--output',str(output)]
+                '--build',str(build)]
             if external is None:
-                release+=['--derived-data',str(derived)]
+                release+=['--output',str(output),'--derived-data',str(derived)]
             else:
-                # DerivedData goes to the external volume, which only the logged-in session can reach: its runner
-                # starts the helper, and the helper makes, checks and removes the folder. Products stay in `job`.
+                # DerivedData and build/notarization staging go to the external volume, which only the logged-in
+                # session can reach: its runner starts the helper, which makes, checks and removes the external folder
+                # and copies only the finished DMG/reports (or bounded diagnostic tails) into `output`.
                 runner,root=external
-                release=[runner,sys.executable,str(SOURCE/'scripts/external-derived-build.py'),root,*release]
+                release=[runner,sys.executable,str(SOURCE/'scripts/external-derived-build.py'),
+                         '--stage-output',str(output),root,*release]
             code=signed_build(release,env,log)
         if code:raise RuntimeError('Signed test build failed; retained private job diagnostics')
         stage='GitHub nightly publication'

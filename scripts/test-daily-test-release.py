@@ -987,21 +987,21 @@ class ExternalDerivedData(unittest.TestCase):
             runner=Path(directory)/'guirun';runner.write_text('#!/bin/sh\n');runner.chmod(0o700)
             root='/Volumes/Disk/cassini-mac-test-releases'
             environment=dict(CASSINI_MAC_TEST_RELEASE_DERIVED_ROOT=root,CASSINI_MAC_TEST_RELEASE_AQUA=str(runner))
-            small=type('Disk',(),{'free':14*1024**3})()
-            # 14 GiB on the internal disk: not enough for a build that keeps DerivedData there, enough for one that does not.
+            small=type('Disk',(),{'free':3*1024**3})()
+            # 3 GiB on the internal disk: far below the old 13/25 GiB floors, enough when DerivedData and release staging are external.
             with patch.object(daily.shutil,'disk_usage',return_value=small):
                 with patch.dict(daily.os.environ,environment),self.assertRaises(SystemExit):daily.tick(instant)
             build.assert_called_once()
             command=build.call_args.args[0]
             helper=str(daily.SOURCE/'scripts/external-derived-build.py')
-            self.assertEqual(command[:4],[str(runner),daily.sys.executable,helper,root])
-            self.assertEqual(command[4:6],[daily.sys.executable,str(daily.SOURCE/'scripts/release.py')])
-            self.assertNotIn('--derived-data',command,'the helper names the folder it makes')
-            self.assertIn('--output',command)
-            self.assertTrue(Path(command[command.index('--output')+1]).is_relative_to(base),'products stay beside the job')
+            self.assertEqual(command[:4],[str(runner),daily.sys.executable,helper,'--stage-output'])
+            self.assertTrue(Path(command[4]).is_relative_to(base),'finished DMG is copied back beside the job')
+            self.assertEqual(command[5:8],[root,daily.sys.executable,str(daily.SOURCE/'scripts/release.py')])
+            self.assertNotIn('--derived-data',command,'the helper names the external DerivedData folder')
+            self.assertNotIn('--output',command,'the helper names the external staged output folder')
         with tempfile.TemporaryDirectory() as directory:
             base,_,build=execution.context(directory)
-            with patch.object(daily.shutil,'disk_usage',return_value=type('Disk',(),{'free':13*1024**3-1})()), \
+            with patch.object(daily.shutil,'disk_usage',return_value=type('Disk',(),{'free':2*1024**3-1})()), \
                  patch.dict(daily.os.environ,dict(CASSINI_MAC_TEST_RELEASE_DERIVED_ROOT='/Volumes/Disk/builds',CASSINI_MAC_TEST_RELEASE_AQUA=str(Path(sys.executable)))), \
                  self.assertRaises(SystemExit):daily.tick(instant)
             build.assert_not_called()
@@ -1012,6 +1012,79 @@ class ExternalDerivedData(unittest.TestCase):
                 daily.os.environ.pop('CASSINI_MAC_TEST_RELEASE_AQUA',None);daily.tick(instant)
             build.assert_not_called()
             self.assertNotIn('build',json.loads((base/'state.json').read_text()),'no build number is used')
+
+    def test_stage_output_stages_on_external_volume_and_copies_only_final_artifacts_or_diagnostic_tails(self):
+        volumes=self.volumes();root=volumes/'Disk/cassini-mac-test-releases'
+        with tempfile.TemporaryDirectory() as internal_dir:
+            dest=Path(internal_dir)/'release'
+            # Child simulates release.py: writes DerivedData, large .app/notary zip, DMG, reports, and >1 MiB build.log.
+            child=(
+                'import json,pathlib,sys; '
+                'out=pathlib.Path(sys.argv[sys.argv.index("--output")+1]); '
+                'drv=pathlib.Path(sys.argv[sys.argv.index("--derived-data")+1]); '
+                'out.mkdir(parents=True); drv.mkdir(parents=True); '
+                '(drv/"huge.o").write_bytes(b"X"*2048); '
+                '(out/"Cassini talk.app").mkdir(); (out/"Cassini talk.app"/"bin").write_bytes(b"A"*4096); '
+                '(out/"Cassini-talk-notary.zip").write_bytes(b"Z"*4096); '
+                '(out/"Cassini-talk-0.1.3-test.19.dmg").write_bytes(b"DMG-BYTES"); '
+                '(out/"SHA256SUMS").write_text("abc  Cassini-talk-0.1.3-test.19.dmg\\n"); '
+                '(out/"test-release.json").write_text(json.dumps({"dmg":"Cassini-talk-0.1.3-test.19.dmg"})); '
+                '(out/"app-notary.json").write_text("{\\"status\\":\\"Accepted\\"}\\n"); '
+                '(out/"dmg-notary.json").write_text("{\\"status\\":\\"Accepted\\"}\\n"); '
+                '(out/"build.log").write_bytes(b"H"*(1024*1024+50)+b"TAIL"); '
+                'pathlib.Path(sys.argv[1]).write_text(str(out)+"\\n"+str(drv))'
+            )
+            record=volumes/'stage-record'
+            code=external.build(str(root),[sys.executable,'-c',child,str(record)],
+                                free=lambda _:25*1024**3,stage_output=str(dest))
+            self.assertEqual(code,0)
+            staged_out,staged_drv=map(Path,record.read_text().splitlines())
+            self.assertEqual(staged_out.parent,staged_drv.parent)
+            self.assertEqual(staged_out.parent.parent,root)
+            self.assertEqual(list(root.iterdir()),[],'external staging and DerivedData are removed')
+            self.assertEqual((dest/'Cassini-talk-0.1.3-test.19.dmg').read_bytes(),b'DMG-BYTES')
+            self.assertEqual((dest/'SHA256SUMS').read_text(),'abc  Cassini-talk-0.1.3-test.19.dmg\n')
+            self.assertEqual(json.loads((dest/'test-release.json').read_text())['dmg'],'Cassini-talk-0.1.3-test.19.dmg')
+            self.assertEqual((dest/'build.log').stat().st_size,1024**2)
+            self.assertTrue((dest/'build.log').read_bytes().endswith(b'TAIL'))
+            self.assertFalse((dest/'Cassini talk.app').exists(),'app bundle stays off internal disk')
+            self.assertFalse((dest/'Cassini-talk-notary.zip').exists(),'notary zip stays off internal disk')
+        with tempfile.TemporaryDirectory() as internal_dir:
+            dest=Path(internal_dir)/'release'
+            # Failing build copies only bounded diagnostic tails, never the DMG or app bundle.
+            child=(
+                'import pathlib,sys; '
+                'out=pathlib.Path(sys.argv[sys.argv.index("--output")+1]); out.mkdir(parents=True); '
+                '(out/"build.log").write_bytes(b"B"*(1024*1024+20)+b"ERR"); '
+                '(out/"app-notary.json").write_text("{\\"status\\":\\"Invalid\\"}\\n"); '
+                '(out/"Cassini-talk-0.1.3-test.19.dmg").write_bytes(b"BROKEN"); '
+                'sys.exit(1)'
+            )
+            code=external.build(str(root),[sys.executable,'-c',child],free=lambda _:25*1024**3,stage_output=str(dest))
+            self.assertEqual(code,1)
+            self.assertEqual(list(root.iterdir()),[])
+            self.assertEqual((dest/'build.log').stat().st_size,1024**2)
+            self.assertTrue((dest/'build.log').read_bytes().endswith(b'ERR'))
+            self.assertIn('Invalid',(dest/'app-notary.json').read_text())
+            self.assertFalse((dest/'Cassini-talk-0.1.3-test.19.dmg').exists())
+        with tempfile.TemporaryDirectory() as internal_dir:
+            # Invalid stage_output paths (relative, .., existing, symlink) fail before running child.
+            existing=Path(internal_dir)/'already';existing.mkdir()
+            link=Path(internal_dir)/'link';link.symlink_to(existing)
+            for bad in ['relative/release',str(Path(internal_dir)/'../escape'),str(existing),str(link),str(Path(internal_dir)/'missing/release')]:
+                with self.subTest(bad=bad),self.assertRaises(ValueError):
+                    external.build(str(root),[sys.executable,'-c','sys.exit(0)'],free=lambda _:25*1024**3,stage_output=bad)
+            # Path traversal in test-release.json['dmg'] is rejected and external folder is still cleaned up.
+            dest=Path(internal_dir)/'bad-dmg'
+            child=(
+                'import json,pathlib,sys; '
+                'out=pathlib.Path(sys.argv[sys.argv.index("--output")+1]); out.mkdir(parents=True); '
+                '(out/"SHA256SUMS").write_text("x\\n"); '
+                '(out/"test-release.json").write_text(json.dumps({"dmg":"../escape.dmg"}))'
+            )
+            with self.assertRaises(ValueError):
+                external.build(str(root),[sys.executable,'-c',child],free=lambda _:25*1024**3,stage_output=str(dest))
+            self.assertEqual(list(root.iterdir()),[])
 
     def test_external_preflight_failures_report_disk_reserve_without_burning_a_build_number(self):
         volumes=self.volumes();root=volumes/'Disk/cassini-mac-test-releases'
