@@ -533,12 +533,24 @@ def baseline(args):
         artifact = find_artifact(args.repo, run["id"], args.base_artifact)
         if artifact:
             args.base_sha, args.base_run = run["head_sha"], str(run["id"])
-            jobs = github(f"{args.repo}/actions/runs/{run['id']}/jobs")["jobs"]
-            job = next((j for j in jobs if "board" in j["name"].lower()), jobs[0])
-            args.base_runner = ",".join(job.get("labels", [])) or "unknown"
-            log = command("gh", "api", f"repos/{args.repo}/actions/jobs/{job['id']}/logs").decode(errors="replace")
-            image = re.search(r"(?:Image Version|Version):\s*(\d{8}(?:\.\d+)+)", log)
-            args.base_image = image[1] if image else args.base_image
+            jobs = github(f"{args.repo}/actions/runs/{run['id']}/jobs?per_page=100")["jobs"]
+            active_jobs = [j for j in jobs if j.get("conclusion") != "skipped"]
+            board_jobs = [j for j in active_jobs if "board" in (j.get("name") or "").lower()]
+            candidates = board_jobs or active_jobs or jobs
+            job = candidates[0] if candidates else None
+            args.base_runner = ",".join(job.get("labels", [])) or "unknown" if job else "unknown"
+            for candidate in candidates:
+                try:
+                    log = command("gh", "api", f"repos/{args.repo}/actions/jobs/{candidate['id']}/logs").decode(
+                        errors="replace"
+                    )
+                except subprocess.CalledProcessError:
+                    continue
+                args.base_runner = ",".join(candidate.get("labels", [])) or args.base_runner
+                image = re.search(r"(?:Image Version|Version):\s*(\d{8}(?:\.\d+)+)", log)
+                if image:
+                    args.base_image = image[1]
+                break
             files = artifact_files(args.repo, artifact)
             if not any(name.endswith(".png") for name in files):
                 raise ValueError("Baseline artifact contains no screenshots")
