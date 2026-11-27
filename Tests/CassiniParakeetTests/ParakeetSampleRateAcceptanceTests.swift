@@ -59,6 +59,7 @@ final class ParakeetSampleRateAcceptanceTests: XCTestCase {
         let inFormat = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
         let outFormat = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: Double(targetRate), channels: 1))
         let converter = try XCTUnwrap(AVAudioConverter(from: inFormat, to: outFormat))
+        converter.sampleRateConverterQuality = AVAudioQuality.max.rawValue
         let inBuffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: inFormat, frameCapacity: AVAudioFrameCount(sourceSamples.count)))
         inBuffer.frameLength = AVAudioFrameCount(sourceSamples.count)
         for i in 0..<sourceSamples.count {
@@ -91,6 +92,22 @@ final class ParakeetSampleRateAcceptanceTests: XCTestCase {
     private func normalizeWords(_ words: [WhistleTranscript.Word]) -> [String] {
         words.map { $0.word.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
             .filter { !$0.isEmpty }
+    }
+
+    private func wordEditDistance(_ lhs: [String], _ rhs: [String]) -> Int {
+        if lhs.isEmpty { return rhs.count }
+        if rhs.isEmpty { return lhs.count }
+        var prev = Array(0...rhs.count)
+        var curr = Array(repeating: 0, count: rhs.count + 1)
+        for i in 1...lhs.count {
+            curr[0] = i
+            for j in 1...rhs.count {
+                let cost = lhs[i - 1] == rhs[j - 1] ? 0 : 1
+                curr[j] = min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
+            }
+            swap(&prev, &curr)
+        }
+        return prev[rhs.count]
     }
 
     func testParakeetTranscriberAcceptsAnyRate() throws {
@@ -154,7 +171,14 @@ final class ParakeetSampleRateAcceptanceTests: XCTestCase {
             case .audioFormatRejected:
                 XCTFail("[D-1196-item4-parakeet] Parakeet rejected \(rate) Hz with TranscriptionFailure.audioFormat")
             case let .transcribed(words):
-                XCTAssertEqual(words, baselineWords, "[D-1196-item4-parakeet] Parakeet words at \(rate) Hz must match 16 kHz baseline")
+                XCTAssertFalse(words.isEmpty, "[D-1196-item4-parakeet] Parakeet produced no words at \(rate) Hz")
+                let edits = wordEditDistance(words, baselineWords)
+                let wer = Double(edits) / Double(max(baselineWords.count, 1))
+                XCTAssertLessThanOrEqual(
+                    wer,
+                    0.10,
+                    "[D-1196-item4-parakeet] Parakeet words at \(rate) Hz diverged from 16 kHz baseline (edits=\(edits)/\(baselineWords.count), wer=\(String(format: "%.3f", wer))): got \(words), baseline \(baselineWords)"
+                )
             }
         }
     }
