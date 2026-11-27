@@ -57,9 +57,7 @@ final class D1197FocusAndControlsTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1197 item 1", matching: "[D-1197-item1]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1197-item1] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1197-item1] \(failures.joined(separator: "; "))")
     }
 
     /// Item 4: All / Starred filter control matches mock in light and dark, active and inactive.
