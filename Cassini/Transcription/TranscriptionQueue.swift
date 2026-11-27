@@ -605,9 +605,7 @@ private final class OffMainModelBox: @unchecked Sendable {
             if task == nil, pending.isEmpty, transcriptionMode == .transcribeWhileRecording, let recording = activeRecordingFolder {
                 ensureFollowing(folder: recording)
             }
-            if alreadySettled, !closing, !paused, !trashing.contains(meeting.folder.path), !stoppingFolders.contains(meeting.folder.path) {
-                LibraryStore.shared.refresh(affected:meeting.folder)
-            } else if retryDeferred, !closing, !trashing.contains(meeting.folder.path), !stoppingFolders.contains(meeting.folder.path) {
+            if retryDeferred, !closing, !trashing.contains(meeting.folder.path), !stoppingFolders.contains(meeting.folder.path) {
                 let folder = meeting.folder
                 Task { @MainActor [weak self] in
                     try? await Task.sleep(for:.milliseconds(300))
@@ -615,6 +613,8 @@ private final class OffMainModelBox: @unchecked Sendable {
                           !self.trashing.contains(folder.path), !self.stoppingFolders.contains(folder.path) else { return }
                     LibraryStore.shared.refresh(affected:folder)
                 }
+            } else if !closing, !paused, !trashing.contains(meeting.folder.path), !stoppingFolders.contains(meeting.folder.path) {
+                LibraryStore.shared.refresh(affected:meeting.folder)
             }
             #if DEBUG
             fixtureOnAttemptOutcome?(meeting.folder,debugOutcome)

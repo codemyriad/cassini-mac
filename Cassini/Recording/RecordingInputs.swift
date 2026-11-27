@@ -10,9 +10,18 @@ import Observation
 }
 
 @MainActor final class NativeRecordingInputs: RecordingInputs {
-    private var engine: AVAudioEngine?
+    private let microphone: MicrophoneCaptureDriver
     private var tap: AudioProcessTap?
-    private var observer: NSObjectProtocol?
+    private var stopped = false
+    private var tapFailed = false
+
+    init(
+        makeEngine: @escaping () -> any MicrophoneAudioEngine = { AVAudioMicrophoneEngine() },
+        notificationCenter: NotificationCenter = .default
+    ) {
+        microphone = MicrophoneCaptureDriver(makeEngine: makeEngine, notificationCenter: notificationCenter)
+    }
+
     func authorize() async throws {
         let permitted: Bool
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
@@ -22,28 +31,55 @@ import Observation
         }
         guard permitted else { throw RecordingError.invalid(UXText.text("errors.micPermission.line")) }
     }
+
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
-        let tap = AudioProcessTap(); self.tap = tap
+        stopped = false
+        tapFailed = false
         let outputLabel = UXText.text("recordFirst.sound.title"), micLabel = UXText.text("common.yourMicrophone")
-        _ = try tap.start(processes: nil, onFormatChange: { failure(UXText.mac("recording.outputChanged")) }) { buffer, host in
-            sink.receive(buffer, hostTime: host, id: "output", label: outputLabel, kind: "system")
-        }
-        let engine = AVAudioEngine(); self.engine = engine
-        let input = engine.inputNode, format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0, (1...64).contains(format.channelCount) else {
-            throw RecordingError.invalid(UXText.mac("recording.micMissing"))
-        }
-        input.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, time in
-            sink.receive(buffer, hostTime: time.isHostTimeValid ? time.hostTime : 0, id: "microphone", label: micLabel, kind: "microphone")
-        }
-        try engine.start()
-        observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { _ in
-            failure(UXText.mac("recording.micChanged"))
+        try startTap(sink: sink, label: outputLabel, failure: failure)
+        do {
+            try microphone.start(
+                sink: sink,
+                label: micLabel,
+                missingError: { RecordingError.invalid(UXText.mac("recording.micMissing")) },
+                changedMessage: UXText.mac("recording.micChanged"),
+                failure: failure
+            )
+        } catch {
+            stop()
+            throw error
         }
     }
+
+    private func startTap(sink: RecordingSink, label: String, failure: @escaping @Sendable (String) -> Void) throws {
+        let tap = AudioProcessTap()
+        self.tap = tap
+        _ = try tap.start(processes: nil, onFormatChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.restartTap(sink: sink, label: label, failure: failure)
+            }
+        }) { buffer, host in
+            sink.receive(buffer, hostTime: host, id: "output", label: label, kind: "system")
+        }
+    }
+
+    private func restartTap(sink: RecordingSink, label: String, failure: @escaping @Sendable (String) -> Void) {
+        guard !stopped, !tapFailed else { return }
+        tap?.stop()
+        tap = nil
+        do {
+            try startTap(sink: sink, label: label, failure: failure)
+        } catch {
+            guard !stopped, !tapFailed else { return }
+            tapFailed = true
+            stop()
+            failure(UXText.mac("recording.outputChanged"))
+        }
+    }
+
     func stop() {
-        if let observer { NotificationCenter.default.removeObserver(observer); self.observer = nil }
-        if let engine { engine.stop(); engine.inputNode.removeTap(onBus: 0); self.engine = nil }
+        stopped = true
+        microphone.stop()
         tap?.stop(); tap = nil
     }
 }
@@ -55,14 +91,26 @@ import Observation
     // Fixture configuration is immutable for this driver. In particular, do
     // not copy ProcessInfo.environment once per PCM sample in a manual burst.
     private let transcribes = RecordingFixture.transcribes
+    private let initialMicRate: Int? = {
+        guard let raw = LibraryLaunchContext.argument("-CassiniFixtureMicRate"),
+              let parsed = Int(raw), (8_000...192_000).contains(parsed) else { return nil }
+        return parsed
+    }()
     private var timer: Timer?
     private var frames: UInt64 = 0
+    private var micFrames: UInt64 = 0
+    private var micRateOverride: Int?
     private var speech: [Float] = []
     private var manualClock = false
     private var rate: Int { transcribes ? 16000 : 48000 }
+    private var currentMicRate: Int { micRateOverride ?? initialMicRate ?? rate }
     private var origin = AVAudioTime.hostTime(forSeconds: ProcessInfo.processInfo.systemUptime)
     func useFixtureClock(origin: TimeInterval) {
         manualClock = true; self.origin = AVAudioTime.hostTime(forSeconds:origin)
+    }
+    func switchMicrophoneRate(to newRate: Int) {
+        guard (8_000...192_000).contains(newRate) else { return }
+        micRateOverride = newRate
     }
     func advanceFixtureMedia(toMilliseconds ms: Int, sink: RecordingSink) -> UInt64 {
         precondition(manualClock)
@@ -92,24 +140,31 @@ import Observation
         }
     }
     private func emit(_ sink: RecordingSink) {
-        let count = rate / 50
-        let format = AVAudioFormat(standardFormatWithSampleRate: Double(rate), channels: 1)!
-        let host = origin + AVAudioTime.hostTime(forSeconds: Double(frames) / Double(rate))
+        let elapsedSeconds = Double(frames) / Double(rate)
+        let host = origin + AVAudioTime.hostTime(forSeconds: elapsedSeconds)
         for (id, level, kind) in [("microphone", Float(0.12), "microphone"), ("output", Float(0.38), "system")] {
+            let sourceRate = id == "microphone" ? currentMicRate : rate
+            let count = max(1, sourceRate / 50)
+            let format = AVAudioFormat(standardFormatWithSampleRate: Double(sourceRate), channels: 1)!
             let level = id == "microphone" && LibraryLaunchContext.argument("-CassiniSilentMicrophone") == "YES" ? 0 : level
             let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count))!
             buffer.frameLength = AVAudioFrameCount(count)
+            let baseFrame = id == "microphone" ? Int(micFrames) : Int(frames)
             for n in 0..<count {
-                let at = Int(frames) + n
+                let at = baseFrame + n
                 // A constant-valued fixture is DC, not audible sound. Preserve
                 // the same expected peak with a generated 400 Hz AC tone.
-                buffer.floatChannelData![0][n] = transcribes
-                    ? (id == "microphone" && at < speech.count ? speech[at] : 0)
-                    : level * Float(cos(2 * Double.pi * 400 * Double(at) / Double(rate)))
+                if transcribes {
+                    let speechIndex = sourceRate == 16000 ? at : Int(Double(at) * 16000.0 / Double(sourceRate))
+                    buffer.floatChannelData![0][n] = id == "microphone" && speechIndex < speech.count ? speech[speechIndex] : 0
+                } else {
+                    buffer.floatChannelData![0][n] = level * Float(cos(2 * Double.pi * 400 * Double(at) / Double(sourceRate)))
+                }
             }
             sink.receive(buffer, hostTime: host, id: id, label: id, kind: kind)
+            if id == "microphone" { micFrames += UInt64(count) }
         }
-        frames += UInt64(count)
+        frames += UInt64(max(1, rate / 50))
     }
     func stop() { timer?.invalidate(); timer = nil }
 }

@@ -224,9 +224,13 @@ final class LibraryStore {
                 else { target = pending.sorted { $0.path < $1.path }.first!; pending.remove(target) }
                 var primaryFailed = false
                 for root in [context.root] + context.previousRoots {
-                    guard let scanner = scanners[root], target == context.root || target.path == root.path || target.deletingLastPathComponent().path == root.path else { continue }
+                    let canonicalTarget = LibraryLocation.canonical(target)
+                    let canonicalRoot = LibraryLocation.canonical(root)
+                    guard let scanner = scanners[root],
+                          target == context.root || canonicalTarget == canonicalRoot || LibraryLocation.canonical(target.deletingLastPathComponent()) == canonicalRoot else { continue }
                     do {
-                        let result = try await scanner.scanInBackground(affected:target == context.root ? nil : target,now:context.now ?? Date())
+                        let affected = target == context.root || canonicalTarget == canonicalRoot ? nil : root.appendingPathComponent(target.lastPathComponent)
+                        let result = try await scanner.scanInBackground(affected:affected,now:context.now ?? Date())
                         guard started, generation == epoch else { return }
                         rootSnapshots[root] = result
                     } catch { if root == context.root { primaryFailed = true } }
