@@ -15,7 +15,7 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
                 defer { app.terminate() }
                 let window = app.windows["cassini-library-window"]
                 let transcript = window.descendants(matching: .any)["meeting-transcript"].firstMatch
-                let date = window.descendants(matching: .any)["meeting-inline-date"].firstMatch
+                let date = inlineDateElement(in: window)
                 XCTAssertTrue(transcript.waitForExistence(timeout: 20), app.debugDescription)
                 XCTAssertTrue(date.waitForExistence(timeout: 10), app.debugDescription)
 
@@ -45,11 +45,17 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
 
     /// Item 9: Renaming in toolbar, big title, and recording title keeps the date visible and sizes field to text + 8 pt.
     @MainActor func testRenameKeepsDate() throws {
-        let app = try launchAcceptance("meeting", fixture: "main", size: "1120x720", dark: false)
+        let app = try launchAcceptance(
+            "meeting",
+            fixture: "main",
+            size: "1120x720",
+            dark: false,
+            extra: ["--fixture-library-rename", "-CassiniRenameID", UUID().uuidString]
+        )
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         let inlineTitle = window.descendants(matching: .any)["meeting-inline-title"].firstMatch
-        let inlineDate = window.descendants(matching: .any)["meeting-inline-date"].firstMatch
+        let inlineDate = inlineDateElement(in: window)
         XCTAssertTrue(inlineTitle.waitForExistence(timeout: 20), app.debugDescription)
         XCTAssertTrue(inlineDate.waitForExistence(timeout: 10), app.debugDescription)
 
@@ -130,7 +136,7 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
                     fixture: "main",
                     size: size,
                     dark: dark,
-                    extra: ["--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString]
+                    extra: seededRecordingArgs()
                 )
                 defer { app.terminate() }
                 let window = app.windows["cassini-library-window"]
@@ -181,11 +187,11 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
                     fixture: "main",
                     size: size,
                     dark: dark,
-                    extra: ["--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString]
+                    extra: seededRecordingArgs()
                 )
                 defer { app.terminate() }
                 let window = app.windows["cassini-library-window"]
-                let meetingDate = window.descendants(matching: .any)["meeting-inline-date"].firstMatch
+                let meetingDate = inlineDateElement(in: window)
                 XCTAssertTrue(meetingDate.waitForExistence(timeout: 20), app.debugDescription)
                 let meetingDateFrame = meetingDate.frame
 
@@ -226,11 +232,7 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
                 fixture: "main",
                 size: "1120x720",
                 dark: dark,
-                extra: [
-                    "--fixture-library-recording",
-                    "-CassiniCaptureID", UUID().uuidString,
-                    "-CassiniFailCaptureStart", "YES",
-                ]
+                extra: seededRecordingArgs(extra: ["-CassiniFailCaptureStart", "YES"])
             )
             defer { app.terminate() }
             let window = app.windows["cassini-library-window"]

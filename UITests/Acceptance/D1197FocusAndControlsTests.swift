@@ -38,12 +38,7 @@ final class D1197FocusAndControlsTests: AcceptanceTestCase {
             defer { narrow.terminate() }
             let narrowWin = narrow.windows["cassini-library-window"]
             XCTAssertTrue(narrowWin.waitForExistence(timeout: 20), narrow.debugDescription)
-            let toggle = narrowWin.buttons["floating-sidebar-toggle"].firstMatch
-            if toggle.waitForExistence(timeout: 5) {
-                toggle.click()
-            } else {
-                narrow.typeKey("s", modifierFlags: [.command, .control])
-            }
+            openFloatingSidebar(in: narrow, window: narrowWin)
             let floatingField = sidebarSearchField(in: narrowWin)
             XCTAssertTrue(floatingField.waitForExistence(timeout: 10), narrow.debugDescription)
             floatingField.click()
@@ -176,7 +171,13 @@ final class D1197FocusAndControlsTests: AcceptanceTestCase {
 
     /// Item 16: Clicking away ends editing in sidebar search, meeting find, and title rename.
     @MainActor func testClickAwayEndsEditing() throws {
-        let app = try launchAcceptance("meeting", fixture: "main", size: "1120x720", dark: false)
+        let app = try launchAcceptance(
+            "meeting",
+            fixture: "main",
+            size: "1120x720",
+            dark: false,
+            extra: ["--fixture-library-rename", "-CassiniRenameID", UUID().uuidString]
+        )
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.waitForExistence(timeout: 20), app.debugDescription)

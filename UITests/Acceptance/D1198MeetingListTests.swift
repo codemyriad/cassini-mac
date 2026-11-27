@@ -61,7 +61,7 @@ final class D1198MeetingListTests: AcceptanceTestCase {
         let img = try PixelImage(screenshot: shot, windowFrame: window.frame)
         let searchRect = img.windowRect(for: searchField.frame)
 
-        let cards = window.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "meeting-card-"))
+        let cards = meetingCardRows(in: window)
         XCTAssertGreaterThan(cards.count, 0, "Expected meeting-card-* elements")
 
         let sidebarGround = img.color(atPoint: CGPoint(x: 4, y: searchRect.maxY + 6))
@@ -94,7 +94,7 @@ final class D1198MeetingListTests: AcceptanceTestCase {
             let app = try launchAcceptance("library", fixture: "main", size: "1120x720", dark: dark)
             defer { app.terminate() }
             let window = app.windows["cassini-library-window"]
-            let cards = window.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "meeting-card-"))
+            let cards = meetingCardRows(in: window)
             XCTAssertTrue(waitFor({ cards.count >= 2 }, timeout: 20), app.debugDescription)
 
             let unselected = cards.element(boundBy: 1)
@@ -132,8 +132,7 @@ final class D1198MeetingListTests: AcceptanceTestCase {
                 let window = app.windows["cassini-library-window"]
                 XCTAssertTrue(window.waitForExistence(timeout: 20), app.debugDescription)
                 if size == "900x720" {
-                    let toggle = window.buttons["floating-sidebar-toggle"].firstMatch
-                    if toggle.waitForExistence(timeout: 5) { toggle.click() }
+                    openFloatingSidebar(in: app, window: window)
                 }
                 let footer = window.descendants(matching: .any)["library-drop-hint"].firstMatch
                 XCTAssertTrue(footer.waitForExistence(timeout: 10), app.debugDescription)
@@ -166,7 +165,7 @@ final class D1198MeetingListTests: AcceptanceTestCase {
         let app = try launchAcceptance("library", fixture: "main", size: "1120x720", dark: false)
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
-        let cards = window.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "meeting-card-"))
+        let cards = meetingCardRows(in: window)
         XCTAssertTrue(waitFor({ cards.count >= 2 }, timeout: 20), app.debugDescription)
 
         let first = cards.element(boundBy: 0)
