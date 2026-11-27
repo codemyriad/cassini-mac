@@ -9,17 +9,26 @@ import Observation
     func stop()
 }
 
+extension AudioProcessTap: @unchecked Sendable, SystemAudioTap {
+    func start(
+        onFormatChange: @escaping @Sendable () -> Void,
+        receive: @escaping @Sendable (AVAudioPCMBuffer, UInt64) -> Void
+    ) throws {
+        _ = try start(processes: nil, onFormatChange: onFormatChange, receive: receive)
+    }
+}
+
 @MainActor final class NativeRecordingInputs: RecordingInputs {
     private let microphone: MicrophoneCaptureDriver
-    private var tap: AudioProcessTap?
-    private var stopped = false
-    private var tapFailed = false
+    private let outputTap: OutputTapDriver
 
     init(
         makeEngine: @escaping () -> any MicrophoneAudioEngine = { AVAudioMicrophoneEngine() },
+        makeTap: @escaping @Sendable () -> any SystemAudioTap = { AudioProcessTap() },
         notificationCenter: NotificationCenter = .default
     ) {
         microphone = MicrophoneCaptureDriver(makeEngine: makeEngine, notificationCenter: notificationCenter)
+        outputTap = OutputTapDriver(makeTap: makeTap)
     }
 
     func authorize() async throws {
@@ -33,10 +42,18 @@ import Observation
     }
 
     func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
-        stopped = false
-        tapFailed = false
         let outputLabel = UXText.text("recordFirst.sound.title"), micLabel = UXText.text("common.yourMicrophone")
-        try startTap(sink: sink, label: outputLabel, failure: failure)
+        try outputTap.start(
+            sink: sink,
+            label: outputLabel,
+            changedMessage: UXText.mac("recording.outputChanged"),
+            failure: { [weak self] message in
+                Task { @MainActor [weak self] in
+                    self?.stop()
+                    failure(message)
+                }
+            }
+        )
         do {
             try microphone.start(
                 sink: sink,
@@ -51,36 +68,9 @@ import Observation
         }
     }
 
-    private func startTap(sink: RecordingSink, label: String, failure: @escaping @Sendable (String) -> Void) throws {
-        let tap = AudioProcessTap()
-        self.tap = tap
-        _ = try tap.start(processes: nil, onFormatChange: { [weak self] in
-            Task { @MainActor [weak self] in
-                self?.restartTap(sink: sink, label: label, failure: failure)
-            }
-        }) { buffer, host in
-            sink.receive(buffer, hostTime: host, id: "output", label: label, kind: "system")
-        }
-    }
-
-    private func restartTap(sink: RecordingSink, label: String, failure: @escaping @Sendable (String) -> Void) {
-        guard !stopped, !tapFailed else { return }
-        tap?.stop()
-        tap = nil
-        do {
-            try startTap(sink: sink, label: label, failure: failure)
-        } catch {
-            guard !stopped, !tapFailed else { return }
-            tapFailed = true
-            stop()
-            failure(UXText.mac("recording.outputChanged"))
-        }
-    }
-
     func stop() {
-        stopped = true
         microphone.stop()
-        tap?.stop(); tap = nil
+        outputTap.stop()
     }
 }
 

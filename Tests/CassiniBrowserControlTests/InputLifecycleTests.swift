@@ -39,10 +39,12 @@ import CassiniKit
         if failingAfterSamples { throw CocoaError(.fileReadNoPermission) }
     }
     func emit(at seconds: Double) {
-        let format = AVAudioFormat(standardFormatWithSampleRate:8000,channels:1)!
-        let buffer = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:800)!
-        buffer.frameLength = 800
-        for index in 0..<800 { buffer.floatChannelData![0][index] = 0.25 }
+        let rate: Double = kind == "microphone" ? 48_000 : 8_000
+        let frames = AVAudioFrameCount(rate / 10)
+        let format = AVAudioFormat(standardFormatWithSampleRate:rate,channels:1)!
+        let buffer = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:frames)!
+        buffer.frameLength = frames
+        for index in 0..<Int(frames) { buffer.floatChannelData![0][index] = 0.25 }
         sink?.receive(buffer,hostTime:origin + AVAudioTime.hostTime(forSeconds:seconds),id:kind,label:kind,kind:kind)
     }
     func stop() { stops += 1; sink = nil; onStop?() }
@@ -60,10 +62,10 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try await inputs.start()
         let sink = try XCTUnwrap(mic.sink)
         func emit(_ peak: Float, at seconds: Double) {
-            let format = AVAudioFormat(standardFormatWithSampleRate:8000,channels:1)!
-            let pcm = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:800)!
-            pcm.frameLength = 800
-            for index in 0..<800 { pcm.floatChannelData![0][index] = index.isMultiple(of:2) ? peak : -peak }
+            let format = AVAudioFormat(standardFormatWithSampleRate:48_000,channels:1)!
+            let pcm = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:4800)!
+            pcm.frameLength = 4800
+            for index in 0..<4800 { pcm.floatChannelData![0][index] = index.isMultiple(of:2) ? peak : -peak }
             sink.receive(pcm,hostTime:origin+AVAudioTime.hostTime(forSeconds:seconds),id:"microphone",label:"Mic",kind:"microphone")
         }
         emit(0.6,at:0.1)
@@ -72,10 +74,10 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         let entered = DispatchSemaphore(value:0), release = DispatchSemaphore(value:0)
         sink.beforeConversionForTesting = { entered.signal(); release.wait() }
         let producer = Task.detached {
-            let format = AVAudioFormat(standardFormatWithSampleRate:8000,channels:1)!
-            let pcm = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:800)!
-            pcm.frameLength = 800
-            for index in 0..<800 { pcm.floatChannelData![0][index] = index.isMultiple(of:2) ? 0.1 : -0.1 }
+            let format = AVAudioFormat(standardFormatWithSampleRate:48_000,channels:1)!
+            let pcm = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:4800)!
+            pcm.frameLength = 4800
+            for index in 0..<4800 { pcm.floatChannelData![0][index] = index.isMultiple(of:2) ? 0.1 : -0.1 }
             sink.receive(pcm,hostTime:origin+AVAudioTime.hostTime(forSeconds:0.2),id:"microphone",label:"Mic",kind:"microphone")
         }
         defer { release.signal() }
@@ -723,7 +725,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(mic.starts,2)
         try await inputs.stop(); try await owner.finish()
         let tracks = owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }
-        XCTAssertEqual(tracks.count,1); XCTAssertEqual(tracks.first?.frames,1600)
+        XCTAssertEqual(tracks.count,1); XCTAssertEqual(tracks.first?.frames,9600)
     }
     @MainActor func testRejectedBrowserResumeNeverOpensNativeMic() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -768,7 +770,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         mic.emit(at:0.1)
         try await inputs.stop(); try await owner.finish()
         let tracks = owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }
-        XCTAssertEqual(tracks.count,1); XCTAssertEqual(tracks.first?.frames,1600)
+        XCTAssertEqual(tracks.count,1); XCTAssertEqual(tracks.first?.frames,9600)
     }
     @MainActor func testMeSelectionNeedsNoNativeTrackSlotAtBrowserTrackLimit() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -825,7 +827,7 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         do { try await inputs.select(me:false,others:true,atMs:1200) }
         catch { try? await inputs.stop(); try? await owner.finish(); throw error }
         XCTAssertFalse(owner.snapshot.me); XCTAssertTrue(owner.snapshot.others)
-        XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "microphone" }?.gapFrames,8000)
+        XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "microphone" }?.gapFrames,48000)
         XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "microphone" }?.ended,true)
         try await inputs.stop(); try await owner.finish()
         XCTAssertEqual(owner.snapshot.manifest.problemKind,"gap")
@@ -955,12 +957,12 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         try await inputs.stop(); try await owner.finish()
         let tracks = owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }
         XCTAssertEqual(tracks.count,2); XCTAssertNotEqual(tracks[0].id,tracks[1].id)
-        XCTAssertEqual(tracks[0].frames,800)
+        XCTAssertEqual(tracks[0].frames,4800)
         // D52.2: the reselected mic span starts at its 200 ms boundary; the wait for
         // its first buffer is a prefix (absence), never a gap.
         let reselected = owner.snapshot.manifest.events?.last { $0.type == "selection" && $0.me == true }?.atMs
         XCTAssertEqual(tracks[1].startOffsetMs,reselected); XCTAssertEqual(tracks[1].gaps?.map(\.kind),["prefix"])
-        XCTAssertEqual(tracks[1].frames - (tracks[1].gaps?.first?.frames ?? 0),800); XCTAssertNil(tracks[1].gapFrames)
+        XCTAssertEqual(tracks[1].frames - (tracks[1].gaps?.first?.frames ?? 0),4800); XCTAssertNil(tracks[1].gapFrames)
         XCTAssertEqual(owner.snapshot.manifest.tracks.first { $0.kind == "system" }?.frames,800)
     }
     @MainActor func testDeniedMeSelectionLeavesTheWorkingSelectionAndBrowserUntouched() async throws {
@@ -1006,6 +1008,128 @@ final class InputLifecycleTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(mic.starts,0); XCTAssertEqual(system.stops,1)
         XCTAssertEqual(owner.snapshot.manifest.tracks.map(\.kind),["system"])
     }
+    @MainActor func testMicrophoneRateAndChannelChangeSurvivesInLiveAndStagedLifecycle() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("Mic-bt-lifecycle-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let owner = try OwnedBrowserCapture(parent: root, title: "Bluetooth mic lifecycle", microphone: true, browser: false)
+        let origin = AVAudioTime.hostTime(forSeconds: ProcessInfo.processInfo.systemUptime)
+        let center = NotificationCenter()
+        var engines: [FakeLifecycleMicEngine] = []
+        let system = GeneratedInput("system", origin: origin)
+        final class FailureBox: @unchecked Sendable { let lock = NSLock(); var items: [String] = []; func add(_ s: String) { lock.withLock { items.append(s) } }; var snapshot: [String] { lock.withLock { items } } }
+        let failures = FailureBox()
+        let inputs = CaptureInputLifecycle(
+            capture: owner,
+            originHostTime: origin,
+            microphone: {
+                let engine = FakeLifecycleMicEngine(
+                    sampleRate: engines.isEmpty ? 44_100 : 48_000,
+                    channels: engines.isEmpty ? 2 : 1,
+                    origin: origin,
+                    initialOffsetSeconds: engines.isEmpty ? 0.0 : 0.6
+                )
+                engines.append(engine)
+                return DriverBackedMicrophoneInput(engine: engine, notificationCenter: center)
+            },
+            system: { system },
+            failure: { failures.add($0) }
+        )
+
+        // Live path (begin): 44.1 kHz stereo -> Bluetooth switch -> 16 kHz mono.
+        try await inputs.start()
+        XCTAssertEqual(engines.count, 1)
+        let liveEngine = engines[0]
+        liveEngine.emit(seconds: 0.1, durationSeconds: 0.1)
+        liveEngine.currentFormat = AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)!
+        center.post(name: .AVAudioEngineConfigurationChange, object: liveEngine.token)
+        liveEngine.emit(seconds: 0.2, durationSeconds: 0.1)
+        XCTAssertTrue(failures.snapshot.isEmpty, "Live microphone rate/channel change must not fail: \(failures.snapshot)")
+        XCTAssertTrue(owner.snapshot.me)
+
+        // Staged path (prepare -> activate): toggle Me off then back on, then switch 48 kHz mono -> 24 kHz stereo.
+        try await inputs.select(me: false, others: true, atMs: 400)
+        try await inputs.select(me: true, others: true, atMs: 500)
+        XCTAssertEqual(engines.count, 2)
+        let stagedEngine = engines[1]
+        stagedEngine.emit(seconds: 0.7, durationSeconds: 0.1)
+        stagedEngine.currentFormat = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 2)!
+        center.post(name: .AVAudioEngineConfigurationChange, object: stagedEngine.token)
+        stagedEngine.emit(seconds: 0.8, durationSeconds: 0.1)
+
+        try await inputs.stop()
+        try await owner.finish()
+
+        XCTAssertTrue(failures.snapshot.isEmpty, "Staged microphone rate/channel change must not fail: \(failures.snapshot)")
+        XCTAssertNil(owner.snapshot.manifest.problem)
+        let micTracks = owner.snapshot.manifest.tracks.filter { $0.kind == "microphone" }
+        XCTAssertEqual(micTracks.count, 2)
+        for track in micTracks {
+            XCTAssertEqual(track.sampleRate, 48_000)
+            XCTAssertGreaterThan(track.frames, 8_000, "Track must include frames from before and after format change")
+        }
+    }
+}
+
+private final class FakeLifecycleMicEngine: MicrophoneAudioEngine {
+    let token = NSObject()
+    var notificationObject: AnyObject? { token }
+    var currentFormat: AVAudioFormat
+    let origin: UInt64
+    let initialOffsetSeconds: Double
+    private var tapBlock: (@Sendable (AVAudioPCMBuffer, UInt64) -> Void)?
+
+    init(sampleRate: Double, channels: AVAudioChannelCount, origin: UInt64, initialOffsetSeconds: Double) {
+        self.currentFormat = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: channels)!
+        self.origin = origin
+        self.initialOffsetSeconds = initialOffsetSeconds
+    }
+
+    func inputFormat() -> AVAudioFormat { currentFormat }
+
+    func installTap(bufferSize: AVAudioFrameCount, format: AVAudioFormat, block: @escaping @Sendable (AVAudioPCMBuffer, UInt64) -> Void) {
+        tapBlock = block
+    }
+
+    func removeTap() { tapBlock = nil }
+
+    func start() throws {
+        emit(seconds: initialOffsetSeconds, durationSeconds: 0.1)
+    }
+
+    func stop() {}
+
+    func emit(seconds: Double, durationSeconds: Double) {
+        guard let tapBlock else { return }
+        let frameCount = AVAudioFrameCount((currentFormat.sampleRate * durationSeconds).rounded())
+        let buffer = AVAudioPCMBuffer(pcmFormat: currentFormat, frameCapacity: frameCount)!
+        buffer.frameLength = frameCount
+        let channels = Int(currentFormat.channelCount)
+        for ch in 0..<channels {
+            let ptr = buffer.floatChannelData![ch]
+            for i in 0..<Int(frameCount) {
+                ptr[i] = Float(sin(2 * Double.pi * 440 * Double(i) / currentFormat.sampleRate)) * 0.3
+            }
+        }
+        tapBlock(buffer, origin + AVAudioTime.hostTime(forSeconds: seconds))
+    }
+}
+
+@MainActor private final class DriverBackedMicrophoneInput: CaptureInput {
+    private let driver: MicrophoneCaptureDriver
+    init(engine: any MicrophoneAudioEngine, notificationCenter: NotificationCenter) {
+        self.driver = MicrophoneCaptureDriver(makeEngine: { engine }, notificationCenter: notificationCenter)
+    }
+    func authorize() async throws {}
+    func start(sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
+        try driver.start(
+            sink: sink,
+            label: "Your microphone",
+            missingError: { RecordingError.invalid("missing") },
+            changedMessage: "microphoneChanged",
+            failure: failure
+        )
+    }
+    func stop() { driver.stop() }
 }
 
 @MainActor private final class SignalInputGate { var allowed = true }

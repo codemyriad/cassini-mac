@@ -222,22 +222,36 @@ final class LibraryStore {
                 let target: URL
                 if pending.contains(context.root) { target = context.root; pending.removeAll() }
                 else { target = pending.sorted { $0.path < $1.path }.first!; pending.remove(target) }
-                var primaryFailed = false
-                for root in [context.root] + context.previousRoots {
-                    let canonicalTarget = LibraryLocation.canonical(target)
-                    let canonicalRoot = LibraryLocation.canonical(root)
-                    guard let scanner = scanners[root],
-                          target == context.root || canonicalTarget == canonicalRoot || LibraryLocation.canonical(target.deletingLastPathComponent()) == canonicalRoot else { continue }
-                    do {
-                        let affected = target == context.root || canonicalTarget == canonicalRoot ? nil : root.appendingPathComponent(target.lastPathComponent)
-                        let result = try await scanner.scanInBackground(affected:affected,now:context.now ?? Date())
-                        guard started, generation == epoch else { return }
-                        rootSnapshots[root] = result
-                    } catch { if root == context.root { primaryFailed = true } }
-                }
+                let primaryRoot = context.root
+                let roots = [primaryRoot] + context.previousRoots
+                let scannersSnapshot = scanners
+                let previousSnapshots = rootSnapshots
+                let pendingMovePaths = LibraryLocationModel.shared.location.pendingMoves.map(\.id)
+                let selectionFolder = selectionFolderWhenAvailable
+                let scanNow = context.now ?? Date()
+                let outcome = await Task.detached(priority: .userInitiated) { () -> (snapshots: [URL: LibraryScan], primaryFailed: Bool, merged: LibraryScan, matchedSelectionKey: String?) in
+                    var updatedSnapshots = previousSnapshots
+                    var primaryFailed = false
+                    let selected = LibraryRefreshPlan.selectTargets(target: target, primaryRoot: primaryRoot, roots: roots)
+                    for item in selected {
+                        guard let scanner = scannersSnapshot[item.root] else { continue }
+                        do {
+                            updatedSnapshots[item.root] = try scanner.scan(affected: item.affected, now: scanNow)
+                        } catch {
+                            if item.root == primaryRoot { primaryFailed = true }
+                        }
+                    }
+                    let retained = Set(pendingMovePaths.map { LibraryLocation.canonical(URL(fileURLWithPath: $0)) })
+                    let merged = LibraryScan.merging(roots.compactMap { updatedSnapshots[$0] }, retaining: retained)
+                    let matchedSelectionKey = selectionFolder.flatMap { folder in
+                        merged.meetings.first(where: { LibraryLocation.canonical($0.folder) == folder })?.libraryKey
+                    }
+                    return (updatedSnapshots, primaryFailed, merged, matchedSelectionKey)
+                }.value
                 guard started, generation == epoch else { return }
-                let retained = Set(LibraryLocationModel.shared.location.pendingMoves.map { LibraryLocation.canonical(URL(fileURLWithPath:$0.id)) })
-                var result = LibraryScan.merging(([context.root] + context.previousRoots).compactMap { rootSnapshots[$0] },retaining:retained)
+                rootSnapshots = outcome.snapshots
+                var result = outcome.merged
+                let primaryFailed = outcome.primaryFailed
                 #if DEBUG
                 // Reading boards use the completed fixture; active status has its
                 // own launch flag. Normalize snapshots, never vendored bytes.
@@ -262,9 +276,8 @@ final class LibraryStore {
                 }
                 #endif
                 snapshot = result; offline = primaryFailed
-                if let folder = selectionFolderWhenAvailable,
-                   let selected = result.meetings.first(where:{ LibraryLocation.canonical($0.folder) == folder }) {
-                    selectedKey = selected.libraryKey; selectionFolderWhenAvailable = nil; selectionWhenAvailable = nil
+                if let matched = outcome.matchedSelectionKey, selectionFolderWhenAvailable == selectionFolder {
+                    selectedKey = matched; selectionFolderWhenAvailable = nil; selectionWhenAvailable = nil
                 } else if let key = selectionWhenAvailable, result.meetings.contains(where:{ $0.libraryKey == key }) {
                     selectedKey = key; selectionWhenAvailable = nil; selectionFolderWhenAvailable = nil
                 }

@@ -328,7 +328,7 @@ private final class SourceChangeToken: @unchecked Sendable {
         guard admission() else { throw CancellationError() }
         let generation = UUID(), stage = StagedNativeWriter(observers:capture.pcmObservers), signal = FirstBufferSignal()
         let report = report(side,generation:generation,stage:stage)
-        let sink = RecordingSink(session:stage,originHostTime:origin,onFailure:report,admit:{ signal.admit() })
+        let sink = RecordingSink(session:stage,originHostTime:origin,targetSampleRate:Self.targetSampleRate(for:side),onFailure:report,admit:{ signal.admit() })
         let value = Input(generation:generation,driver:driver,sink:sink,stage:stage,firstBuffer:signal,refusingAt:atMs)
         do {
             try startDriver(driver,sink:sink,failure:report)
@@ -521,6 +521,7 @@ private final class SourceChangeToken: @unchecked Sendable {
         }
         if let first { throw first }
     }
+    private static func targetSampleRate(for side: CaptureSide) -> Double? { side == .me ? 48_000 : nil }
     private func startDriver(_ driver: any CaptureInput, sink: RecordingSink, failure: @escaping @Sendable (String) -> Void) throws {
         if let inputGate { try inputGate.admit { try driver.start(sink:sink,failure:failure) } }
         else { try driver.start(sink:sink,failure:failure) }
@@ -534,7 +535,7 @@ private final class SourceChangeToken: @unchecked Sendable {
                 self?.failureHandled?()
             }
         }
-        let sink = RecordingSink(session:capture.nativeWriter(side:side),originHostTime:origin,onFailure:report,admit:{ signal.admit() })
+        let sink = RecordingSink(session:capture.nativeWriter(side:side),originHostTime:origin,targetSampleRate:Self.targetSampleRate(for:side),onFailure:report,admit:{ signal.admit() })
         do { try startDriver(driver,sink:sink,failure:report); inputs[side] = .init(generation:generation,driver:driver,sink:sink,firstBuffer:signal,refusingAt:atMs) }
         catch {
             driver.stop()

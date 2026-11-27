@@ -126,4 +126,57 @@ struct LibraryLocationTests {
         #expect(Set(combined.meetings.map(\.id)).count == 1)
         #expect(Set(combined.meetings.map { $0.folder.deletingLastPathComponent().path }).count == 2)
     }
+    @Test func refreshPlanSkipsUnrelatedPreviousRootsAndResolvesSymlinks() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("RefreshPlan-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let realPrimary = root.appendingPathComponent("real-primary")
+        let linkPrimary = root.appendingPathComponent("link-primary")
+        let stalledNetworkPrevious = root.appendingPathComponent("stalled-network-previous")
+        let meeting = linkPrimary.appendingPathComponent("Recording-00000000-0000-0000-0000-000000000001")
+        try FileManager.default.createDirectory(at: realPrimary, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: linkPrimary, withDestinationURL: realPrimary)
+        try FileManager.default.createDirectory(at: meeting, withIntermediateDirectories: true)
+
+        var canonicalized: [URL] = []
+        let canonicalize: (URL) -> URL = { url in
+            canonicalized.append(url)
+            return LibraryLocation.canonical(url)
+        }
+
+        // Full refresh selects all roots without resolving any path via realpath.
+        let full = LibraryRefreshPlan.selectTargets(
+            target: realPrimary,
+            primaryRoot: realPrimary,
+            roots: [realPrimary, stalledNetworkPrevious],
+            canonicalize: canonicalize
+        )
+        #expect(full == [
+            LibraryRefreshTarget(root: realPrimary, affected: nil),
+            LibraryRefreshTarget(root: stalledNetworkPrevious, affected: nil),
+        ])
+        #expect(canonicalized.isEmpty)
+
+        // Targeted refresh of a symlinked local meeting resolves to primaryRoot and never touches stalledNetworkPrevious.
+        let targeted = LibraryRefreshPlan.selectTargets(
+            target: meeting,
+            primaryRoot: realPrimary,
+            roots: [realPrimary, stalledNetworkPrevious],
+            canonicalize: canonicalize
+        )
+        #expect(targeted == [
+            LibraryRefreshTarget(root: realPrimary, affected: realPrimary.appendingPathComponent(meeting.lastPathComponent)),
+        ])
+        #expect(!canonicalized.contains(stalledNetworkPrevious))
+
+        // Targeted refresh of a meeting under a previous root selects that previous root.
+        let prevMeeting = stalledNetworkPrevious.appendingPathComponent("Recording-00000000-0000-0000-0000-000000000002")
+        let previousTargeted = LibraryRefreshPlan.selectTargets(
+            target: prevMeeting,
+            primaryRoot: realPrimary,
+            roots: [realPrimary, stalledNetworkPrevious]
+        )
+        #expect(previousTargeted == [
+            LibraryRefreshTarget(root: stalledNetworkPrevious, affected: prevMeeting),
+        ])
+    }
 }

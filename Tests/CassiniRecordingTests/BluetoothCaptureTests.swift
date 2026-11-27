@@ -58,7 +58,10 @@ private final class FailureRecorder: @unchecked Sendable {
     private var items: [String] = []
     func add(_ message: String) { lock.withLock { items.append(message) } }
     var count: Int { lock.withLock { items.count } }
+    var messages: [String] { lock.withLock { items } }
 }
+
+private func waitForGate(_ gate: DispatchSemaphore) -> Bool { gate.wait(timeout: .now() + 5) == .success }
 
 private func makeToneBuffer(sampleRate: Double, channels: AVAudioChannelCount = 1, seconds: Double, frequency: Double = 440) throws -> AVAudioPCMBuffer {
     let format = try #require(AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: channels))
@@ -190,5 +193,253 @@ private func makeToneBuffer(sampleRate: Double, channels: AVAudioChannelCount = 
         #expect(mic.sampleRate == 48_000)
         let durationMs = Double(mic.frames) / Double(mic.sampleRate) * 1000
         #expect(abs(durationMs - 1000) <= 10)
+    }
+}
+
+private final class EventGatedFakeTap: SystemAudioTap, @unchecked Sendable {
+    private let lock = NSLock()
+    private var formatChangeHandler: (@Sendable () -> Void)?
+    private var receiveHandler: (@Sendable (AVAudioPCMBuffer, UInt64) -> Void)?
+
+    let startEntered: DispatchSemaphore?
+    let releaseStart: DispatchSemaphore?
+    let stopEntered: DispatchSemaphore?
+    let releaseStop: DispatchSemaphore?
+    let startError: Error?
+
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
+    private(set) var startRanOnMainThread = false
+    private(set) var stopRanOnMainThread = false
+
+    init(
+        startEntered: DispatchSemaphore? = nil,
+        releaseStart: DispatchSemaphore? = nil,
+        stopEntered: DispatchSemaphore? = nil,
+        releaseStop: DispatchSemaphore? = nil,
+        startError: Error? = nil
+    ) {
+        self.startEntered = startEntered
+        self.releaseStart = releaseStart
+        self.stopEntered = stopEntered
+        self.releaseStop = releaseStop
+        self.startError = startError
+    }
+
+    func start(
+        onFormatChange: @escaping @Sendable () -> Void,
+        receive: @escaping @Sendable (AVAudioPCMBuffer, UInt64) -> Void
+    ) throws {
+        lock.withLock {
+            startCount += 1
+            startRanOnMainThread = Thread.isMainThread
+            formatChangeHandler = onFormatChange
+            receiveHandler = receive
+        }
+        startEntered?.signal()
+        releaseStart?.wait()
+        if let startError { throw startError }
+    }
+
+    func stop() {
+        lock.withLock {
+            stopCount += 1
+            stopRanOnMainThread = Thread.isMainThread
+            formatChangeHandler = nil
+            receiveHandler = nil
+        }
+        stopEntered?.signal()
+        releaseStop?.wait()
+    }
+
+    func triggerFormatChange() {
+        let handler = lock.withLock { formatChangeHandler }
+        handler?()
+    }
+
+    func emit(_ buffer: AVAudioPCMBuffer, hostTime: UInt64) {
+        let handler = lock.withLock { receiveHandler }
+        handler?(buffer, hostTime)
+    }
+}
+
+private final class TapFactory: @unchecked Sendable {
+    private let lock = NSLock()
+    private var taps: [EventGatedFakeTap]
+    private(set) var createdCount = 0
+
+    init(_ taps: [EventGatedFakeTap]) { self.taps = taps }
+
+    func next() -> any SystemAudioTap {
+        lock.withLock {
+            createdCount += 1
+            return taps.removeFirst()
+        }
+    }
+}
+
+@Suite("Output tap off-main recovery")
+struct OutputTapDriverTests {
+    @Test func outputTapRestartRunsOffMainAndStopCancelsPendingRecreation() async throws {
+        let parent = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniTapStop-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let session = try RecordingSession(parent: parent, title: "Tap Stop", source: "macos")
+        let failures = FailureRecorder()
+        let sink = RecordingSink(session: session, originHostTime: AVAudioTime.hostTime(forSeconds: 100), targetSampleRate: 48_000) {
+            failures.add($0)
+        }
+
+        let stopEntered = DispatchSemaphore(value: 0)
+        let releaseStop = DispatchSemaphore(value: 0)
+        let tap1 = EventGatedFakeTap(stopEntered: stopEntered, releaseStop: releaseStop)
+        let tap2 = EventGatedFakeTap()
+        let factory = TapFactory([tap1, tap2])
+        let driver = OutputTapDriver(makeTap: { factory.next() })
+
+        try driver.start(sink: sink, label: "Sound", changedMessage: "outputChanged") {
+            failures.add($0)
+        }
+        #expect(factory.createdCount == 1)
+
+        tap1.emit(try makeToneBuffer(sampleRate: 48_000, channels: 2, seconds: 0.1), hostTime: AVAudioTime.hostTime(forSeconds: 100))
+        // Trigger format change while tap1.stop() is gated.
+        tap1.triggerFormatChange()
+        let entered = await Task.detached { waitForGate(stopEntered) }.value
+        #expect(entered)
+        #expect(!tap1.stopRanOnMainThread)
+
+        // While tap1.stop() is still blocked on the dedicated serial executor,
+        // @MainActor remains responsive and Stop returns immediately.
+        let stopReturnedWhileBlocked = await MainActor.run { () -> Bool in
+            driver.stop()
+            return true
+        }
+        #expect(stopReturnedWhileBlocked)
+
+        releaseStop.signal()
+        await driver.drain()
+        try sink.finish(problem: nil)
+
+        #expect(factory.createdCount == 1, "Pending tap recreation must be cancelled after Stop")
+        #expect(tap1.stopCount == 1)
+        #expect(tap2.startCount == 0)
+        #expect(failures.count == 0)
+    }
+
+    @Test func outputTapStopDuringSlowRecreationTearsDownNewTap() async throws {
+        let parent = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniTapSlowStart-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let session = try RecordingSession(parent: parent, title: "Tap Slow Start", source: "macos")
+        let failures = FailureRecorder()
+        let sink = RecordingSink(session: session, originHostTime: AVAudioTime.hostTime(forSeconds: 100), targetSampleRate: 48_000) {
+            failures.add($0)
+        }
+
+        let startEntered = DispatchSemaphore(value: 0)
+        let releaseStart = DispatchSemaphore(value: 0)
+        let tap1 = EventGatedFakeTap()
+        let tap2 = EventGatedFakeTap(startEntered: startEntered, releaseStart: releaseStart)
+        let factory = TapFactory([tap1, tap2])
+        let driver = OutputTapDriver(makeTap: { factory.next() })
+
+        try driver.start(sink: sink, label: "Sound", changedMessage: "outputChanged") {
+            failures.add($0)
+        }
+
+        tap1.emit(try makeToneBuffer(sampleRate: 48_000, channels: 2, seconds: 0.1), hostTime: AVAudioTime.hostTime(forSeconds: 100))
+        tap1.triggerFormatChange()
+        let entered = await Task.detached { waitForGate(startEntered) }.value
+        #expect(entered)
+        #expect(!tap2.startRanOnMainThread)
+
+        await MainActor.run {
+            driver.stop()
+        }
+
+        releaseStart.signal()
+        await driver.drain()
+        try sink.finish(problem: nil)
+
+        #expect(factory.createdCount == 2)
+        #expect(tap1.stopCount == 1)
+        #expect(tap2.startCount == 1)
+        #expect(tap2.stopCount == 1, "Newly started tap must be torn down immediately when Stop raced with start")
+        #expect(failures.count == 0)
+    }
+
+    @Test func outputTapRecoversOffMainAcrossFormatChange() async throws {
+        let parent = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniTapRecover-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let session = try RecordingSession(parent: parent, title: "Tap Recover", source: "macos")
+        let failures = FailureRecorder()
+        let origin = AVAudioTime.hostTime(forSeconds: 100)
+        let sink = RecordingSink(session: session, originHostTime: origin, targetSampleRate: 48_000) {
+            failures.add($0)
+        }
+
+        let tap2Started = DispatchSemaphore(value: 0)
+        let tap1 = EventGatedFakeTap()
+        let tap2 = EventGatedFakeTap(startEntered: tap2Started)
+        let factory = TapFactory([tap1, tap2])
+        let driver = OutputTapDriver(makeTap: { factory.next() })
+
+        try driver.start(sink: sink, label: "Sound", changedMessage: "outputChanged") {
+            failures.add($0)
+        }
+
+        let before = try makeToneBuffer(sampleRate: 48_000, channels: 2, seconds: 0.2)
+        tap1.emit(before, hostTime: origin)
+
+        // Duplicate format-change callbacks from tap1 must coalesce to a single restart.
+        tap1.triggerFormatChange()
+        tap1.triggerFormatChange()
+        let restarted = await Task.detached { waitForGate(tap2Started) }.value
+        #expect(restarted)
+        await driver.drain()
+
+        #expect(factory.createdCount == 2)
+        #expect(!tap1.stopRanOnMainThread)
+        #expect(!tap2.startRanOnMainThread)
+
+        let after = try makeToneBuffer(sampleRate: 24_000, channels: 1, seconds: 0.2)
+        tap2.emit(after, hostTime: origin + AVAudioTime.hostTime(forSeconds: 0.2))
+
+        driver.stop()
+        await driver.drain()
+        try sink.finish(problem: nil)
+
+        #expect(failures.count == 0)
+        let manifest = try RecordingLoader.load(directory: session.directory)
+        let output = try #require(manifest.tracks.first { $0.id == "output" })
+        #expect(output.sampleRate == 48_000)
+        #expect(output.frames > 14_000)
+    }
+
+    @Test func outputTapRestartFailureReportsOnce() async throws {
+        let parent = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniTapFail-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let session = try RecordingSession(parent: parent, title: "Tap Fail", source: "macos")
+        let failures = FailureRecorder()
+        let sink = RecordingSink(session: session, originHostTime: AVAudioTime.hostTime(forSeconds: 100), targetSampleRate: 48_000) {
+            failures.add($0)
+        }
+
+        let tap1 = EventGatedFakeTap()
+        let tap2 = EventGatedFakeTap(startError: NSError(domain: "CassiniTest", code: 42))
+        let factory = TapFactory([tap1, tap2])
+        let driver = OutputTapDriver(makeTap: { factory.next() })
+
+        try driver.start(sink: sink, label: "Sound", changedMessage: "outputChanged") {
+            failures.add($0)
+        }
+
+        tap1.emit(try makeToneBuffer(sampleRate: 48_000, channels: 2, seconds: 0.1), hostTime: AVAudioTime.hostTime(forSeconds: 100))
+        tap1.triggerFormatChange()
+        await driver.drain()
+        driver.stop()
+        await driver.drain()
+        try sink.finish(problem: nil)
+
+        #expect(failures.messages == ["outputChanged"])
     }
 }
