@@ -138,7 +138,7 @@ final class D1198MeetingListTests: AcceptanceTestCase {
                 XCTAssertTrue(footer.waitForExistence(timeout: 10), app.debugDescription)
 
                 let list = window.outlines.firstMatch.exists ? window.outlines.firstMatch : window.scrollViews.firstMatch
-                list.scroll(byDeltaX: 0, deltaY: -300)
+                list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).scroll(byDeltaX: 0, deltaY: -300)
 
                 let shot = attachWindowScreenshot(window, name: "b19-item17-\(size)-\(scheme)")
                 let img = try PixelImage(screenshot: shot, windowFrame: window.frame)

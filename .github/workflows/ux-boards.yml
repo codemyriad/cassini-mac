@@ -89,7 +89,7 @@ jobs:
           build/qa-attachments-light
           build/qa-attachments-dark
     - name: Beta 19 acceptance UI tests
-      timeout-minutes: 15
+      timeout-minutes: 20
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
       run: |

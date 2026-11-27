@@ -41,8 +41,8 @@ final class D1197FocusAndControlsTests: AcceptanceTestCase {
             openFloatingSidebar(in: narrow, window: narrowWin)
             let floatingField = sidebarSearchField(in: narrowWin)
             XCTAssertTrue(floatingField.waitForExistence(timeout: 10), narrow.debugDescription)
-            floatingField.click()
-            floatingField.typeText("travel")
+            floatingField.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+            narrow.typeText("travel")
 
             _ = attachWindowScreenshot(narrowWin, name: "b19-item1-floating-light")
             if (floatingField.value as? String) != "travel" {
@@ -164,9 +164,7 @@ final class D1197FocusAndControlsTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1197 item 15", matching: "[D-1197-item15]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1197-item15] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1197-item15] \(failures.joined(separator: "; "))")
     }
 
     /// Item 16: Clicking away ends editing in sidebar search, meeting find, and title rename.

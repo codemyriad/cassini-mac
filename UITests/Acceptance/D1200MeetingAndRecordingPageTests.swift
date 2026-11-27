@@ -66,7 +66,7 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
 
         _ = attachWindowScreenshot(window, name: "b19-item9-rename-big-title-light")
         let dateStillExists = inlineDate.exists
-        let dateFrameDuring = inlineDate.frame
+        let dateFrameDuring: CGRect? = dateStillExists ? inlineDate.frame : nil
 
         editor.typeKey("a", modifierFlags: .command)
         editor.typeText("Q4")
@@ -74,8 +74,10 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
 
         expectStrictFailure("D-1200 item 9", matching: "[D-1200-item9]") {
             XCTAssertTrue(dateStillExists, "[D-1200-item9] Date element must still exist during rename")
-            XCTAssertEqual(dateFrameDuring.minX, dateFrameBefore.minX, accuracy: 1.0, "[D-1200-item9] Date minX must stay unchanged ±1")
-            XCTAssertEqual(dateFrameDuring.minY, dateFrameBefore.minY, accuracy: 1.0, "[D-1200-item9] Date minY must stay unchanged ±1")
+            if let dateFrameDuring {
+                XCTAssertEqual(dateFrameDuring.minX, dateFrameBefore.minX, accuracy: 1.0, "[D-1200-item9] Date minX must stay unchanged ±1")
+                XCTAssertEqual(dateFrameDuring.minY, dateFrameBefore.minY, accuracy: 1.0, "[D-1200-item9] Date minY must stay unchanged ±1")
+            }
             XCTAssertLessThan(shortWidth, 120.0, "[D-1200-item9] Rename field for 'Q4' must hug text + 8 pt, not run to the edge")
         }
     }
