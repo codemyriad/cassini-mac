@@ -545,6 +545,8 @@ struct LibraryView: View {
             .padding(.trailing, 3)
             .frame(height: height)
             .background(CassiniTheme.recordTint, in: Capsule())
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("toolbar-live-pill")
         }
     }
 

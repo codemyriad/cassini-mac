@@ -68,6 +68,7 @@ struct LibraryMeetingRowView: View {
                 .font(.system(size: 11.5))
             }
         }
+        .accessibilityIdentifier("meeting-card-" + meeting.libraryKey)
     }
 
     // L-51, L-53: duration sits top-right; line two shows time, optional status badge (no dot after a badge),

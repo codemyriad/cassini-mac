@@ -7,6 +7,92 @@ import Observation
 /// hosted screenshot test's launch environment, and absent from release builds.
 @MainActor
 enum ScreenshotFixture {
+    nonisolated static var customDirectory: URL? {
+        longMeetingDirectory ?? noSpeechDirectory ?? longLibraryDirectory
+    }
+
+    static let noSpeechDirectory: URL? = {
+        guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
+              LibraryLaunchContext.argument("-CassiniNoSpeechFixture") == "YES" else { return nil }
+        let source = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Fixtures/Library/main")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniNoSpeech-" + UUID().uuidString)
+        do {
+            try FileManager.default.copyItem(at: source, to: directory)
+            let meetingDir = directory.appendingPathComponent("root/Recording-a0000000-0000-4000-8000-000000000001")
+            let transcriptURL = meetingDir.appendingPathComponent("transcript.json")
+            var transcript = try JSONSerialization.jsonObject(with: Data(contentsOf: transcriptURL)) as! [String: Any]
+            transcript["items"] = []
+            transcript["speakers"] = [:]
+            try JSONSerialization.data(withJSONObject: transcript).write(to: transcriptURL, options: .atomic)
+            // Write a short silent native output WAV so RecordingDetailsReport shows the permission hint ("Open System Settings").
+            let silentWavURL = meetingDir.appendingPathComponent("track-output-silent.wav")
+            let sampleRate: UInt32 = 16000
+            let frames: UInt32 = 16000
+            let dataSize: UInt32 = frames * 2
+            var wav = Data()
+            func putLE<T: FixedWidthInteger>(_ v: T) {
+                var le = v.littleEndian
+                withUnsafeBytes(of: &le) { wav.append(contentsOf: $0) }
+            }
+            wav.append(contentsOf: "RIFF".utf8); putLE(36 + dataSize)
+            wav.append(contentsOf: "WAVEfmt ".utf8); putLE(UInt32(16)); putLE(UInt16(1)); putLE(UInt16(1))
+            putLE(sampleRate); putLE(sampleRate * 2); putLE(UInt16(2)); putLE(UInt16(16))
+            wav.append(contentsOf: "data".utf8); putLE(dataSize)
+            wav.append(Data(count: Int(dataSize)))
+            try wav.write(to: silentWavURL, options: .atomic)
+            let sessionURL = meetingDir.appendingPathComponent("session.json")
+            if var session = (try? JSONSerialization.jsonObject(with: Data(contentsOf: sessionURL))) as? [String: Any] {
+                session["tracks"] = [[
+                    "id": "output",
+                    "label": "This computer",
+                    "kind": "system",
+                    "file": "track-output-silent.wav",
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "startOffsetMs": 0
+                ]]
+                try JSONSerialization.data(withJSONObject: session).write(to: sessionURL, options: .atomic)
+            }
+            return directory
+        } catch { preconditionFailure("Cannot prepare no-speech screenshot fixture: \(error)") }
+    }()
+
+    static let longLibraryDirectory: URL? = {
+        guard ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
+              LibraryLaunchContext.argument("-CassiniLongLibraryFixture") == "YES" else { return nil }
+        let source = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Fixtures/Library/main")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("CassiniLongLibrary-" + UUID().uuidString)
+        do {
+            try FileManager.default.copyItem(at: source, to: directory)
+            let root = directory.appendingPathComponent("root")
+            let template = root.appendingPathComponent("Recording-a0000000-0000-4000-8000-000000000001")
+            let formatter = ISO8601DateFormatter()
+            let baseDate = formatter.date(from: "2026-10-27T08:30:00Z")!
+            for index in 1...30 {
+                let uuid = String(format: "b0000000-0000-4000-8000-%012d", index)
+                let dest = root.appendingPathComponent("Recording-\(uuid)")
+                try FileManager.default.copyItem(at: template, to: dest)
+                let meetingDate = baseDate.addingTimeInterval(TimeInterval(-index * 4 * 3600))
+                let dateStr = formatter.string(from: meetingDate)
+                let sessionURL = dest.appendingPathComponent("session.json")
+                if var session = (try? JSONSerialization.jsonObject(with: Data(contentsOf: sessionURL))) as? [String: Any] {
+                    session["id"] = uuid
+                    session["title"] = "Fixture meeting \(index)"
+                    session["createdAt"] = dateStr
+                    try JSONSerialization.data(withJSONObject: session).write(to: sessionURL, options: .atomic)
+                }
+                let metaURL = dest.appendingPathComponent("metadata.json")
+                if var meta = (try? JSONSerialization.jsonObject(with: Data(contentsOf: metaURL))) as? [String: Any] {
+                    meta["id"] = uuid
+                    meta["title"] = "Fixture meeting \(index)"
+                    meta["recordedAtUtc"] = dateStr
+                    try JSONSerialization.data(withJSONObject: meta).write(to: metaURL, options: .atomic)
+                }
+            }
+            return directory
+        } catch { preconditionFailure("Cannot prepare long library screenshot fixture: \(error)") }
+    }()
+
     /// A long sealed input is copied and extended by the app inside its own
     /// sandbox. The UI runner cannot write another app's container.
     static let longMeetingDirectory: URL? = {

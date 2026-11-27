@@ -77,6 +77,10 @@ import CassiniRecording
         let parent = LibraryLocationModel.shared.roots[0]
         Task {
             #if DEBUG
+            if RecordingFixture.consumeSimulatedCaptureStartFailure() {
+                CaptureCollection.shared.simulateStartFailureForTesting()
+                return
+            }
             if RecordingFixture.enabled && !CaptureFixture.enabled { await RecordingController.shared.start(parent:parent); return }
             #endif
             // Notifications are optional. In particular, the first notification
@@ -238,6 +242,7 @@ private final class RecordingPillControlView: NSView {
         super.init(frame:frame)
         wantsLayer = true; layer?.cornerRadius = 16
         setAccessibilityElement(true); setAccessibilityRole(.group)
+        setAccessibilityIdentifier("toolbar-live-pill")
         for button in [openButton,stopButton] {
             button.isBordered = false; button.setButtonType(.momentaryPushIn)
             button.target = self; button.font = .systemFont(ofSize:13,weight:.semibold)

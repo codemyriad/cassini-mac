@@ -316,7 +316,19 @@ private final class CaptureFiles: @unchecked Sendable {
         guard timer == nil else { return }
         timer = Timer.scheduledTimer(withTimeInterval:0.25,repeats:true) { [weak self] _ in MainActor.assumeIsolated { self?.poll() } }
     }
+    #if DEBUG
+    func simulateStartFailureForTesting() {
+        recordFailed = true
+    }
+    #endif
     func record() async throws {
+        #if DEBUG
+        if RecordingFixture.enabled && !CaptureFixture.enabled {
+            recordFailed = false
+            await RecordingController.shared.start(parent: LibraryLocationModel.shared.roots[0])
+            return
+        }
+        #endif
         await TestRecordingController.shared.cancel().value
         guard !shuttingDown, !starting else { return }
         LibraryLocationModel.shared.reload()

@@ -232,6 +232,14 @@ enum RecordingFixture {
         return false
         #endif
     }
+    #if DEBUG
+    @MainActor private static var simulatedStartFailureConsumed = false
+    @MainActor static func consumeSimulatedCaptureStartFailure() -> Bool {
+        guard enabled, LibraryLaunchContext.argument("-CassiniFailCaptureStart") == "YES", !simulatedStartFailureConsumed else { return false }
+        simulatedStartFailureConsumed = true
+        return true
+    }
+    #endif
     static var root: URL? {
         #if DEBUG
         guard enabled, let key = LibraryLaunchContext.argument("-CassiniCaptureID"), UUID(uuidString: key) != nil else { return nil }
