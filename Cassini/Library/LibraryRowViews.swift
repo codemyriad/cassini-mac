@@ -91,17 +91,14 @@ struct LibraryTransientImportRowView: View {
     let isAnimatingBadges: Bool
     let onDismiss: () -> Void
 
+    private var failureDetail: String? {
+        if case .failed(let detail) = item.state { return detail }
+        return nil
+    }
+
+    private var isFailed: Bool { failureDetail != nil }
+
     var body: some View {
-        let isFailed: Bool
-        let failureDetail: String?
-        switch item.state {
-        case .importing:
-            isFailed = false
-            failureDetail = nil
-        case .failed(let detail):
-            isFailed = true
-            failureDetail = detail
-        }
         let presentation = isFailed ? LibraryBadgeCatalog.needsAttentionPresentation : LibraryBadgeCatalog.importingPresentation
         MeetingCard(isSelected: false) {
             VStack(alignment: .leading, spacing: 6) {
