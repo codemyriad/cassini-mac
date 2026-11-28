@@ -167,6 +167,26 @@ struct LibraryView: View {
 
     var body: some View {
         chromeWrappedSurface
+        .toolbar {
+            if isFloatingSidebarVisible {
+                #if compiler(>=6.2)
+                if #available(macOS 26.0, *) {
+                    ToolbarItem(placement: .navigation) {
+                        sidebarToolbarActions
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                } else {
+                    ToolbarItem(placement: .navigation) {
+                        sidebarToolbarActions
+                    }
+                }
+                #else
+                ToolbarItem(placement: .navigation) {
+                    sidebarToolbarActions
+                }
+                #endif
+            }
+        }
         .overlay(alignment: .leading) {
             if isNarrowWindow && floatingSidebarOpen {
                 floatingSidebarOverlay
@@ -328,6 +348,7 @@ struct LibraryView: View {
     private var split: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebarColumn(isFloating: false)
+                .cassiniSidebarBackground()
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { sidebarWidth = $0 }
                 .toolbar {
                     sidebarToolbar
@@ -408,15 +429,8 @@ struct LibraryView: View {
         let overlayWidth = min(390, max(280, toolbarWidth - 60))
         return HStack(spacing: 0) {
             VStack(spacing: 0) {
-                HStack(spacing: 8) {
-                    Spacer(minLength: 0)
-                    sidebarToolbarActions
-                }
-                .padding(.leading, 118)
-                .padding(.trailing, 10)
-                .padding(.top, 10)
-                .padding(.bottom, 6)
                 sidebarColumn(isFloating: true)
+                    .padding(.top, 44)
             }
             .frame(width: overlayWidth)
             .frame(maxHeight: .infinity)
@@ -634,35 +648,35 @@ struct LibraryView: View {
         }
     }
 
+    private var collapsedSidebarRecordControl: some View {
+        HStack(spacing: 0) {
+            if showsLiveToolbarPill {
+                liveRecordingToolbarControl(height: 32)
+            } else {
+                sidebarRecordButton(height: 32)
+            }
+            Color.clear.frame(width: 0, height: 0).accessibilityHidden(true)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
     @ToolbarContentBuilder
     private var detailSidebarCollapsedToolbarItem: some ToolbarContent {
         if columnVisibility == .detailOnly {
             #if compiler(>=6.2)
             if #available(macOS 26.0, *) {
                 ToolbarItem(placement: .navigation) {
-                    if showsLiveToolbarPill {
-                        liveRecordingToolbarControl(height: 32)
-                    } else {
-                        sidebarRecordButton(height: 32)
-                    }
+                    collapsedSidebarRecordControl
                 }
                 .sharedBackgroundVisibility(.hidden)
             } else {
                 ToolbarItem(placement: .navigation) {
-                    if showsLiveToolbarPill {
-                        liveRecordingToolbarControl(height: 32)
-                    } else {
-                        sidebarRecordButton(height: 32)
-                    }
+                    collapsedSidebarRecordControl
                 }
             }
             #else
             ToolbarItem(placement: .navigation) {
-                if showsLiveToolbarPill {
-                    liveRecordingToolbarControl(height: 32)
-                } else {
-                    sidebarRecordButton(height: 32)
-                }
+                collapsedSidebarRecordControl
             }
             #endif
         }
