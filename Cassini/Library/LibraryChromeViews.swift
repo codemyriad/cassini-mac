@@ -399,15 +399,83 @@ struct SidebarGlassCircleModifier: ViewModifier {
 }
 
 struct SidebarBottomScrollEdgeModifier: ViewModifier {
+    let hasContentBelow: Bool
+
+    private var bottomFadeMask: some View {
+        GeometryReader { proxy in
+            let height = max(1, proxy.size.height)
+            let footerInset = max(36, proxy.safeAreaInsets.bottom)
+            let footerTop = max(0, height - footerInset)
+            if hasContentBelow && footerTop > 24 {
+                let fadeStart = max(0, footerTop - 52)
+                let fadeMid = max(fadeStart, footerTop - 24)
+                LinearGradient(
+                    stops: [
+                        .init(color: .black, location: 0),
+                        .init(color: .black, location: fadeStart / height),
+                        .init(color: .black.opacity(0.28), location: fadeMid / height),
+                        .init(color: .clear, location: footerTop / height),
+                        .init(color: .clear, location: 1),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            } else {
+                Rectangle()
+            }
+        }
+        .ignoresSafeArea(edges: .bottom)
+    }
+
     func body(content: Content) -> some View {
         #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
-            content.scrollEdgeEffectStyle(.soft, for: .bottom)
+            content
+                .scrollEdgeEffectStyle(.soft, for: .bottom)
+                .mask { bottomFadeMask }
         } else {
             content
+                .mask { bottomFadeMask }
         }
         #else
         content
+            .mask { bottomFadeMask }
+        #endif
+    }
+}
+
+struct SidebarDropFooterModifier<Footer: View>: ViewModifier {
+    let footer: () -> Footer
+
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            content.safeAreaBar(edge: .bottom, spacing: 0) {
+                footer()
+            }
+        } else {
+            content.safeAreaInset(edge: .bottom, spacing: 0) {
+                footer()
+                    .background(
+                        LinearGradient(
+                            colors: [CassiniTheme.sidebarMacReference.opacity(0), CassiniTheme.sidebarMacReference],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            }
+        }
+        #else
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            footer()
+                .background(
+                    LinearGradient(
+                        colors: [CassiniTheme.sidebarMacReference.opacity(0), CassiniTheme.sidebarMacReference],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+        }
         #endif
     }
 }

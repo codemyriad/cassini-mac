@@ -29,6 +29,7 @@ struct LibraryView: View {
     @State private var autoCollapsedSidebar = false
     @State private var floatingSidebarOpen = false
     @State private var contextMenuMeetingKey: String?
+    @State private var sidebarHasContentBelow = false
     @State private var sidebarSearchPresented = false
     @State private var sidebarWidth: CGFloat = 390
     private var isNarrowWindow: Bool { toolbarWidth < Self.narrowSidebarThreshold }
@@ -300,12 +301,6 @@ struct LibraryView: View {
         }
         .preferredColorScheme(LibraryLaunchContext.screenshotDark ? .dark : (store.context.screenshot ? .light : nil))
     }
-    private func trashButton(_ meeting: LibraryMeeting) -> some View {
-        Button(UXText.text("common.moveToTrash")) {
-            store.selectedKey = meeting.libraryKey
-            trash.move(meeting,undoManager:undoManager ?? NSApp.keyWindow?.undoManager)
-        }.accessibilityIdentifier("move-to-trash")
-    }
     @ViewBuilder private var trashFailure: some View {
         if let meeting = trash.failure, (navigation.detail?.meeting.libraryKey ?? store.selectedKey) == meeting.libraryKey {
             HStack(spacing:12) {
@@ -463,6 +458,8 @@ struct LibraryView: View {
                 .onTapGesture { floatingSidebarOpen = false }
                 .accessibilityHidden(true)
         }
+        .disabled(rename.presentation == .speakers)
+        .accessibilityHidden(rename.presentation == .speakers)
     }
 
     private var showsLiveToolbarPill: Bool {
@@ -886,6 +883,23 @@ struct LibraryView: View {
         }
     }
 
+    private func dayHeaderRow(title: String, identifier: String) -> some View {
+        Text(title)
+            .font(.system(size: 11.5, weight: .bold))
+            .foregroundStyle(CassiniTheme.ink2)
+            .textCase(nil)
+            .accessibilityIdentifier(identifier)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 10)
+            .padding(.trailing, 10)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+            .selectionDisabled(true)
+    }
+
     private var libraryListSidebarColumn: some View {
         let todayTitle = UXText.text("format.today")
         let firstGroupIsToday = store.groups.first?.title == todayTitle
@@ -913,104 +927,98 @@ struct LibraryView: View {
                         }
                     })) {
                         if store.preferences.filter == .all && !importer.transientItems.isEmpty && !firstGroupIsToday {
-                            Section {
-                                ForEach(importer.transientItems) { item in
-                                    transientImportRow(item)
-                                }
-                            } header: {
-                                Text(todayTitle).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2).textCase(nil)
-                                    .padding(.leading, 20)
-                                    .padding(.trailing, 10)
-                                    .padding(.top, 10)
-                                    .padding(.bottom, 4)
-                                    .accessibilityIdentifier("library-day-header-importing")
+                            dayHeaderRow(title: todayTitle, identifier: "library-day-header-importing")
+                            ForEach(importer.transientItems) { item in
+                                transientImportRow(item)
                             }
                         }
                         if store.preferences.filter == .starred && store.visibleMeetings.isEmpty {
                             Text(UXText.text("library.starred.empty"))
                                 .foregroundStyle(CassiniTheme.ink2)
                                 .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                                .selectionDisabled(true)
                                 .accessibilityIdentifier("library-starred-empty")
                         }
                         ForEach(Array(store.groups.enumerated()), id: \.element.id) { groupIndex, group in
-                            Section {
-                                if store.preferences.filter == .all && groupIndex == 0 && firstGroupIsToday {
-                                    ForEach(importer.transientItems) { item in
-                                        transientImportRow(item)
-                                    }
+                            dayHeaderRow(
+                                title: group.title,
+                                identifier: "library-day-header-" + (group.meetings.first?.libraryKey ?? "empty")
+                            )
+                            if store.preferences.filter == .all && groupIndex == 0 && firstGroupIsToday {
+                                ForEach(importer.transientItems) { item in
+                                    transientImportRow(item)
                                 }
-                                ForEach(group.meetings, id: \.libraryKey) { meeting in
-                                    row(meeting).tag(meeting.libraryKey).id(meeting.libraryKey)
-                                        .background {
-                                            LibraryRowOpenAnchor {
+                            }
+                            ForEach(group.meetings, id: \.libraryKey) { meeting in
+                                row(meeting).tag(meeting.libraryKey).id(meeting.libraryKey)
+                                    .background {
+                                        LibraryRowOpenAnchor(
+                                            rowKey: meeting.libraryKey,
+                                            open: {
                                                 guard !LibraryMoveCoordinator.shared.busy else { return }
                                                 readTranscript(meeting)
-                                            }.accessibilityHidden(true)
-                                            if store.primarySelectedKey == meeting.libraryKey { LibraryMenuAnchor() }
-                                        }
-                                        .simultaneousGesture(TapGesture().onEnded {
-                                            if NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
-                                                store.selectedKey = meeting.libraryKey
-                                                openSelection(userInitiated: true)
-                                                if floatingSidebarOpen { floatingSidebarOpen = false }
-                                                LibraryKeyboardMenu.focusList()
-                                                DispatchQueue.main.async { LibraryKeyboardMenu.focusList() }
-                                            }
-                                        })
-                                        .contextMenu {
-                                            Button(UXText.text(store.isStarred(meeting) ? "meeting.unstar" : "meeting.star")) { store.toggleStar(meeting) }
-                                                .accessibilityIdentifier("library-star")
-                                                .onAppear { contextMenuMeetingKey = meeting.libraryKey }
-                                                .onDisappear { if contextMenuMeetingKey == meeting.libraryKey { contextMenuMeetingKey = nil } }
-                                            Button(UXText.text("meeting.renameEllipsis")) { store.selectedKey = meeting.libraryKey; rename.show(meeting) }
-                                                .disabled(store.selectedKeys.count > 1 || !rename.canRename(meeting)).accessibilityIdentifier("library-rename")
-                                            Button(UXText.text("meeting.setDateTimeEllipsis")) { store.selectedKey = meeting.libraryKey; dateTime.show(meeting) }
-                                                .disabled(store.selectedKeys.count > 1 || !dateTime.canSetDateTime(meeting)).accessibilityIdentifier("library-set-date-time")
-                                            Button(UXText.text("common.exportEllipsis")) { store.selectedKey = meeting.libraryKey; exporter.show(meeting) }
-                                                .disabled(store.selectedKeys.count > 1 || !MeetingExportCoordinator.canExport(meeting))
-                                                .onAppear {
-                                                    if !store.selectedKeys.contains(meeting.libraryKey) {
-                                                        store.selectedKey = meeting.libraryKey
-                                                    }
+                                            },
+                                            isEnabled: rename.presentation != .speakers,
+                                            menuAccessibilityLabel: UXText.text("meeting.moreActions"),
+                                            menuAccessibilityIdentifier: "meeting-menu-" + meeting.libraryKey,
+                                            buildContextMenu: {
+                                                LibraryKeyboardMenu.buildContextMenu(
+                                                    for: meeting,
+                                                    trash: trash,
+                                                    undo: undoManager,
+                                                    forKeyboard: false
+                                                )
+                                            },
+                                            onContextMenuOpenChanged: { open in
+                                                if open {
+                                                    contextMenuMeetingKey = meeting.libraryKey
+                                                } else if contextMenuMeetingKey == meeting.libraryKey {
+                                                    contextMenuMeetingKey = nil
                                                 }
-                                            if store.selectedKeys.count > 1 {
-                                                Button(UXText.text("export.zip.selected")) { bulkExporter.exportSelected() }
-                                                    .disabled(!bulkExporter.canExportSelected)
-                                                    .accessibilityIdentifier("library-export-selected-zip")
                                             }
-                                            Button(UXText.text("details.menu")) { store.selectedKey = meeting.libraryKey; recordingDetails.show(meeting) }
-                                                .disabled(store.selectedKeys.count > 1)
-                                                .accessibilityIdentifier("library-recording-details")
-                                            if store.selectedKeys.count <= 1 && trash.canTrash(meeting) { Divider(); trashButton(meeting) }
+                                        )
+                                        if store.primarySelectedKey == meeting.libraryKey { LibraryMenuAnchor() }
+                                    }
+                                    .accessibilityAction(named: UXText.text("meeting.moreActions")) {
+                                        LibraryRowOpenAnchor.performShowMenu(forKey: meeting.libraryKey)
+                                    }
+                                    .simultaneousGesture(TapGesture().onEnded {
+                                        if NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
+                                            store.selectedKey = meeting.libraryKey
+                                            openSelection(userInitiated: true)
+                                            if floatingSidebarOpen { floatingSidebarOpen = false }
+                                            LibraryKeyboardMenu.focusList()
+                                            DispatchQueue.main.async { LibraryKeyboardMenu.focusList() }
                                         }
-                                        .listRowSeparator(.hidden)
-                                        .listRowBackground(Color.clear)
-                                        .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
-                                        .accessibilityIdentifier("meeting-" + meeting.libraryKey)
-                                }
-                            } header: {
-                                Text(group.title).font(.system(size: 11.5, weight: .bold)).foregroundStyle(CassiniTheme.ink2).textCase(nil)
-                                    .padding(.leading, 20)
-                                    .padding(.trailing, 10)
-                                    .padding(.top, 10)
-                                    .padding(.bottom, 4)
-                                    .accessibilityIdentifier("library-day-header-" + (group.meetings.first?.libraryKey ?? "empty"))
+                                    })
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                                    .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+                                    .accessibilityIdentifier("meeting-" + meeting.libraryKey)
                             }
                         }
                         if !store.meetings.isEmpty, store.meetings.allSatisfy({ $0.state.origin == .received }) {
                             Text(UXText.text("received.libraryHint")).font(.system(size: 11.5)).foregroundStyle(CassiniTheme.ink2)
                                 .padding(.horizontal, 10)
                                 .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                                .selectionDisabled(true)
                         }
                     }
                     .listStyle(.plain)
                     .contentMargins(.horizontal, 0, for: .scrollContent)
                     .scrollContentBackground(.hidden)
-                    .modifier(SidebarBottomScrollEdgeModifier())
-                    .accessibilityLabel(UXText.text("library.listPane.a11y"))
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        LibraryDropHintFooter(entered: dropState.showsWindowOutline)
+                    .onScrollGeometryChange(for: Bool.self) { geometry in
+                        geometry.contentSize.height - geometry.visibleRect.maxY > 1
+                    } action: { _, hasBelow in
+                        if sidebarHasContentBelow != hasBelow {
+                            sidebarHasContentBelow = hasBelow
+                        }
                     }
+                    .modifier(SidebarBottomScrollEdgeModifier(hasContentBelow: sidebarHasContentBelow))
+                    .accessibilityLabel(UXText.text("library.listPane.a11y"))
+                    .modifier(SidebarDropFooterModifier {
+                        LibraryDropHintFooter(entered: dropState.showsWindowOutline)
+                    })
                     .opacity(dropState.dimsListContent ? 0.30 : 1.0)
 
                     LibraryDropListOverlay(state: dropState)
