@@ -2526,21 +2526,32 @@ final class LibraryBoards: XCTestCase {
         let starBadge = window.descendants(matching: .any)["library-starred-" + unselectedKey].firstMatch
         let wasStarred = starBadge.exists
 
-        guard let pid = NSRunningApplication.runningApplications(withBundleIdentifier: "io.codemyriad.cassini").first?.processIdentifier else {
-            XCTFail("Could not locate running Cassini process")
-            return
-        }
-        let axApp = AXUIElementCreateApplication(pid)
-        var windowsRef: CFTypeRef?
-        let axRoots: [AXUIElement]
-        if AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef) == .success,
-           let windows = windowsRef as? [AXUIElement], !windows.isEmpty {
-            axRoots = windows
-        } else {
-            axRoots = [axApp]
-        }
-        guard let axMenuTarget = axRoots.lazy.compactMap({ self.findAXElement(in: $0, identifier: unselectedMenuId) }).first else {
-            XCTFail("Could not locate AXUIElement for \(unselectedMenuId)")
+        var locatedTarget: AXUIElement?
+        _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            let apps = NSRunningApplication.runningApplications(withBundleIdentifier: "io.codemyriad.cassini")
+                .filter { !$0.isTerminated }
+                .sorted { $0.isActive && !$1.isActive }
+            for running in apps {
+                let axApp = AXUIElementCreateApplication(running.processIdentifier)
+                var windowsRef: CFTypeRef?
+                let axRoots: [AXUIElement]
+                if AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+                   let windows = windowsRef as? [AXUIElement], !windows.isEmpty {
+                    axRoots = windows
+                } else {
+                    axRoots = [axApp]
+                }
+                if let found = axRoots.lazy.compactMap({ self.findAXElement(in: $0, identifier: unselectedMenuId) }).first {
+                    locatedTarget = found
+                    return true
+                }
+            }
+            return false
+        }, object: nil)], timeout: 5)
+        guard let axMenuTarget = locatedTarget else {
+            let pids = NSRunningApplication.runningApplications(withBundleIdentifier: "io.codemyriad.cassini")
+                .map { "\($0.processIdentifier)(active=\($0.isActive),term=\($0.isTerminated))" }
+            XCTFail("Could not locate AXUIElement for \(unselectedMenuId) (trusted=\(AXIsProcessTrusted()), pids=\(pids))")
             return
         }
 
@@ -2571,12 +2582,15 @@ final class LibraryBoards: XCTestCase {
            let id = idRef as? String, id == identifier {
             return root
         }
-        var childrenRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(root, kAXChildrenAttribute as CFString, &childrenRef) == .success,
-              let children = childrenRef as? [AXUIElement] else {
-            return nil
+        var next: [AXUIElement] = []
+        for attr in [kAXChildrenAttribute as CFString, kAXRowsAttribute as CFString] {
+            var ref: CFTypeRef?
+            if AXUIElementCopyAttributeValue(root, attr, &ref) == .success,
+               let items = ref as? [AXUIElement] {
+                next.append(contentsOf: items)
+            }
         }
-        for child in children {
+        for child in next {
             if let found = findAXElement(in: child, identifier: identifier, depth: depth + 1) {
                 return found
             }

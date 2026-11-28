@@ -573,7 +573,7 @@ struct LibraryView: View {
                     .foregroundStyle(enabled ? CassiniTheme.onRecord : CassiniTheme.ink3)
             }
             .padding(.horizontal, compact ? 10 : 12)
-            .frame(height: height)
+            .frame(minWidth: 80, minHeight: height, maxHeight: height)
             .background(enabled ? CassiniTheme.record : CassiniTheme.chipFill, in: Capsule())
             .contentShape(Capsule())
         }
