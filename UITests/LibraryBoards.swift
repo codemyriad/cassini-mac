@@ -2539,7 +2539,7 @@ final class LibraryBoards: XCTestCase {
         } else {
             axRoots = [axApp]
         }
-        guard let axMenuTarget = axRoots.lazy.compactMap({ findAXElement(in: $0, identifier: unselectedMenuId) }).first else {
+        guard let axMenuTarget = axRoots.lazy.compactMap({ self.findAXElement(in: $0, identifier: unselectedMenuId) }).first else {
             XCTFail("Could not locate AXUIElement for \(unselectedMenuId)")
             return
         }
