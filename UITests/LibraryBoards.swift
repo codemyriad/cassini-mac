@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
+import ApplicationServices
 import XCTest
 
 final class LibraryBoards: XCTestCase {
@@ -2448,6 +2449,141 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(editor.waitForExistence(timeout: 5), "Clicking window title should open inline title editor: " + app.debugDescription)
         return editor
     }
+    /// Regression test (D-1198 review): right-click and Control-click over a background
+    /// sidebar card while the speaker editor is open must not open a context menu or
+    /// discard unsaved speaker drafts.
+    @MainActor func testContextMenuBlockedDuringSpeakerEditing() throws {
+        let app = try launch("library", fixture: "main", extra: ["--fixture-library-rename", "-CassiniRenameID", UUID().uuidString])
+        defer { if app.state != .notRunning { app.terminate() } }
+        let window = app.windows["cassini-library-window"]
+        let budget = window.outlines.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", "Budget review", "Budget review")).firstMatch
+        XCTAssertTrue(budget.waitForExistence(timeout: 20), app.debugDescription)
+        let cardFrame = budget.frame
+        let winFrame = window.frame
+        let cardOffset = CGVector(
+            dx: (cardFrame.midX - winFrame.minX) / winFrame.width,
+            dy: (cardFrame.midY - winFrame.minY) / winFrame.height
+        )
+        budget.click()
+
+        let read = window.buttons["meeting-find-button"].firstMatch
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in read.exists && read.isEnabled }, object: nil)], timeout: 10),
+            .completed
+        )
+        let names = window.buttons["speaker-name-marta"]
+        XCTAssertTrue(names.waitForExistence(timeout: 10), app.debugDescription)
+        names.click()
+
+        let field = app.textFields["speaker-name-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10), app.debugDescription)
+        field.click()
+        app.typeKey("a", modifierFlags: .command)
+        app.typeText("Unsaved draft")
+        XCTAssertEqual(field.value as? String, "Unsaved draft")
+
+        let bgCoord = window.coordinate(withNormalizedOffset: cardOffset)
+        bgCoord.rightClick()
+        XCTAssertFalse(window.menuItems["move-to-trash"].exists, "Right-click over sidebar card must not open context menu while speaker editor is open")
+        XCTAssertFalse(window.menuItems["library-rename"].exists, "Right-click over sidebar card must not open context menu while speaker editor is open")
+        XCTAssertTrue(field.exists, "Speaker editor must remain open after right-click on covered sidebar")
+        XCTAssertEqual(field.value as? String, "Unsaved draft")
+
+        XCUIElement.perform(withKeyModifiers: .control) {
+            bgCoord.click()
+        }
+        XCTAssertFalse(window.menuItems["move-to-trash"].exists, "Control-click over sidebar card must not open context menu while speaker editor is open")
+        XCTAssertFalse(window.menuItems["library-rename"].exists, "Control-click over sidebar card must not open context menu while speaker editor is open")
+        XCTAssertTrue(field.exists, "Speaker editor must remain open after Control-click on covered sidebar")
+        XCTAssertEqual(field.value as? String, "Unsaved draft")
+    }
+
+    /// Regression test (D-1198 review): VoiceOver's accessibility Show Menu action (`AXShowMenu`)
+    /// must remain available on each meeting row and activate the context menu for an unselected row.
+    @MainActor func testVoiceOverShowMenuOnUnselectedRow() throws {
+        let app = try launch("library", fixture: "main", extra: ["--fixture-library-rename", "-CassiniRenameID", UUID().uuidString])
+        defer { if app.state != .notRunning { app.terminate() } }
+        let window = app.windows["cassini-library-window"]
+        let menuTargets = window.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "meeting-menu-")
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in menuTargets.count >= 2 }, object: nil)], timeout: 20),
+            .completed,
+            app.debugDescription
+        )
+
+        // Select the first row so the second row is guaranteed unselected.
+        let firstRow = window.outlines.firstMatch.outlineRows.containing(
+            NSPredicate(format: "identifier BEGINSWITH %@", "meeting-menu-")
+        ).element(boundBy: 0)
+        firstRow.click()
+
+        let unselectedTarget = menuTargets.element(boundBy: 1)
+        let unselectedMenuId = unselectedTarget.identifier
+        XCTAssertTrue(unselectedMenuId.hasPrefix("meeting-menu-"), "Unexpected identifier: \(unselectedMenuId)")
+        let unselectedKey = String(unselectedMenuId.dropFirst("meeting-menu-".count))
+        let starBadge = window.descendants(matching: .any)["library-starred-" + unselectedKey].firstMatch
+        let wasStarred = starBadge.exists
+
+        guard let pid = NSRunningApplication.runningApplications(withBundleIdentifier: "io.codemyriad.cassini").first?.processIdentifier else {
+            XCTFail("Could not locate running Cassini process")
+            return
+        }
+        let axApp = AXUIElementCreateApplication(pid)
+        var windowsRef: CFTypeRef?
+        let axRoots: [AXUIElement]
+        if AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+           let windows = windowsRef as? [AXUIElement], !windows.isEmpty {
+            axRoots = windows
+        } else {
+            axRoots = [axApp]
+        }
+        guard let axMenuTarget = axRoots.lazy.compactMap({ findAXElement(in: $0, identifier: unselectedMenuId) }).first else {
+            XCTFail("Could not locate AXUIElement for \(unselectedMenuId)")
+            return
+        }
+
+        var actionsRef: CFArray?
+        let copyActionsResult = AXUIElementCopyActionNames(axMenuTarget, &actionsRef)
+        XCTAssertEqual(copyActionsResult, AXError.success)
+        let actions = (actionsRef as? [String]) ?? []
+        XCTAssertTrue(actions.contains(kAXShowMenuAction as String), "Expected AXShowMenu on \(unselectedMenuId), got \(actions)")
+
+        let performResult = AXUIElementPerformAction(axMenuTarget, kAXShowMenuAction as CFString)
+        XCTAssertEqual(performResult, AXError.success, "AXShowMenu action failed on unselected row \(unselectedMenuId)")
+
+        let starItem = window.menuItems["library-star"]
+        XCTAssertTrue(starItem.waitForExistence(timeout: 5), "Context menu did not open via AXShowMenu: " + app.debugDescription)
+        starItem.click()
+
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in starBadge.exists != wasStarred }, object: nil)], timeout: 5),
+            .completed,
+            "AXShowMenu action must target the unselected row (\(unselectedKey)), not the selected row"
+        )
+    }
+
+    private func findAXElement(in root: AXUIElement, identifier: String, depth: Int = 0) -> AXUIElement? {
+        guard depth < 24 else { return nil }
+        var idRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(root, kAXIdentifierAttribute as CFString, &idRef) == .success,
+           let id = idRef as? String, id == identifier {
+            return root
+        }
+        var childrenRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(root, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+              let children = childrenRef as? [AXUIElement] else {
+            return nil
+        }
+        for child in children {
+            if let found = findAXElement(in: child, identifier: identifier, depth: depth + 1) {
+                return found
+            }
+        }
+        return nil
+    }
+
     private func fixtureDirectory() throws -> URL {
         var ancestor = Bundle(for: Self.self).bundleURL
         for _ in 0..<8 {

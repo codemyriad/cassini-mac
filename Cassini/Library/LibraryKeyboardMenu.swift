@@ -115,7 +115,12 @@ import CassiniLibrary
     }
 
     static func show(_ meeting: LibraryMeeting?, trash: MeetingTrashCoordinator, undo: UndoManager?) -> Bool {
-        guard let view = anchor, view.window === NSApp.keyWindow else { return false }
+        guard MeetingRenameCoordinator.shared.presentation != .speakers,
+              let view = anchor,
+              let window = view.window,
+              window === NSApp.keyWindow,
+              window.attachedSheet == nil,
+              NSApp.modalWindow == nil else { return false }
         let menu: NSMenu
         if let meeting {
             menu = buildContextMenu(for: meeting, trash: trash, undo: undo, forKeyboard: true)
@@ -183,22 +188,120 @@ struct LibraryMenuAnchor: NSViewRepresentable {
     }
 }
 
-/// Observe Cassini's own double-click and right-click inside the visible card row,
-/// and remove NSTableView's extra horizontal row inset and system highlights (D-1198 items 3, 12).
+/// Observe Cassini's own double-click, right-click / Control-click, and VoiceOver
+/// Show Menu (`AXShowMenu`) inside the visible card row, and remove NSTableView's
+/// extra horizontal row inset and system highlights (D-1198 items 3, 12).
 struct LibraryRowOpenAnchor: NSViewRepresentable {
+    let rowKey: String
     let open: () -> Void
+    var isEnabled: Bool = true
+    var menuAccessibilityLabel: String = ""
+    var menuAccessibilityIdentifier: String = ""
     var buildContextMenu: (() -> NSMenu)? = nil
     var onContextMenuOpenChanged: ((Bool) -> Void)? = nil
+
+    @MainActor private final class WeakView {
+        weak var value: View?
+        init(_ value: View) { self.value = value }
+    }
+    @MainActor private static var anchorsByKey: [String: WeakView] = [:]
+
+    @MainActor @discardableResult
+    static func performShowMenu(forKey rowKey: String) -> Bool {
+        guard let view = anchorsByKey[rowKey]?.value else { return false }
+        return view.accessibilityPerformShowMenu()
+    }
+
     final class View: NSView {
         private final class Monitor: @unchecked Sendable {
             let value: Any
             init(_ value: Any) { self.value = value }
         }
+        var rowKey: String?
         var open: (() -> Void)?
+        var isInteractionEnabled = true
+        var menuAccessibilityLabel = ""
         var buildContextMenu: (() -> NSMenu)?
         var onContextMenuOpenChanged: ((Bool) -> Void)?
         private var monitor: Monitor?
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func isAccessibilityElement() -> Bool {
+            buildContextMenu != nil
+                && isInteractionEnabled
+                && MeetingRenameCoordinator.shared.presentation != .speakers
+        }
+        override func accessibilityRole() -> NSAccessibility.Role? { .group }
+        override func accessibilityLabel() -> String? {
+            menuAccessibilityLabel.isEmpty ? nil : menuAccessibilityLabel
+        }
+        override func accessibilityPerformShowMenu() -> Bool {
+            guard canAcceptInteraction(atWindowPoint: nil), buildContextMenu != nil else { return false }
+            let point = NSPoint(x: bounds.midX, y: bounds.midY)
+            return presentContextMenu(at: point, windowPoint: nil)
+        }
+        func enclosingTableRowView() -> NSTableRowView? {
+            var node = superview
+            while let view = node {
+                if let row = view as? NSTableRowView { return row }
+                node = view.superview
+            }
+            return nil
+        }
+        func isHitTarget(atWindowPoint locationInWindow: NSPoint) -> Bool {
+            guard let window, let contentView = window.contentView else { return false }
+            let contentPoint = contentView.superview?.convert(locationInWindow, from: nil) ?? locationInWindow
+            guard let hitView = contentView.hitTest(contentPoint) else { return false }
+            if let rowView = enclosingTableRowView() {
+                return hitView === rowView || hitView.isDescendant(of: rowView)
+            }
+            guard let container = superview else { return hitView === self }
+            return hitView === container || hitView.isDescendant(of: container)
+        }
+        func canAcceptInteraction(atWindowPoint locationInWindow: NSPoint? = nil) -> Bool {
+            guard isInteractionEnabled,
+                  MeetingRenameCoordinator.shared.presentation != .speakers,
+                  let window,
+                  window.isVisible,
+                  window.attachedSheet == nil,
+                  NSApp.modalWindow == nil,
+                  !isHiddenOrHasHiddenAncestor else {
+                return false
+            }
+            if let locationInWindow {
+                let point = convert(locationInWindow, from: nil)
+                guard visibleRect.contains(point),
+                      isHitTarget(atWindowPoint: locationInWindow) else {
+                    return false
+                }
+            }
+            return true
+        }
+        @discardableResult
+        func presentContextMenu(at point: NSPoint, windowPoint: NSPoint?) -> Bool {
+            guard canAcceptInteraction(atWindowPoint: windowPoint),
+                  buildContextMenu != nil else {
+                return false
+            }
+            onContextMenuOpenChanged?(true)
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      self.canAcceptInteraction(atWindowPoint: windowPoint),
+                      let currentBuildMenu = self.buildContextMenu else {
+                    self?.onContextMenuOpenChanged?(false)
+                    return
+                }
+                let menu = currentBuildMenu()
+                let delegate = LibraryContextMenuDelegate { [weak self] in
+                    self?.onContextMenuOpenChanged?(false)
+                }
+                menu.delegate = delegate
+                withExtendedLifetime(delegate) {
+                    menu.popUp(positioning: nil, at: point, in: self)
+                }
+                delegate.finish()
+            }
+            return true
+        }
         func suppressSystemRowHighlight() {
             var node = superview
             while let view = node {
@@ -241,38 +344,26 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
             guard window != nil else { return }
             monitor = Monitor(NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
                 MainActor.assumeIsolated {
-                    guard let self, event.window === self.window,
-                          self.window?.isVisible == true, !self.isHiddenOrHasHiddenAncestor else { return event }
+                    guard let self,
+                          event.window === self.window,
+                          self.canAcceptInteraction(atWindowPoint: event.locationInWindow) else {
+                        return event
+                    }
                     let point = self.convert(event.locationInWindow, from: nil)
-                    guard self.visibleRect.contains(point) else { return event }
 
                     let isContextClick = event.type == .rightMouseDown
                         || (event.type == .leftMouseDown && event.modifierFlags.contains(.control))
-                    if isContextClick, let buildMenu = self.buildContextMenu {
-                        self.onContextMenuOpenChanged?(true)
-                        DispatchQueue.main.async { [weak self] in
-                            guard let self, self.window?.isVisible == true else {
-                                self?.onContextMenuOpenChanged?(false)
-                                return
-                            }
-                            let menu = buildMenu()
-                            let delegate = LibraryContextMenuDelegate { [weak self] in
-                                self?.onContextMenuOpenChanged?(false)
-                            }
-                            menu.delegate = delegate
-                            withExtendedLifetime(delegate) {
-                                menu.popUp(positioning: nil, at: point, in: self)
-                            }
-                            delegate.finish()
-                        }
+                    if isContextClick, self.buildContextMenu != nil {
+                        self.presentContextMenu(at: point, windowPoint: event.locationInWindow)
                         return nil
                     }
 
                     guard event.type == .leftMouseDown, event.clickCount == 2 else { return event }
+                    let windowPoint = event.locationInWindow
                     // Default mode runs after native mouse tracking returns.
                     RunLoop.main.perform(inModes: [.default]) { [weak self] in
                         MainActor.assumeIsolated {
-                            guard let self, self.window?.isVisible == true else { return }
+                            guard let self, self.canAcceptInteraction(atWindowPoint: windowPoint) else { return }
                             self.open?()
                         }
                     }
@@ -289,7 +380,16 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
     }
     func makeNSView(context: Context) -> View { View() }
     func updateNSView(_ view: View, context: Context) {
+        if let oldKey = view.rowKey, oldKey != rowKey,
+           Self.anchorsByKey[oldKey]?.value === view {
+            Self.anchorsByKey.removeValue(forKey: oldKey)
+        }
+        view.rowKey = rowKey
+        Self.anchorsByKey[rowKey] = WeakView(view)
         view.open = open
+        view.isInteractionEnabled = isEnabled && context.environment.isEnabled
+        view.menuAccessibilityLabel = menuAccessibilityLabel
+        view.setAccessibilityIdentifier(menuAccessibilityIdentifier)
         view.buildContextMenu = buildContextMenu
         view.onContextMenuOpenChanged = onContextMenuOpenChanged
         view.suppressSystemRowHighlight()
@@ -298,7 +398,11 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
         CGSize(width: proposal.width ?? 0, height: proposal.height ?? 0)
     }
     static func dismantleNSView(_ view: View, coordinator: ()) {
+        if let key = view.rowKey, Self.anchorsByKey[key]?.value === view {
+            Self.anchorsByKey.removeValue(forKey: key)
+        }
         view.stopMonitoring()
+        view.rowKey = nil
         view.open = nil
         view.buildContextMenu = nil
         view.onContextMenuOpenChanged = nil

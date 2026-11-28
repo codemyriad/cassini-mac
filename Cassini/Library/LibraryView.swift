@@ -458,6 +458,8 @@ struct LibraryView: View {
                 .onTapGesture { floatingSidebarOpen = false }
                 .accessibilityHidden(true)
         }
+        .disabled(rename.presentation == .speakers)
+        .accessibilityHidden(rename.presentation == .speakers)
     }
 
     private var showsLiveToolbarPill: Bool {
@@ -951,10 +953,14 @@ struct LibraryView: View {
                                 row(meeting).tag(meeting.libraryKey).id(meeting.libraryKey)
                                     .background {
                                         LibraryRowOpenAnchor(
+                                            rowKey: meeting.libraryKey,
                                             open: {
                                                 guard !LibraryMoveCoordinator.shared.busy else { return }
                                                 readTranscript(meeting)
                                             },
+                                            isEnabled: rename.presentation != .speakers,
+                                            menuAccessibilityLabel: UXText.text("meeting.moreActions"),
+                                            menuAccessibilityIdentifier: "meeting-menu-" + meeting.libraryKey,
                                             buildContextMenu: {
                                                 LibraryKeyboardMenu.buildContextMenu(
                                                     for: meeting,
@@ -970,8 +976,11 @@ struct LibraryView: View {
                                                     contextMenuMeetingKey = nil
                                                 }
                                             }
-                                        ).accessibilityHidden(true)
+                                        )
                                         if store.primarySelectedKey == meeting.libraryKey { LibraryMenuAnchor() }
+                                    }
+                                    .accessibilityAction(named: UXText.text("meeting.moreActions")) {
+                                        LibraryRowOpenAnchor.performShowMenu(forKey: meeting.libraryKey)
                                     }
                                     .simultaneousGesture(TapGesture().onEnded {
                                         if NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
