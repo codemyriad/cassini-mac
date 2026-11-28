@@ -3,8 +3,17 @@
 # Keep Xcode selection job-local: concurrent self-hosted runners share xcode-select.
 set -euo pipefail
 applications="${CI_XCODE_APPLICATIONS:-/Applications}"
+prefer="${CI_XCODE_PREFER:-16.4}"
+case "$prefer" in
+  16.4) bundles=(Xcode_16.4.app Xcode-27.0.0.app) ;;
+  27) bundles=(Xcode-27.0.0.app Xcode_27.0.app Xcode_27.app Xcode_26.6.app Xcode.app) ;;
+  *)
+    echo "Unsupported CI_XCODE_PREFER value: $prefer" >&2
+    exit 1
+    ;;
+esac
 selected=''
-for bundle in Xcode_16.4.app Xcode-27.0.0.app; do
+for bundle in "${bundles[@]}"; do
   if [[ -d "$applications/$bundle/Contents/Developer" ]]; then
     selected="$applications/$bundle/Contents/Developer"
     break

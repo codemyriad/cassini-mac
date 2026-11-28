@@ -10,7 +10,7 @@ class Selection(unittest.TestCase):
   self.root=Path(self.tmp.name);self.apps=self.root/'Applications with spaces';self.apps.mkdir()
   self.bin=self.root/'bin';self.bin.mkdir()
   tool=self.bin/'xcodebuild'
-  tool.write_text('#!/bin/bash\nset -eu\n[[ "$1" = -version ]]\ncase "$DEVELOPER_DIR" in\n*Xcode_16.4.app*) printf "Xcode 16.4\\nBuild version 16F6\\n";;\n*Xcode-27.0.0.app*) printf "Xcode 27.0\\nBuild version 27A266a\\n";;\n*) exit 73;;\nesac\n');tool.chmod(0o755)
+  tool.write_text('#!/bin/bash\nset -eu\n[[ "$1" = -version ]]\ncase "$DEVELOPER_DIR" in\n*Xcode_16.4.app*) printf "Xcode 16.4\\nBuild version 16F6\\n";;\n*Xcode-27.0.0.app*) printf "Xcode 27.0\\nBuild version 27A266a\\n";;\n*Xcode_26.6.app*) printf "Xcode 26.6\\nBuild version 17F113\\n";;\n*) exit 73;;\nesac\n');tool.chmod(0o755)
   sdk=self.bin/'xcrun'
   sdk.write_text('#!/bin/bash\nset -eu\n[[ "$*" = "--sdk macosx --show-sdk-path" ]]\nprintf "%s/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk\\n" "$DEVELOPER_DIR"\n');sdk.chmod(0o755)
   self.env=dict(os.environ,CI_XCODE_APPLICATIONS=str(self.apps),GITHUB_WORKSPACE=str(self.root/'checkout one'),GITHUB_ENV=str(self.root/'env'),GITHUB_OUTPUT=str(self.root/'outputs'),PATH=str(self.bin)+':/usr/bin:/bin')
@@ -54,6 +54,23 @@ class Selection(unittest.TestCase):
   self.assertFalse((self.root/'outputs').exists())
  def test_missing_or_incomplete_bundle_fails_without_publishing_selection(self):
   (self.apps/'Xcode_16.4.app').mkdir()
+  result=self.run_selector();self.assertNotEqual(result.returncode,0)
+  self.assertFalse((self.root/'env').exists());self.assertFalse((self.root/'outputs').exists())
+ def test_prefer_27_picks_nightly_xcode_even_when_164_exists(self):
+  self.install('Xcode_16.4.app');self.install('Xcode-27.0.0.app')
+  self.env['CI_XCODE_PREFER']='27'
+  result=self.run_selector();self.assertEqual(result.returncode,0,result.stderr)
+  selected=str(self.apps/'Xcode-27.0.0.app/Contents/Developer')
+  self.assertEqual((self.root/'env').read_text(),'DEVELOPER_DIR='+selected+'\nSDKROOT='+selected+'/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk\n')
+  self.assertIn('Xcode 27.0',result.stdout)
+ def test_prefer_27_falls_back_to_xcode_26_on_hosted_macos26(self):
+  self.install('Xcode_26.6.app')
+  self.env['CI_XCODE_PREFER']='27'
+  result=self.run_selector();self.assertEqual(result.returncode,0,result.stderr)
+  self.assertIn('Xcode_26.6.app/Contents/Developer',(self.root/'env').read_text())
+ def test_unsupported_prefer_value_fails_without_publishing_selection(self):
+  self.install('Xcode_16.4.app')
+  self.env['CI_XCODE_PREFER']='99'
   result=self.run_selector();self.assertNotEqual(result.returncode,0)
   self.assertFalse((self.root/'env').exists());self.assertFalse((self.root/'outputs').exists())
 if __name__=='__main__': unittest.main()
