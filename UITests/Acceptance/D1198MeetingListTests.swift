@@ -124,9 +124,21 @@ final class D1198MeetingListTests: AcceptanceTestCase {
             }
 
             window.typeKey(.escape, modifierFlags: [])
-            let escShot = attachWindowScreenshot(window, name: "b19-item12-after-esc-\(scheme)")
-            let escImg = try PixelImage(screenshot: escShot, windowFrame: window.frame)
-            if ringBands.contains(where: { escImg.containsAccentBlue(inPointRect: $0) }) {
+            var escShot: XCUIScreenshot?
+            let ringCleared = waitFor({
+                guard !window.menuItems["library-star"].exists else { return false }
+                let shot = window.screenshot()
+                escShot = shot
+                guard let img = try? PixelImage(screenshot: shot, windowFrame: window.frame) else { return false }
+                return !ringBands.contains(where: { img.containsAccentBlue(inPointRect: $0) })
+            }, timeout: 5)
+            if let escShot {
+                let attachment = XCTAttachment(screenshot: escShot)
+                attachment.name = "b19-item12-after-esc-\(scheme)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+            if !ringCleared {
                 failures.append("Context menu ring did not clear after Esc (\(scheme))")
             }
         }
