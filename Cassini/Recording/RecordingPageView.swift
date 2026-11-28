@@ -11,6 +11,7 @@ struct RecordingPageView: View {
     let format: LibraryFormat
     @State private var model: RecordingPageModel
     @State private var recorder = RecordingController.shared
+    @State private var captures = CaptureCollection.shared
     @State private var editingTitle = false
     init(meeting: LibraryMeeting, format: LibraryFormat) {
         self.meeting = meeting; self.format = format
@@ -37,8 +38,6 @@ struct RecordingPageView: View {
                     )
                     Text(format.previewSubtitle(meeting.meetingTime,durationMs:nil))
                         .font(.system(size:13)).foregroundStyle(CassiniTheme.ink2)
-                        .opacity(editingTitle ? 0 : 1)
-                        .accessibilityHidden(editingTitle)
                         .accessibilityIdentifier("recording-date")
                 }
                 TimelineView(.periodic(from:.now,by:1)) { _ in
@@ -59,6 +58,9 @@ struct RecordingPageView: View {
                         }.buttonStyle(.plain).disabled(model.saving || meeting.state.lifecycle == .saving || (!model.canStop && !model.frozen))
                             .allowsHitTesting(!model.frozen).accessibilityIdentifier("recording-page-stop")
                     }
+                }
+                if captures.hasFailure {
+                    CaptureFailureBanner()
                 }
                 if let line = model.owned?.diskMinutes.map({ UXText.text("errors.diskLow.line",["n":String($0)]) }) ?? (model.native ? recorder.diskLine : nil) { Text(line).foregroundStyle(CassiniTheme.warningNotice).fixedSize(horizontal:false,vertical:true) }
                 if let owned = model.owned, owned.presentation.failedSides.contains(.me) { CapturePermissionNotice(side:.me,refusal:owned.presentation.refusedSides[.me]) }
@@ -100,9 +102,13 @@ struct RecordingPageView: View {
                     }.font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("recording-source-notice")
                 }
 
-            }.frame(maxWidth:640).padding(.top,28).padding(.horizontal,24).padding(.bottom,40).frame(maxWidth:.infinity)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 44)
+            .padding(.top, 12)
+            .padding(.bottom, 40)
         }.cassiniTopScrollEdge()
-            .background(CassiniTheme.paneGround)
+            .background(CassiniTheme.surface)
             .accessibilityElement(children:.contain).accessibilityIdentifier("recording-page")
             .sheet(isPresented:$changingCapture) { WhatIsRecordedView(model:model) }
             .sheet(isPresented:$explainingFallback) {

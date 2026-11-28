@@ -7,6 +7,7 @@ struct LibraryFirstRunView: View {
     let screenshot: Bool
     let dropState: LibraryDropState
     let onRecord: () -> Void
+    @State private var captures = CaptureCollection.shared
 
     var body: some View {
         GeometryReader { geometry in
@@ -27,6 +28,9 @@ struct LibraryFirstRunView: View {
                         .frame(maxWidth: .infinity, alignment: .leading).accessibilityAddTraits(.isHeader)
                     if let line = RecordingOverview.libraryDiskLine {
                         Text(line).foregroundStyle(CassiniTheme.warningNotice)
+                    }
+                    if captures.hasFailure {
+                        CaptureFailureBanner()
                     }
                     HStack(spacing: 14) {
                         FirstRunRecordButton(action: onRecord).fixedSize()

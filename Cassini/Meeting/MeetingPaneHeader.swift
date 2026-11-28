@@ -56,13 +56,15 @@ struct MeetingPaneHeader: View {
                         } label: {
                             Text(subtitleParts.date)
                                 .foregroundStyle(CassiniTheme.ink2)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(hoveringDate ? CassiniTheme.ink.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+                                .background {
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(hoveringDate ? CassiniTheme.ink.opacity(0.08) : Color.clear)
+                                        .padding(.horizontal, -4)
+                                        .padding(.vertical, -1)
+                                }
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .padding(.horizontal, -4)
                         .onHover { hoveringDate = $0 }
                         .help(UXText.text("meeting.setDateTimeEllipsis"))
                         .accessibilityLabel(subtitleParts.date)
@@ -71,6 +73,7 @@ struct MeetingPaneHeader: View {
                     } else {
                         Text(subtitleParts.date)
                             .foregroundStyle(CassiniTheme.ink2)
+                            .accessibilityIdentifier("meeting-inline-date")
                     }
                     if !subtitleParts.suffix.isEmpty {
                         Text(subtitleParts.suffix)
@@ -79,8 +82,7 @@ struct MeetingPaneHeader: View {
                 }
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
-                .opacity(editingTitle ? 0 : 1)
-                .accessibilityHidden(editingTitle)
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("meeting-inline-subtitle")
             }
             if let badge = LibraryBadgeCatalog.presentation(for: meeting),
@@ -97,12 +99,12 @@ struct MeetingPaneHeader: View {
                 .padding(.top, 2)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.bottom, 14)
         .overlay(alignment: .bottom) {
-            Rectangle().fill(CassiniTheme.cardStroke).frame(height: 0.5)
+            Rectangle().fill(CassiniTheme.cardStroke).frame(height: 1)
         }
         .padding(.bottom, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .foregroundStyle(CassiniTheme.ink)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("meeting-heading")
@@ -164,9 +166,9 @@ struct MeetingPaneHeader: View {
 }
 
 /// Shared click-to-rename title control used in the meeting toolbar, inline meeting header,
-/// and recording screen (D-1172): fits the title plus 4 pt on each side, uses macOS system
-/// blue focus ring and text selection, hides the date line while editing, saves on Return
-/// or any click outside the field, and restores the old name on Esc.
+/// and recording screen (D-1172, D-1200, L-110): fits the title plus 4 pt on each side, uses
+/// macOS system blue focus ring and text selection, keeps the date line visible while editing,
+/// saves on Return or any click outside the field, and restores the old name on Esc.
 struct InlineEditableTitle: View {
     let title: String
     let fontSize: CGFloat
@@ -192,39 +194,39 @@ struct InlineEditableTitle: View {
     var body: some View {
         Group {
             if editing && canRename {
-                ZStack(alignment: .leading) {
-                    Text(draft.isEmpty ? " " : draft)
-                        .font(.system(size: fontSize, weight: weight))
-                        .lineLimit(singleLine ? 1 : nil)
-                        .fixedSize(horizontal: singleLine, vertical: !singleLine)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .opacity(0)
-                        .accessibilityHidden(true)
-                    InlineTitleTextField(
-                        text: $draft,
-                        font: NSFont.systemFont(ofSize: fontSize, weight: nsWeight),
-                        singleLine: singleLine,
-                        identifier: editorIdentifier,
-                        onCommit: { value in
-                            editing = false
-                            onCommit(value)
-                        },
-                        onCancel: {
-                            editing = false
-                        }
-                    )
+                Text(draft.isEmpty ? " " : draft)
+                    .font(.system(size: fontSize, weight: weight))
+                    .lineLimit(singleLine ? 1 : nil)
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
-                }
-                .background(CassiniTheme.surface, in: RoundedRectangle(cornerRadius: 4))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color(nsColor: .controlAccentColor), lineWidth: 2)
-                        .allowsHitTesting(false)
-                )
-                .frame(maxWidth: maxWidth, alignment: .leading)
-                .padding(.horizontal, -4)
+                    .opacity(0)
+                    .accessibilityHidden(true)
+                    .overlay {
+                        InlineTitleTextField(
+                            text: $draft,
+                            font: NSFont.systemFont(ofSize: fontSize, weight: nsWeight),
+                            singleLine: singleLine,
+                            identifier: editorIdentifier,
+                            onCommit: { value in
+                                editing = false
+                                onCommit(value)
+                            },
+                            onCancel: {
+                                editing = false
+                            }
+                        )
+                        .padding(.horizontal, 2)
+                        .padding(.vertical, 1)
+                    }
+                    .background(CassiniTheme.surface, in: RoundedRectangle(cornerRadius: 4))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Color(nsColor: .controlAccentColor), lineWidth: 2)
+                            .allowsHitTesting(false)
+                    )
+                    .frame(maxWidth: maxWidth, alignment: .leading)
+                    .padding(.horizontal, -4)
             } else if canRename {
                 Text(title)
                     .font(.system(size: fontSize, weight: weight))

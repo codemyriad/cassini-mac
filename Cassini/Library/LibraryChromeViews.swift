@@ -357,7 +357,7 @@ struct MeetingWindowTitleView: View {
     @State private var editing = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: 2) {
             InlineEditableTitle(
                 title: title,
                 fontSize: 13,
@@ -370,13 +370,11 @@ struct MeetingWindowTitleView: View {
                 editing: $editing,
                 onCommit: onCommit
             )
-            if !editing {
-                Text(subtitle)
-                    .font(.system(size: 11))
-                    .foregroundStyle(CassiniTheme.secondaryInk)
-                    .lineLimit(1)
-                    .accessibilityIdentifier("meeting-window-subtitle")
-            }
+            Text(subtitle)
+                .font(.system(size: 11))
+                .foregroundStyle(CassiniTheme.secondaryInk)
+                .lineLimit(1)
+                .accessibilityIdentifier("meeting-window-subtitle")
         }
         .frame(maxWidth: maxWidth, alignment: .leading)
         .onChange(of: title) { _, _ in editing = false }

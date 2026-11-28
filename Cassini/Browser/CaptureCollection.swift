@@ -297,6 +297,7 @@ private final class CaptureFiles: @unchecked Sendable {
     var needsUpdate: Bool { !connected && peers.contains { $0.reconciled && !$0.supportsMultiStream } }
     var hasCalls: Bool { peers.contains { $0.reconciled && $0.independent && $0.supportsMultiStream && $0.browserRecordableMeetings.contains { $0.sourceCount > 0 } } }
     var isRecording: Bool { captures.values.contains { $0.presentation.recording && $0.savingSinceMs == nil } }
+    var hasFailure: Bool { diskStopped || recordFailed || !failedMeetings.isEmpty }
     var isSaving: Bool { captures.values.contains { $0.presentation.saving || $0.savingSinceMs != nil } || !stopping.isEmpty || !settling.isEmpty }
     var first: LiveCapture? { captures.values.filter { $0.presentation.recording && $0.savingSinceMs == nil }.min { $0.originUptime < $1.originUptime } }
     func start(root: URL? = nil) async {
@@ -320,7 +321,27 @@ private final class CaptureFiles: @unchecked Sendable {
     func simulateStartFailureForTesting() {
         recordFailed = true
     }
+    func simulatePartialMeetingFailureForTesting(title: String = "Design Sync") {
+        let key = BrowserMeetingKey(
+            peer: UUID(uuidString: "b0000000-0000-4000-8000-000000000001")!,
+            tabID: 1
+        )
+        failedMeetings[key] = title
+    }
     #endif
+    func dismissRecordFailure() {
+        recordFailed = false
+        attemptRefusals = []
+        failedMeetings = [:]
+        meetingRefusals = [:]
+    }
+    func dismissFailedMeeting(_ key: BrowserMeetingKey) {
+        failedMeetings.removeValue(forKey: key)
+        meetingRefusals.removeValue(forKey: key)
+    }
+    func dismissDiskStopped() {
+        diskStopped = false
+    }
     func record() async throws {
         #if DEBUG
         if RecordingFixture.enabled && !CaptureFixture.enabled {
@@ -709,6 +730,12 @@ private final class CaptureFiles: @unchecked Sendable {
     }
     func retry(_ key: BrowserMeetingKey) {
         guard !shuttingDown,!starting,failedMeetings[key] != nil else { return }
+        #if DEBUG
+        if RecordingFixture.enabled && !CaptureFixture.enabled {
+            dismissFailedMeeting(key)
+            return
+        }
+        #endif
         recordFailed = false; attemptRefusals = []; meetingRefusals.removeValue(forKey:key)
         requestingRecord = true; manualIssued = true
         manualPending = [key]; manualCompleted = []; manualSucceeded = []

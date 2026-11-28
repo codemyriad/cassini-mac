@@ -188,11 +188,17 @@ struct MeetingView: View {
             }
         }
     }
+    private var hasCaptureFailure: Bool {
+        CaptureCollection.shared.hasFailure
+    }
     private var hasMeetingNotices: Bool {
-        RecordingOverview.libraryDiskLine != nil || isTranscribing || issueLine != nil
+        hasCaptureFailure || RecordingOverview.libraryDiskLine != nil || isTranscribing || issueLine != nil
     }
     private var meetingNotices: some View {
         VStack(alignment: .leading, spacing: 22) {
+            if hasCaptureFailure {
+                CaptureFailureBanner()
+            }
             if let line = RecordingOverview.libraryDiskLine { Text(line).foregroundStyle(CassiniTheme.warningNotice) }
             if isTranscribing {
                 TranscribingStatusView(meeting:meeting,horizontalPadding:0).accessibilityIdentifier("meeting-transcribing")

@@ -23,6 +23,7 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
                 let img1 = try PixelImage(screenshot: noSpeakersShot, windowFrame: window.frame)
                 let tRect = img1.windowRect(for: transcript.frame)
                 let dRect = img1.windowRect(for: date.frame)
+                let expectedColumnWidth = tRect.width - 88.0 // MeetingView horizontal padding is 44 pt per side
                 let ground = img1.color(atPoint: CGPoint(x: tRect.minX + 4, y: dRect.minY))
 
                 var bestNoSpeakers: CGFloat = 0
@@ -32,15 +33,13 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
                     }
                     if run > bestNoSpeakers { bestNoSpeakers = run }
                 }
-                if abs(bestNoSpeakers - tRect.width) > 2.0 {
-                    failures.append("No-speakers hairline \(bestNoSpeakers) != transcript width \(tRect.width) ±2 (\(size) \(scheme))")
+                if abs(bestNoSpeakers - expectedColumnWidth) > 2.0 {
+                    failures.append("No-speakers hairline \(bestNoSpeakers) != column width \(expectedColumnWidth) ±2 (\(size) \(scheme))")
                 }
             }
         }
 
-        expectStrictFailure("D-1200 item 8", matching: "[D-1200-item8]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1200-item8] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1200-item8] \(failures.joined(separator: "; "))")
     }
 
     /// Item 9: Renaming in toolbar, big title, and recording title keeps the date visible and sizes field to text + 8 pt.
@@ -72,14 +71,12 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
         editor.typeText("Q4")
         let shortWidth = editor.frame.width
 
-        expectStrictFailure("D-1200 item 9", matching: "[D-1200-item9]") {
-            XCTAssertTrue(dateStillExists, "[D-1200-item9] Date element must still exist during rename")
-            if let dateFrameDuring {
-                XCTAssertEqual(dateFrameDuring.minX, dateFrameBefore.minX, accuracy: 1.0, "[D-1200-item9] Date minX must stay unchanged ±1")
-                XCTAssertEqual(dateFrameDuring.minY, dateFrameBefore.minY, accuracy: 1.0, "[D-1200-item9] Date minY must stay unchanged ±1")
-            }
-            XCTAssertLessThan(shortWidth, 120.0, "[D-1200-item9] Rename field for 'Q4' must hug text + 8 pt, not run to the edge")
+        XCTAssertTrue(dateStillExists, "[D-1200-item9] Date element must still exist during rename")
+        if let dateFrameDuring {
+            XCTAssertEqual(dateFrameDuring.minX, dateFrameBefore.minX, accuracy: 1.0, "[D-1200-item9] Date minX must stay unchanged ±1")
+            XCTAssertEqual(dateFrameDuring.minY, dateFrameBefore.minY, accuracy: 1.0, "[D-1200-item9] Date minY must stay unchanged ±1")
         }
+        XCTAssertLessThan(shortWidth, 120.0, "[D-1200-item9] Rename field for 'Q4' must hug text + 8 pt, not run to the edge")
     }
 
     /// Item 10: No grey block under toolbar at 1120, 920, 900 (sidebar open & closed, light & dark),
@@ -121,9 +118,7 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
             _ = attachWindowScreenshot(noticeWin, name: "b19-item10-parakeet-notice-light")
         }
 
-        expectStrictFailure("D-1200 item 10", matching: "[D-1200-item10]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1200-item10] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1200-item10] \(failures.joined(separator: "; "))")
     }
 
     /// Item 11 (recording page): Recording page background matches meeting page background within 2 and differs from sidebar.
@@ -172,9 +167,7 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1200 item 11-recording-bg", matching: "[D-1200-item11-recording-bg]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1200-item11-recording-bg] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1200-item11-recording-bg] \(failures.joined(separator: "; "))")
     }
 
     /// Item 18: Recording page title, date, and source card align with meeting page (±1/±2 pt).
@@ -217,9 +210,7 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1200 item 18", matching: "[D-1200-item18]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1200-item18] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1200-item18] \(failures.joined(separator: "; "))")
     }
 
     /// Item 19: Capture failure notice sits inside meeting pane, doesn't overlap sidebar, has no yellow in toolbar,
@@ -280,8 +271,136 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1200 item 19", matching: "[D-1200-item19]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1200-item19] \(failures.joined(separator: "; "))")
+        XCTAssertTrue(failures.isEmpty, "[D-1200-item19] \(failures.joined(separator: "; "))")
+    }
+
+    /// Item 19 (first-run): Capture failure before any library entry exists must surface on the first-run screen
+    /// with both retry and close actions.
+    @MainActor func testCaptureFailureNoticeOnFirstRun() throws {
+        var failures: [String] = []
+
+        for dark in [false, true] {
+            let scheme = dark ? "dark" : "light"
+            let app = try launchAcceptance(
+                "library",
+                fixture: "main",
+                size: "1120x720",
+                dark: dark,
+                extra: [
+                    "--fixture-library-recording",
+                    "-CassiniCaptureID", UUID().uuidString,
+                    "-CassiniFixtureActivity", "none",
+                    "-CassiniFailCaptureStart", "YES",
+                ]
+            )
+            defer { app.terminate() }
+            let window = app.windows["cassini-library-window"]
+            let firstRun = window.descendants(matching: .any)["first-run-library"].firstMatch
+            let recordBtn = window.buttons["first-run-record"].firstMatch
+            XCTAssertTrue(firstRun.waitForExistence(timeout: 20), app.debugDescription)
+            XCTAssertTrue(recordBtn.waitForExistence(timeout: 10), app.debugDescription)
+
+            recordBtn.click()
+            if window.sheets.buttons["record-first-start"].waitForExistence(timeout: 3) {
+                window.sheets.buttons["record-first-start"].click()
+            }
+
+            let banner = window.descendants(matching: .any)["capture-failure-banner"].firstMatch
+            XCTAssertTrue(banner.waitForExistence(timeout: 10), app.debugDescription)
+            _ = attachWindowScreenshot(window, name: "b19-item19-first-run-\(scheme)")
+
+            if !firstRun.exists {
+                failures.append("First-run view disappeared on failed first recording (\(scheme))")
+            }
+            let retryBtn = window.buttons["capture-failure-retry"].firstMatch
+            if !retryBtn.exists {
+                failures.append("capture-failure-retry button missing on first-run (\(scheme))")
+            }
+            let closeBtn = window.buttons["capture-failure-close"].firstMatch
+            if !closeBtn.exists {
+                failures.append("capture-failure-close button missing on first-run (\(scheme))")
+            }
+
+            if !dark {
+                if closeBtn.exists {
+                    closeBtn.click()
+                    if !waitFor({ !banner.exists }, timeout: 5) {
+                        failures.append("capture-failure-close did not remove first-run banner (\(scheme))")
+                    }
+                }
+            } else if retryBtn.exists {
+                retryBtn.click()
+                let recordingPane = window.descendants(matching: .any)["recording-page"].firstMatch
+                if !recordingPane.waitForExistence(timeout: 10) {
+                    failures.append("capture-failure-retry did not start recording from first-run (\(scheme))")
+                }
+                if !waitFor({ !banner.exists }, timeout: 5) {
+                    failures.append("capture-failure-banner remained after successful retry (\(scheme))")
+                }
+            }
         }
+
+        XCTAssertTrue(failures.isEmpty, "[D-1200-item19-firstRun] \(failures.joined(separator: "; "))")
+    }
+
+    /// Item 19 (recording pane): Partial browser meeting failure while viewing an active recording page
+    /// must remain visible inside the recording pane without overlapping the sidebar.
+    @MainActor func testCaptureFailureNoticeInRecordingPane() throws {
+        var failures: [String] = []
+
+        for dark in [false, true] {
+            let scheme = dark ? "dark" : "light"
+            let app = try launchAcceptance(
+                "library",
+                fixture: "main",
+                size: "1120x720",
+                dark: dark,
+                extra: seededRecordingArgs(extra: ["-CassiniPartialCaptureFailure", "YES"])
+            )
+            defer { app.terminate() }
+            let window = app.windows["cassini-library-window"]
+            let meetingPane = window.descendants(matching: .any)["meeting-page"].firstMatch
+            let searchField = sidebarSearchField(in: window)
+            XCTAssertTrue(meetingPane.waitForExistence(timeout: 20), app.debugDescription)
+            XCTAssertTrue(searchField.waitForExistence(timeout: 10), app.debugDescription)
+            let searchFrameBefore = searchField.frame
+
+            window.buttons["toolbar-record"].firstMatch.click()
+            if window.sheets.buttons["record-first-start"].waitForExistence(timeout: 3) {
+                window.sheets.buttons["record-first-start"].click()
+            }
+
+            let recordingPane = window.descendants(matching: .any)["recording-page"].firstMatch
+            let banner = window.descendants(matching: .any)["capture-failure-banner"].firstMatch
+            XCTAssertTrue(recordingPane.waitForExistence(timeout: 15), app.debugDescription)
+            XCTAssertTrue(banner.waitForExistence(timeout: 10), app.debugDescription)
+            _ = attachWindowScreenshot(window, name: "b19-item19-recording-\(scheme)")
+
+            if banner.frame.minX < recordingPane.frame.minX - 1.0 {
+                failures.append("Recording pane failure notice minX \(banner.frame.minX) overlapped sidebar (recordingPane minX=\(recordingPane.frame.minX), \(scheme))")
+            }
+            if abs(searchField.frame.minY - searchFrameBefore.minY) > 1.0 {
+                failures.append("Search field minY moved from \(searchFrameBefore.minY) to \(searchField.frame.minY) (\(scheme))")
+            }
+
+            let retryBtn = window.buttons["capture-failure-retry"].firstMatch
+            if !retryBtn.exists {
+                failures.append("capture-failure-retry button missing in recording pane (\(scheme))")
+            }
+            let closeBtn = window.buttons["capture-failure-close"].firstMatch
+            if !closeBtn.exists {
+                failures.append("capture-failure-close button missing in recording pane (\(scheme))")
+            } else {
+                closeBtn.click()
+                if !waitFor({ !banner.exists }, timeout: 5) {
+                    failures.append("capture-failure-close did not remove recording pane banner (\(scheme))")
+                }
+                if !recordingPane.exists {
+                    failures.append("closing capture failure banner dismissed recording pane (\(scheme))")
+                }
+            }
+        }
+
+        XCTAssertTrue(failures.isEmpty, "[D-1200-item19-recording] \(failures.joined(separator: "; "))")
     }
 }

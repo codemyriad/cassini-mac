@@ -212,6 +212,26 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
         return view.accessibilityPerformShowMenu()
     }
 
+    #if DEBUG
+    @MainActor private static var testAXShowMenuObserver: NSObjectProtocol?
+    @MainActor static func installTestAXShowMenuObserverIfNeeded() {
+        guard testAXShowMenuObserver == nil,
+              ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" else { return }
+        testAXShowMenuObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("io.codemyriad.cassini.test.axShowMenu"),
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let rowKey = notification.object as? String else { return }
+            MainActor.assumeIsolated {
+                guard let view = anchorsByKey[rowKey]?.value,
+                      view.isAccessibilityElement() else { return }
+                _ = view.accessibilityPerformShowMenu()
+            }
+        }
+    }
+    #endif
+
     final class View: NSView {
         private final class Monitor: @unchecked Sendable {
             let value: Any
@@ -221,6 +241,7 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
         var open: (() -> Void)?
         var isInteractionEnabled = true
         var menuAccessibilityLabel = ""
+        var menuAccessibilityIdentifier = ""
         var buildContextMenu: (() -> NSMenu)?
         var onContextMenuOpenChanged: ((Bool) -> Void)?
         private var monitor: Monitor?
@@ -233,6 +254,9 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
         override func accessibilityRole() -> NSAccessibility.Role? { .group }
         override func accessibilityLabel() -> String? {
             menuAccessibilityLabel.isEmpty ? nil : menuAccessibilityLabel
+        }
+        override func accessibilityIdentifier() -> String {
+            menuAccessibilityIdentifier.isEmpty ? super.accessibilityIdentifier() : menuAccessibilityIdentifier
         }
         override func accessibilityPerformShowMenu() -> Bool {
             guard canAcceptInteraction(atWindowPoint: nil), buildContextMenu != nil else { return false }
@@ -314,17 +338,28 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
                     }
                 }
                 if let table = view as? NSTableView {
+                    var needsColumnLayout = false
                     if table.selectionHighlightStyle != .none {
                         table.selectionHighlightStyle = .none
                     }
-                    if table.style != .fullWidth {
-                        table.style = .fullWidth
+                    if table.style != .plain {
+                        table.style = .plain
+                        needsColumnLayout = true
                     }
                     if table.intercellSpacing != .zero {
                         table.intercellSpacing = .zero
+                        needsColumnLayout = true
                     }
                     if let outline = table as? NSOutlineView, outline.indentationPerLevel != 0 {
                         outline.indentationPerLevel = 0
+                        needsColumnLayout = true
+                    }
+                    if let scrollView = table.enclosingScrollView, scrollView.scrollerStyle != .overlay {
+                        scrollView.scrollerStyle = .overlay
+                        needsColumnLayout = true
+                    }
+                    if needsColumnLayout {
+                        table.sizeLastColumnToFit()
                     }
                 }
                 node = view.superview
@@ -380,6 +415,9 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
     }
     func makeNSView(context: Context) -> View { View() }
     func updateNSView(_ view: View, context: Context) {
+        #if DEBUG
+        Self.installTestAXShowMenuObserverIfNeeded()
+        #endif
         if let oldKey = view.rowKey, oldKey != rowKey,
            Self.anchorsByKey[oldKey]?.value === view {
             Self.anchorsByKey.removeValue(forKey: oldKey)
@@ -389,6 +427,7 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
         view.open = open
         view.isInteractionEnabled = isEnabled && context.environment.isEnabled
         view.menuAccessibilityLabel = menuAccessibilityLabel
+        view.menuAccessibilityIdentifier = menuAccessibilityIdentifier
         view.setAccessibilityIdentifier(menuAccessibilityIdentifier)
         view.buildContextMenu = buildContextMenu
         view.onContextMenuOpenChanged = onContextMenuOpenChanged

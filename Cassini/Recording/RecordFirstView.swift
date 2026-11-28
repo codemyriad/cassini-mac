@@ -81,7 +81,13 @@ import CassiniRecording
                 CaptureCollection.shared.simulateStartFailureForTesting()
                 return
             }
-            if RecordingFixture.enabled && !CaptureFixture.enabled { await RecordingController.shared.start(parent:parent); return }
+            if RecordingFixture.enabled && !CaptureFixture.enabled {
+                await RecordingController.shared.start(parent: parent)
+                if RecordingFixture.consumeSimulatedPartialCaptureFailure() {
+                    CaptureCollection.shared.simulatePartialMeetingFailureForTesting()
+                }
+                return
+            }
             #endif
             // Notifications are optional. In particular, the first notification
             // consent callback must never gate the user's recording request.

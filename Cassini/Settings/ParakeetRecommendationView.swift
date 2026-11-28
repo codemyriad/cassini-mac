@@ -6,6 +6,8 @@ import CassiniLibrary
 struct ParakeetRecommendationView: View {
     @State private var models = SpeechModelController.shared
     let afterFirst: Bool
+    var horizontalPadding: CGFloat = 0
+    var background: Color? = nil
     @State private var afterFirstVisible = false
     var body: some View {
         VStack(alignment:.leading,spacing:0) {
@@ -24,6 +26,8 @@ struct ParakeetRecommendationView: View {
                             .buttonStyle(.link).accessibilityIdentifier(afterFirst ? "library-parakeet-not-now" : "settings-parakeet-not-now")
                     }
                 }.padding(14).background(CassiniTheme.chipFill,in:RoundedRectangle(cornerRadius:8))
+                    .padding(.horizontal, horizontalPadding)
+                    .background(background ?? .clear, ignoresSafeAreaEdges: [])
                     .accessibilityElement(children:.contain)
                     .accessibilityIdentifier(afterFirst ? "library-parakeet-suggestion" : "settings-parakeet-suggestion")
             }
@@ -42,6 +46,8 @@ struct ParakeetRecommendationView: View {
 /// lasts until leaving that surface or choosing Whistle; relaunch cannot repeat it.
 struct ParakeetDefaultNotice: View {
     @State private var models = SpeechModelController.shared
+    var horizontalPadding: CGFloat = 0
+    var background: Color? = nil
     @State private var visible = false
     var body: some View {
         VStack(alignment:.leading,spacing:0) {
@@ -49,7 +55,10 @@ struct ParakeetDefaultNotice: View {
                 Text(UXText.text("models.parakeetUltra.nowDefault"))
                     .font(.system(size:12)).foregroundStyle(CassiniTheme.ink2)
                     .frame(maxWidth:.infinity,alignment:.leading)
-                    .padding(.vertical,8).accessibilityIdentifier("parakeet-now-default")
+                    .padding(.vertical,8)
+                    .padding(.horizontal, horizontalPadding)
+                    .background(background ?? .clear, ignoresSafeAreaEdges: [])
+                    .accessibilityIdentifier("parakeet-now-default")
             }
         }
         .onAppear { claim() }
