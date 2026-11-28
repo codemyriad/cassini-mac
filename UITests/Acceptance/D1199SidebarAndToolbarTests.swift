@@ -64,9 +64,7 @@ final class D1199SidebarAndToolbarTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1199 items 5 and 6", matching: "[D-1199-items5-6]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1199-items5-6] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1199-items5-6] \(failures.joined(separator: "; "))")
     }
 
     /// Item 7: Floating sidebar at 900 and 560 matches docked sidebar at 1120.
@@ -137,9 +135,7 @@ final class D1199SidebarAndToolbarTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1199 item 7", matching: "[D-1199-item7]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1199-item7] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1199-item7] \(failures.joined(separator: "; "))")
     }
 
     /// Item 13: Gap from Import circle right edge to Record (or live pill) left edge is 8 pt ±1.
@@ -161,9 +157,7 @@ final class D1199SidebarAndToolbarTests: AcceptanceTestCase {
         let impRight = impBounds?.right ?? impRect.maxX
         let gap = recRect.minX - impRight
 
-        expectStrictFailure("D-1199 item 13", matching: "[D-1199-item13]") {
-            XCTAssertEqual(gap, 8.0, accuracy: 1.0, "[D-1199-item13] Import-to-Record gap must be 8 pt ±1 (measured \(gap))")
-        }
+        XCTAssertEqual(gap, 8.0, accuracy: 1.0, "[D-1199-item13] Import-to-Record gap must be 8 pt ±1 (measured \(gap))")
     }
 
     /// Item 14: Sidebar glass stays translucent when inactive (mean colour diff <= 4, variance not near zero).
@@ -199,9 +193,7 @@ final class D1199SidebarAndToolbarTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1199 item 14", matching: "[D-1199-item14]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1199-item14] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1199-item14] \(failures.joined(separator: "; "))")
     }
 
     /// Sidebar width: 390 pt ±2 at 1120 and 920 (meeting pane >= 520 at 920).
@@ -358,8 +350,6 @@ final class D1199SidebarAndToolbarTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1199 item 11-live-pill", matching: "[D-1199-item11-live-pill]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1199-item11-live-pill] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1199-item11-live-pill] \(failures.joined(separator: "; "))")
     }
 }

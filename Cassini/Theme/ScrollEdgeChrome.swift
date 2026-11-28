@@ -204,13 +204,9 @@ private struct CassiniSidebarBackgroundModifier: ViewModifier {
     func body(content: Content) -> some View {
         #if compiler(>=6.2)
         if #available(macOS 26.0, *), !usesLegacyFallback {
-            content.background(alignment: .bottom) {
-                GeometryReader { proxy in
-                    NativeSidebarMaterial()
-                        .frame(width: proxy.size.width, height: proxy.size.height + 100)
-                        .offset(y: -100)
-                }
-            }
+            // On macOS 26+, let the system's sidebar glass show rather than painting
+            // NativeSidebarMaterial (.followsWindowActiveState) over it (D-1199 item 14).
+            content
         } else {
             content.background(NativeSidebarMaterial())
         }

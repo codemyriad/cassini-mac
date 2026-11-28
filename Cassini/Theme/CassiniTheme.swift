@@ -16,13 +16,13 @@ struct NativeSidebarMaterial: NSViewRepresentable {
         let view = BackdropView()
         view.material = .sidebar
         view.blendingMode = .behindWindow
-        view.state = .followsWindowActiveState
+        view.state = .active
         return view
     }
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
         nsView.material = .sidebar
         nsView.blendingMode = .behindWindow
-        nsView.state = .followsWindowActiveState
+        nsView.state = .active
     }
 }
 

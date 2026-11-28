@@ -224,12 +224,29 @@ private struct RecordingPillControls: NSViewRepresentable {
     let noSleep: Bool, dark: Bool
     let height: CGFloat
     let open: () -> Void, stop: () -> Void
-    func makeNSView(context: Context) -> RecordingPillControlView { RecordingPillControlView() }
+    func makeNSView(context: Context) -> RecordingPillControlView {
+        let view = RecordingPillControlView()
+        view.update(self)
+        return view
+    }
     func updateNSView(_ view: RecordingPillControlView, context: Context) {
         view.update(self)
     }
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: RecordingPillControlView, context: Context) -> CGSize? {
+        RecordingPillControlView.preferredSize(time: time, height: height)
+    }
 }
 private final class RecordingPillControlView: NSView {
+    static func preferredSize(time: String, height: CGFloat) -> CGSize {
+        let compact = height <= 24
+        let dotSize: CGFloat = compact ? 7 : 8
+        let font = NSFont.monospacedDigitSystemFont(ofSize: compact ? 12 : 13, weight: .semibold)
+        let stopTitle = UXText.text("common.stop")
+        let stopFont = NSFont.systemFont(ofSize: compact ? 11 : 12, weight: .semibold)
+        let openW = ceil((time as NSString).size(withAttributes: [.font: font]).width) + dotSize + 10
+        let stopW = ceil((stopTitle as NSString).size(withAttributes: [.font: stopFont]).width) + (compact ? 16 : 20)
+        return CGSize(width: openW + stopW + 50 + 12 + 11, height: height)
+    }
     private let openButton = RecordingPillAction(), stopButton = RecordingPillAction()
     private let me = RecordingPillMeter(), others = RecordingPillMeter()
     private let spectrogram = RecordingSpectrogramView(style:.pill)
@@ -241,6 +258,10 @@ private final class RecordingPillControlView: NSView {
     override init(frame: NSRect) {
         super.init(frame:frame)
         wantsLayer = true; layer?.cornerRadius = 16
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentHuggingPriority(.required, for: .vertical)
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .vertical)
         setAccessibilityElement(true); setAccessibilityRole(.group)
         setAccessibilityIdentifier("toolbar-live-pill")
         for button in [openButton,stopButton] {
@@ -274,6 +295,7 @@ private final class RecordingPillControlView: NSView {
     override var intrinsicContentSize: NSSize { NSSize(width:openWidth.constant + stopWidth.constant + 50 + 12 + 11,height:pillHeight) }
     func update(_ value: RecordingPillControls) {
         onOpen = value.open; onStop = value.stop
+        let previousHeight = pillHeight
         pillHeight = value.height
         let compact = pillHeight <= 24
         let innerHeight = max(18, pillHeight - 6)
@@ -297,13 +319,18 @@ private final class RecordingPillControlView: NSView {
         stopButton.spokenLabel = UXText.text("recording.pill.stop.a11y")
         stopButton.layer?.backgroundColor = stopFill.cgColor
         layer?.backgroundColor = CassiniTheme.nsLivePillWash(dark: value.dark).cgColor
-        openWidth.constant = ceil((value.time as NSString).size(withAttributes:[.font:font]).width) + dotSize + 10
-        stopWidth.constant = ceil((stopTitle as NSString).size(withAttributes:[.font:stopFont]).width) + (compact ? 16 : 20)
+        let newOpenWidth = ceil((value.time as NSString).size(withAttributes:[.font:font]).width) + dotSize + 10
+        let newStopWidth = ceil((stopTitle as NSString).size(withAttributes:[.font:stopFont]).width) + (compact ? 16 : 20)
+        let sizeChanged = openWidth.constant != newOpenWidth || stopWidth.constant != newStopWidth || previousHeight != value.height
+        openWidth.constant = newOpenWidth
+        stopWidth.constant = newStopWidth
         toolTip = value.noSleep ? UXText.text("recording.pill.noSleep") : nil
         spectrogram.configure(value.controller,dark:value.dark,silent:value.silent)
         me.update(value.microphone,color:ink,silent:value.silent)
         others.update(value.output,color:ink,silent:false)
-        invalidateIntrinsicContentSize()
+        if sizeChanged {
+            invalidateIntrinsicContentSize()
+        }
     }
     @objc private func openRecording() { onOpen?() }
     @objc private func stopRecording() { onStop?() }

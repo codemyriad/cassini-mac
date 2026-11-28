@@ -398,6 +398,35 @@ struct SidebarGlassCircleModifier: ViewModifier {
     }
 }
 
+struct FloatingSidebarGlassModifier: ViewModifier {
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            content
+                .clipShape(shape)
+                .glassEffect(.regular, in: shape)
+        } else {
+            content
+                .background(NativeSidebarMaterial())
+                .clipShape(shape)
+                .overlay {
+                    shape.stroke(CassiniTheme.cardStroke, lineWidth: 1)
+                }
+        }
+        #else
+        content
+            .background(NativeSidebarMaterial())
+            .clipShape(shape)
+            .overlay {
+                shape.stroke(CassiniTheme.cardStroke, lineWidth: 1)
+            }
+        #endif
+    }
+}
+
 struct SidebarBottomScrollEdgeModifier: ViewModifier {
     let hasContentBelow: Bool
 
