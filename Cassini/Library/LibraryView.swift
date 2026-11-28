@@ -336,7 +336,7 @@ struct LibraryView: View {
     }
     private var split: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            sidebarColumn
+            sidebarColumn(isFloating: false)
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { sidebarWidth = $0 }
                 .toolbar {
                     sidebarToolbar
@@ -442,7 +442,7 @@ struct LibraryView: View {
                 .padding(.trailing, 10)
                 .padding(.top, 14)
                 .padding(.bottom, 8)
-                sidebarColumn
+                sidebarColumn(isFloating: true)
             }
             .frame(width: overlayWidth)
             .frame(maxHeight: .infinity)
@@ -840,13 +840,14 @@ struct LibraryView: View {
         }
     }
 
-    private var sidebarColumn: some View {
-        VStack(spacing: 0) {
+    private func sidebarColumn(isFloating: Bool) -> some View {
+        let activeFloating = isNarrowWindow && floatingSidebarOpen
+        return VStack(spacing: 0) {
             if showsEmbeddedSidebarSearch {
                 LibrarySearchField(
                     text: $search.query,
                     large: false,
-                    focusRequest: search.focusRequest,
+                    focusRequest: isFloating == activeFloating ? search.focusRequest : 0,
                     onChange: {
                         if !search.query.isEmpty {
                             if !search.visible { search.open() }

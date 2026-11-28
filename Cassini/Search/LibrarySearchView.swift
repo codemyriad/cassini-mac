@@ -370,6 +370,10 @@ struct LibrarySearchField: NSViewRepresentable {
             guard needsFocus, window != nil else { return }
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.needsFocus, let window = self.window else { return }
+                guard !self.isHiddenOrHasHiddenAncestor, self.visibleRect.width > 0 else {
+                    self.needsFocus = false
+                    return
+                }
                 if let editor = self.currentEditor(), window.firstResponder === editor {
                     self.needsFocus = false
                     return
