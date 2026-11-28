@@ -2453,7 +2453,7 @@ final class LibraryBoards: XCTestCase {
     /// sidebar card while the speaker editor is open must not open a context menu or
     /// discard unsaved speaker drafts.
     @MainActor func testContextMenuBlockedDuringSpeakerEditing() throws {
-        let app = try launch("library", fixture: "main", extra: ["--fixture-library-rename", "-CassiniRenameID", UUID().uuidString])
+        let app = try launch("library", fixture: "main", extra: ["--fixture-library-rename", "-CassiniRenameID", UUID().uuidString, "-CassiniDefaultsID", UUID().uuidString])
         defer { if app.state != .notRunning { app.terminate() } }
         let window = app.windows["cassini-library-window"]
         let budget = window.outlines.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", "Budget review", "Budget review")).firstMatch
@@ -2498,10 +2498,21 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(field.value as? String, "Unsaved draft")
     }
 
+    /// Regression test (D-1198 review): Right-clicking an unselected meeting row opens its
+    /// context menu and targets that unselected row (not the currently selected row).
+    @MainActor func testRightClickMenuOnUnselectedRow() throws {
+        try verifyUnselectedRowContextMenu(viaVoiceOverShowMenu: false)
+    }
+
     /// Regression test (D-1198 review): VoiceOver's accessibility Show Menu action (`AXShowMenu`)
     /// must remain available on each meeting row and activate the context menu for an unselected row.
     @MainActor func testVoiceOverShowMenuOnUnselectedRow() throws {
-        let app = try launch("library", fixture: "main", extra: ["--fixture-library-rename", "-CassiniRenameID", UUID().uuidString])
+        try XCTSkipUnless(AXIsProcessTrusted(), "Accessibility not trusted")
+        try verifyUnselectedRowContextMenu(viaVoiceOverShowMenu: true)
+    }
+
+    @MainActor private func verifyUnselectedRowContextMenu(viaVoiceOverShowMenu: Bool) throws {
+        let app = try launch("library", fixture: "main", extra: ["--fixture-library-rename", "-CassiniRenameID", UUID().uuidString, "-CassiniDefaultsID", UUID().uuidString])
         defer { if app.state != .notRunning { app.terminate() } }
         let window = app.windows["cassini-library-window"]
         let menuTargets = window.descendants(matching: .any).matching(
@@ -2513,54 +2524,86 @@ final class LibraryBoards: XCTestCase {
             app.debugDescription
         )
 
-        // Select the first row so the second row is guaranteed unselected.
-        let firstRow = window.outlines.firstMatch.outlineRows.containing(
-            NSPredicate(format: "identifier BEGINSWITH %@", "meeting-menu-")
-        ).element(boundBy: 0)
-        firstRow.click()
-
+        let firstMenuId = menuTargets.element(boundBy: 0).identifier
         let unselectedTarget = menuTargets.element(boundBy: 1)
         let unselectedMenuId = unselectedTarget.identifier
+        XCTAssertTrue(firstMenuId.hasPrefix("meeting-menu-"), "Unexpected identifier: \(firstMenuId)")
         XCTAssertTrue(unselectedMenuId.hasPrefix("meeting-menu-"), "Unexpected identifier: \(unselectedMenuId)")
+        XCTAssertNotEqual(firstMenuId, unselectedMenuId)
         let unselectedKey = String(unselectedMenuId.dropFirst("meeting-menu-".count))
-        let starBadge = window.descendants(matching: .any)["library-starred-" + unselectedKey].firstMatch
-        let wasStarred = starBadge.exists
 
-        guard let pid = NSRunningApplication.runningApplications(withBundleIdentifier: "io.codemyriad.cassini").first?.processIdentifier else {
-            XCTFail("Could not locate running Cassini process")
-            return
-        }
-        let axApp = AXUIElementCreateApplication(pid)
-        var windowsRef: CFTypeRef?
-        let axRoots: [AXUIElement]
-        if AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef) == .success,
-           let windows = windowsRef as? [AXUIElement], !windows.isEmpty {
-            axRoots = windows
+        // Select the first row so the second row is guaranteed unselected.
+        let firstRow = window.outlines.firstMatch.outlineRows.containing(
+            NSPredicate(format: "identifier == %@", firstMenuId)
+        ).firstMatch
+        firstRow.click()
+
+        XCTAssertFalse(unselectedTarget.label.isEmpty, "VoiceOver menu anchor \(unselectedMenuId) must expose an accessibility label")
+
+        if viaVoiceOverShowMenu {
+            var locatedTarget: AXUIElement?
+            _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                let apps = NSRunningApplication.runningApplications(withBundleIdentifier: "io.codemyriad.cassini")
+                    .filter { !$0.isTerminated }
+                    .sorted { $0.isActive && !$1.isActive }
+                for running in apps {
+                    let axApp = AXUIElementCreateApplication(running.processIdentifier)
+                    var windowsRef: CFTypeRef?
+                    let axRoots: [AXUIElement]
+                    if AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+                       let windows = windowsRef as? [AXUIElement], !windows.isEmpty {
+                        axRoots = windows
+                    } else {
+                        axRoots = [axApp]
+                    }
+                    if let found = axRoots.lazy.compactMap({ self.findAXElement(in: $0, identifier: unselectedMenuId) }).first {
+                        locatedTarget = found
+                        return true
+                    }
+                }
+                return false
+            }, object: nil)], timeout: 5)
+            guard let axMenuTarget = locatedTarget else {
+                let pids = NSRunningApplication.runningApplications(withBundleIdentifier: "io.codemyriad.cassini")
+                    .map { "\($0.processIdentifier)(active=\($0.isActive),term=\($0.isTerminated))" }
+                XCTFail("Could not locate AXUIElement for \(unselectedMenuId) (trusted=\(AXIsProcessTrusted()), pids=\(pids))")
+                return
+            }
+
+            var actionsRef: CFArray?
+            let copyActionsResult = AXUIElementCopyActionNames(axMenuTarget, &actionsRef)
+            XCTAssertEqual(copyActionsResult, AXError.success)
+            let actions = (actionsRef as? [String]) ?? []
+            XCTAssertTrue(actions.contains(kAXShowMenuAction as String), "Expected AXShowMenu on \(unselectedMenuId), got \(actions)")
+
+            let performResult = AXUIElementPerformAction(axMenuTarget, kAXShowMenuAction as CFString)
+            XCTAssertEqual(performResult, AXError.success, "AXShowMenu action failed on unselected row \(unselectedMenuId)")
         } else {
-            axRoots = [axApp]
+            let unselectedRow = window.outlines.firstMatch.outlineRows.containing(
+                NSPredicate(format: "identifier == %@", unselectedMenuId)
+            ).firstMatch
+            XCTAssertTrue(unselectedRow.waitForExistence(timeout: 5), app.debugDescription)
+            unselectedRow.rightClick()
         }
-        guard let axMenuTarget = axRoots.lazy.compactMap({ self.findAXElement(in: $0, identifier: unselectedMenuId) }).first else {
-            XCTFail("Could not locate AXUIElement for \(unselectedMenuId)")
-            return
-        }
-
-        var actionsRef: CFArray?
-        let copyActionsResult = AXUIElementCopyActionNames(axMenuTarget, &actionsRef)
-        XCTAssertEqual(copyActionsResult, AXError.success)
-        let actions = (actionsRef as? [String]) ?? []
-        XCTAssertTrue(actions.contains(kAXShowMenuAction as String), "Expected AXShowMenu on \(unselectedMenuId), got \(actions)")
-
-        let performResult = AXUIElementPerformAction(axMenuTarget, kAXShowMenuAction as CFString)
-        XCTAssertEqual(performResult, AXError.success, "AXShowMenu action failed on unselected row \(unselectedMenuId)")
 
         let starItem = window.menuItems["library-star"]
-        XCTAssertTrue(starItem.waitForExistence(timeout: 5), "Context menu did not open via AXShowMenu: " + app.debugDescription)
+        XCTAssertTrue(starItem.waitForExistence(timeout: 5), "Context menu did not open for unselected row: " + app.debugDescription)
         starItem.click()
 
-        XCTAssertEqual(
-            XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in starBadge.exists != wasStarred }, object: nil)], timeout: 5),
-            .completed,
-            "AXShowMenu action must target the unselected row (\(unselectedKey)), not the selected row"
+        // Switch to the Starred filter to verify the unselected row (and not the selected row)
+        // was starred; row-level `.accessibilityIdentifier("meeting-...")` intentionally owns child
+        // view identifiers inside the card, while the Starred filter reflects LibraryStore state.
+        let starredFilter = window.descendants(matching: .any)["library-filters"].radioButtons["Starred"]
+        XCTAssertTrue(starredFilter.waitForExistence(timeout: 5), app.debugDescription)
+        starredFilter.click()
+
+        XCTAssertTrue(
+            window.descendants(matching: .any)[unselectedMenuId].waitForExistence(timeout: 5),
+            "Context menu Star action must target the unselected row (\(unselectedKey)), not the selected row: " + app.debugDescription
+        )
+        XCTAssertFalse(
+            window.descendants(matching: .any)[firstMenuId].exists,
+            "Context menu Star action must not star the selected row (\(firstMenuId))"
         )
     }
 
@@ -2571,12 +2614,15 @@ final class LibraryBoards: XCTestCase {
            let id = idRef as? String, id == identifier {
             return root
         }
-        var childrenRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(root, kAXChildrenAttribute as CFString, &childrenRef) == .success,
-              let children = childrenRef as? [AXUIElement] else {
-            return nil
+        var next: [AXUIElement] = []
+        for attr in [kAXChildrenAttribute as CFString, kAXRowsAttribute as CFString] {
+            var ref: CFTypeRef?
+            if AXUIElementCopyAttributeValue(root, attr, &ref) == .success,
+               let items = ref as? [AXUIElement] {
+                next.append(contentsOf: items)
+            }
         }
-        for child in children {
+        for child in next {
             if let found = findAXElement(in: child, identifier: identifier, depth: depth + 1) {
                 return found
             }

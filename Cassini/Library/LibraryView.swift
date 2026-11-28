@@ -573,7 +573,7 @@ struct LibraryView: View {
                     .foregroundStyle(enabled ? CassiniTheme.onRecord : CassiniTheme.ink3)
             }
             .padding(.horizontal, compact ? 10 : 12)
-            .frame(height: height)
+            .frame(minWidth: 80, minHeight: height, maxHeight: height)
             .background(enabled ? CassiniTheme.record : CassiniTheme.chipFill, in: Capsule())
             .contentShape(Capsule())
         }
@@ -891,7 +891,7 @@ struct LibraryView: View {
             .padding(.bottom, 6)
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+            .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
             .selectionDisabled(true)
     }
 
@@ -945,8 +945,10 @@ struct LibraryView: View {
                                 }
                             }
                             ForEach(group.meetings, id: \.libraryKey) { meeting in
-                                row(meeting).tag(meeting.libraryKey).id(meeting.libraryKey)
-                                    .background {
+                                row(meeting)
+                                    .accessibilityIdentifier("meeting-" + meeting.libraryKey)
+                                    .tag(meeting.libraryKey).id(meeting.libraryKey)
+                                    .overlay {
                                         LibraryRowOpenAnchor(
                                             rowKey: meeting.libraryKey,
                                             open: {
@@ -972,6 +974,9 @@ struct LibraryView: View {
                                                 }
                                             }
                                         )
+                                        .accessibilityIdentifier("meeting-menu-" + meeting.libraryKey)
+                                    }
+                                    .background {
                                         if store.primarySelectedKey == meeting.libraryKey { LibraryMenuAnchor() }
                                     }
                                     .accessibilityAction(named: UXText.text("meeting.moreActions")) {
@@ -988,8 +993,7 @@ struct LibraryView: View {
                                     })
                                     .listRowSeparator(.hidden)
                                     .listRowBackground(Color.clear)
-                                    .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
-                                    .accessibilityIdentifier("meeting-" + meeting.libraryKey)
+                                    .listRowInsets(EdgeInsets(top: 3, leading: 4, bottom: 3, trailing: 4))
                             }
                         }
                         if !store.meetings.isEmpty, store.meetings.allSatisfy({ $0.state.origin == .received }) {
@@ -1107,7 +1111,7 @@ struct LibraryView: View {
         LibraryMeetingRowView(
             meeting: meeting,
             isSelected: store.selectedKeys.contains(meeting.libraryKey),
-            isContextMenuTarget: contextMenuMeetingKey == meeting.libraryKey,
+            isContextMenuTarget: false,
             isStarred: store.isStarred(meeting),
             format: store.format,
             isAnimatingBadges: !store.context.screenshot && scenePhase == .active

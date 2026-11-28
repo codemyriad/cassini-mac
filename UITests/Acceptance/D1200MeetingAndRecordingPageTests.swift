@@ -121,9 +121,7 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
             _ = attachWindowScreenshot(noticeWin, name: "b19-item10-parakeet-notice-light")
         }
 
-        expectStrictFailure("D-1200 item 10", matching: "[D-1200-item10]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1200-item10] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1200-item10] \(failures.joined(separator: "; "))")
     }
 
     /// Item 11 (recording page): Recording page background matches meeting page background within 2 and differs from sidebar.

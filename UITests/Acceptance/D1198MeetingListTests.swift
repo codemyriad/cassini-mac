@@ -67,7 +67,7 @@ final class D1198MeetingListTests: AcceptanceTestCase {
         for i in 0..<min(cards.count, 4) {
             let card = cards.element(boundBy: i)
             let cardRect = img.windowRect(for: card.frame)
-            let bounds = img.drawnHorizontalBounds(inPointRect: cardRect, against: sidebarGround, threshold: 6)
+            let bounds = img.drawnHorizontalBounds(inPointRect: cardRect, against: sidebarGround, threshold: 16)
             let left = bounds?.left ?? cardRect.minX
             let right = bounds?.right ?? cardRect.maxX
             if abs(left - searchRect.minX) > 1.0 {
@@ -94,19 +94,39 @@ final class D1198MeetingListTests: AcceptanceTestCase {
             XCTAssertTrue(waitFor({ cards.count >= 2 }, timeout: 20), app.debugDescription)
 
             let unselected = cards.element(boundBy: 1)
+            let beforeShot = attachWindowScreenshot(window, name: "b19-item12-before-\(scheme)")
+            let beforeImg = try PixelImage(screenshot: beforeShot, windowFrame: window.frame)
+            let rowRect = beforeImg.windowRect(for: unselected.frame)
+            let sidebarGround = beforeImg.color(atPoint: CGPoint(x: 4, y: rowRect.midY))
+            let drawnX = beforeImg.drawnHorizontalBounds(inPointRect: rowRect, against: sidebarGround, threshold: 16)
+            let cardRect = CGRect(
+                x: drawnX?.left ?? rowRect.minX,
+                y: rowRect.minY + 3,
+                width: (drawnX.map { $0.right - $0.left }) ?? rowRect.width,
+                height: max(1, rowRect.height - 6)
+            )
+            let ringBands: [CGRect] = [
+                CGRect(x: cardRect.minX - 6, y: cardRect.minY - 6, width: 8, height: cardRect.height + 12),
+                CGRect(x: cardRect.maxX - 2, y: cardRect.minY - 6, width: 8, height: cardRect.height + 12),
+                CGRect(x: cardRect.minX - 6, y: cardRect.minY - 6, width: cardRect.width + 12, height: 8),
+                CGRect(x: cardRect.minX - 6, y: cardRect.maxY - 2, width: cardRect.width + 12, height: 8),
+            ]
+
             unselected.rightClick()
             let openShot = attachWindowScreenshot(window, name: "b19-item12-menu-open-\(scheme)")
             let openImg = try PixelImage(screenshot: openShot, windowFrame: window.frame)
-            let cardRect = openImg.windowRect(for: unselected.frame)
             let leftMargin = CGRect(x: 0, y: cardRect.minY, width: max(0, cardRect.minX - 4), height: cardRect.height)
             if openImg.containsAccentBlue(inPointRect: leftMargin) {
                 failures.append("Accent blue bled outside card left +4 pt (\(scheme))")
+            }
+            if !ringBands.contains(where: { openImg.containsAccentBlue(inPointRect: $0) }) {
+                failures.append("Context menu ring did not appear around card (\(scheme))")
             }
 
             window.typeKey(.escape, modifierFlags: [])
             let escShot = attachWindowScreenshot(window, name: "b19-item12-after-esc-\(scheme)")
             let escImg = try PixelImage(screenshot: escShot, windowFrame: window.frame)
-            if escImg.containsAccentBlue(inPointRect: cardRect.insetBy(dx: -6, dy: -6)) {
+            if ringBands.contains(where: { escImg.containsAccentBlue(inPointRect: $0) }) {
                 failures.append("Context menu ring did not clear after Esc (\(scheme))")
             }
         }
@@ -162,10 +182,14 @@ final class D1198MeetingListTests: AcceptanceTestCase {
 
         let first = cards.element(boundBy: 0)
         first.click()
+        XCTAssertTrue(window.descendants(matching: .any)["recording-page"].waitForExistence(timeout: 10), app.debugDescription)
         window.typeKey(.downArrow, modifierFlags: [])
+        XCTAssertTrue(window.descendants(matching: .any)["meeting-page"].waitForExistence(timeout: 10), app.debugDescription)
         window.typeKey(.upArrow, modifierFlags: [])
+        XCTAssertTrue(window.descendants(matching: .any)["recording-page"].waitForExistence(timeout: 10), app.debugDescription)
+        window.typeKey(.downArrow, modifierFlags: [])
         window.typeKey(.return, modifierFlags: [])
-        XCTAssertTrue(window.descendants(matching: .any)["meeting-page"].waitForExistence(timeout: 10))
+        XCTAssertTrue(window.descendants(matching: .any)["meeting-page"].waitForExistence(timeout: 10), app.debugDescription)
         _ = attachWindowScreenshot(window, name: "b19-item-list-guard-light")
     }
 }

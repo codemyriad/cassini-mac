@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
+import QuartzCore
 import SwiftUI
 import CassiniLibrary
 
@@ -221,10 +222,61 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
         var open: (() -> Void)?
         var isInteractionEnabled = true
         var menuAccessibilityLabel = ""
+        var menuAccessibilityIdentifier = ""
         var buildContextMenu: (() -> NSMenu)?
         var onContextMenuOpenChanged: ((Bool) -> Void)?
         private var monitor: Monitor?
+        private var showsContextMenuRing = false
+        private lazy var contextMenuRingLayer: CAShapeLayer = {
+            let ring = CAShapeLayer()
+            ring.fillColor = nil
+            ring.lineWidth = 2
+            ring.masksToBounds = false
+            ring.isHidden = true
+            return ring
+        }()
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            wantsLayer = true
+            clipsToBounds = false
+            layer?.masksToBounds = false
+            layer?.addSublayer(contextMenuRingLayer)
+        }
+        @available(*, unavailable) required init?(coder: NSCoder) { fatalError("Programmatic anchor view") }
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        private func updateContextMenuRingGeometryAndColor() {
+            if !wantsLayer { wantsLayer = true }
+            if contextMenuRingLayer.superlayer == nil {
+                layer?.addSublayer(contextMenuRingLayer)
+            }
+            layer?.masksToBounds = false
+            contextMenuRingLayer.frame = bounds
+            let rect = bounds.insetBy(dx: -1, dy: -1)
+            contextMenuRingLayer.path = CGPath(roundedRect: rect, cornerWidth: 8, cornerHeight: 8, transform: nil)
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                contextMenuRingLayer.strokeColor = NSColor.controlAccentColor.cgColor
+            }
+        }
+        func setContextMenuRingVisible(_ visible: Bool) {
+            showsContextMenuRing = visible
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            if visible {
+                updateContextMenuRingGeometryAndColor()
+            }
+            contextMenuRingLayer.isHidden = !visible
+            CATransaction.commit()
+            CATransaction.flush()
+        }
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            if showsContextMenuRing {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                updateContextMenuRingGeometryAndColor()
+                CATransaction.commit()
+            }
+        }
         override func isAccessibilityElement() -> Bool {
             buildContextMenu != nil
                 && isInteractionEnabled
@@ -233,6 +285,9 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
         override func accessibilityRole() -> NSAccessibility.Role? { .group }
         override func accessibilityLabel() -> String? {
             menuAccessibilityLabel.isEmpty ? nil : menuAccessibilityLabel
+        }
+        override func accessibilityIdentifier() -> String {
+            menuAccessibilityIdentifier
         }
         override func accessibilityPerformShowMenu() -> Bool {
             guard canAcceptInteraction(atWindowPoint: nil), buildContextMenu != nil else { return false }
@@ -282,17 +337,21 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
                   buildContextMenu != nil else {
                 return false
             }
+            setContextMenuRingVisible(true)
             onContextMenuOpenChanged?(true)
             DispatchQueue.main.async { [weak self] in
                 guard let self,
                       self.canAcceptInteraction(atWindowPoint: windowPoint),
                       let currentBuildMenu = self.buildContextMenu else {
+                    self?.setContextMenuRingVisible(false)
                     self?.onContextMenuOpenChanged?(false)
                     return
                 }
                 let menu = currentBuildMenu()
                 let delegate = LibraryContextMenuDelegate { [weak self] in
-                    self?.onContextMenuOpenChanged?(false)
+                    guard let self else { return }
+                    self.setContextMenuRingVisible(false)
+                    self.onContextMenuOpenChanged?(false)
                 }
                 menu.delegate = delegate
                 withExtendedLifetime(delegate) {
@@ -314,17 +373,28 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
                     }
                 }
                 if let table = view as? NSTableView {
+                    var needsColumnResize = false
+                    if let scrollView = table.enclosingScrollView, scrollView.scrollerStyle != .overlay {
+                        scrollView.scrollerStyle = .overlay
+                        needsColumnResize = true
+                    }
                     if table.selectionHighlightStyle != .none {
                         table.selectionHighlightStyle = .none
                     }
                     if table.style != .fullWidth {
                         table.style = .fullWidth
+                        needsColumnResize = true
                     }
                     if table.intercellSpacing != .zero {
                         table.intercellSpacing = .zero
+                        needsColumnResize = true
                     }
                     if let outline = table as? NSOutlineView, outline.indentationPerLevel != 0 {
                         outline.indentationPerLevel = 0
+                        needsColumnResize = true
+                    }
+                    if needsColumnResize {
+                        table.sizeLastColumnToFit()
                     }
                 }
                 node = view.superview
@@ -335,13 +405,22 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
         }
         override func layout() {
             super.layout(); suppressSystemRowHighlight()
+            if showsContextMenuRing {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                updateContextMenuRingGeometryAndColor()
+                CATransaction.commit()
+            }
         }
         override func viewWillDraw() {
             super.viewWillDraw(); suppressSystemRowHighlight()
         }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow(); suppressSystemRowHighlight(); stopMonitoring()
-            guard window != nil else { return }
+            guard window != nil else {
+                setContextMenuRingVisible(false)
+                return
+            }
             monitor = Monitor(NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
                 MainActor.assumeIsolated {
                     guard let self,
@@ -389,6 +468,7 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
         view.open = open
         view.isInteractionEnabled = isEnabled && context.environment.isEnabled
         view.menuAccessibilityLabel = menuAccessibilityLabel
+        view.menuAccessibilityIdentifier = menuAccessibilityIdentifier
         view.setAccessibilityIdentifier(menuAccessibilityIdentifier)
         view.buildContextMenu = buildContextMenu
         view.onContextMenuOpenChanged = onContextMenuOpenChanged
@@ -401,6 +481,7 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
         if let key = view.rowKey, Self.anchorsByKey[key]?.value === view {
             Self.anchorsByKey.removeValue(forKey: key)
         }
+        view.setContextMenuRingVisible(false)
         view.stopMonitoring()
         view.rowKey = nil
         view.open = nil
