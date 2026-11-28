@@ -948,7 +948,7 @@ struct LibraryView: View {
                                 row(meeting)
                                     .accessibilityIdentifier("meeting-" + meeting.libraryKey)
                                     .tag(meeting.libraryKey).id(meeting.libraryKey)
-                                    .background {
+                                    .overlay {
                                         LibraryRowOpenAnchor(
                                             rowKey: meeting.libraryKey,
                                             open: {
@@ -967,18 +967,16 @@ struct LibraryView: View {
                                                 )
                                             },
                                             onContextMenuOpenChanged: { open in
-                                                var transaction = Transaction()
-                                                transaction.disablesAnimations = true
-                                                withTransaction(transaction) {
-                                                    if open {
-                                                        contextMenuMeetingKey = meeting.libraryKey
-                                                    } else if contextMenuMeetingKey == meeting.libraryKey {
-                                                        contextMenuMeetingKey = nil
-                                                    }
+                                                if open {
+                                                    contextMenuMeetingKey = meeting.libraryKey
+                                                } else if contextMenuMeetingKey == meeting.libraryKey {
+                                                    contextMenuMeetingKey = nil
                                                 }
                                             }
                                         )
                                         .accessibilityIdentifier("meeting-menu-" + meeting.libraryKey)
+                                    }
+                                    .background {
                                         if store.primarySelectedKey == meeting.libraryKey { LibraryMenuAnchor() }
                                     }
                                     .accessibilityAction(named: UXText.text("meeting.moreActions")) {
@@ -1113,7 +1111,7 @@ struct LibraryView: View {
         LibraryMeetingRowView(
             meeting: meeting,
             isSelected: store.selectedKeys.contains(meeting.libraryKey),
-            isContextMenuTarget: contextMenuMeetingKey == meeting.libraryKey,
+            isContextMenuTarget: false,
             isStarred: store.isStarred(meeting),
             format: store.format,
             isAnimatingBadges: !store.context.screenshot && scenePhase == .active
