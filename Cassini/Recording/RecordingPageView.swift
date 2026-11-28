@@ -90,7 +90,13 @@ struct RecordingPageView: View {
                         Text(UXText.text(!failed ? "errors.othersFallback.line" : denied ? "errors.othersPermission.line" : "errors.deviceUnavailable.others")).fixedSize(horizontal:false,vertical:true)
                         if denied {
                             Button(UXText.text("errors.othersPermission.action")) { CaptureSettings.open(.others) }
-                        } else if !failed { Button(UXText.text("errors.othersFallback.action")) { explainingFallback = true } }
+                                .buttonStyle(PageSecondaryButtonStyle())
+                                .controlSize(.small)
+                        } else if !failed {
+                            Button(UXText.text("errors.othersFallback.action")) { explainingFallback = true }
+                                .buttonStyle(PageSecondaryButtonStyle())
+                                .controlSize(.small)
+                        }
                     }.font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("recording-source-notice")
                 }
 

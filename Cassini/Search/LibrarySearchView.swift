@@ -370,6 +370,14 @@ struct LibrarySearchField: NSViewRepresentable {
             guard needsFocus, window != nil else { return }
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.needsFocus, let window = self.window else { return }
+                guard !self.isHiddenOrHasHiddenAncestor, self.visibleRect.width > 0 else {
+                    self.needsFocus = false
+                    return
+                }
+                if let editor = self.currentEditor(), window.firstResponder === editor {
+                    self.needsFocus = false
+                    return
+                }
                 if window.makeFirstResponder(self) {
                     // A keyboard edit can bring a query from the toolbar. Keep
                     // its caret at the end when the sidebar gets the field editor.

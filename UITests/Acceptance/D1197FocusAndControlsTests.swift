@@ -57,12 +57,7 @@ final class D1197FocusAndControlsTests: AcceptanceTestCase {
             }
         }
 
-        let options = XCTExpectedFailure.Options()
-        options.isStrict = false
-        options.issueMatcher = { issue in issue.compactDescription.contains("[D-1197-item1]") }
-        XCTExpectFailure("D-1197 item 1: intermittent search focus loss while typing on main", options: options) {
-            XCTAssertTrue(failures.isEmpty, "[D-1197-item1] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1197-item1] \(failures.joined(separator: "; "))")
     }
 
     /// Item 4: All / Starred filter control matches mock in light and dark, active and inactive.
@@ -128,9 +123,7 @@ final class D1197FocusAndControlsTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1197 item 4", matching: "[D-1197-item4]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1197-item4] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1197-item4] \(failures.joined(separator: "; "))")
     }
 
     /// Item 15: Page buttons ("Transcribe again" and "Open System Settings") stay the same colour when inactive.
@@ -257,8 +250,6 @@ final class D1197FocusAndControlsTests: AcceptanceTestCase {
             failures.append("Clicking transcript did not end title rename")
         }
 
-        expectStrictFailure("D-1197 item 16", matching: "[D-1197-item16]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1197-item16] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1197-item16] \(failures.joined(separator: "; "))")
     }
 }

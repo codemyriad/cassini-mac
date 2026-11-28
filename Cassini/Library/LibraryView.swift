@@ -150,17 +150,31 @@ struct LibraryView: View {
                 ScrollEdgeChrome.configureUnifiedWindow(window)
                 window.titleVisibility = .hidden
                 RecordingConfirmation.attach(to: window)
+                WindowClickAwayFocusController.attach(to: window) { endedControl in
+                    if endedControl is NSSearchField,
+                       search.visible,
+                       search.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       !search.hasActiveFilters {
+                        search.close()
+                    }
+                }
                 SpeakerEditorChrome.update(window,visible:rename.presentation == .speakers)
                 #if DEBUG
                 if store.loaded { ScreenshotFixture.prepareLibrary(window) }
                 #endif
             })
             .disabled(rename.presentation == .speakers)
-            .accessibilityHidden(rename.presentation == .speakers)
+            .allowsHitTesting(!(isNarrowWindow && floatingSidebarOpen))
+            .accessibilityHidden(rename.presentation == .speakers || (isNarrowWindow && floatingSidebarOpen))
     }
 
     var body: some View {
         chromeWrappedSurface
+        .overlay(alignment: .leading) {
+            if isNarrowWindow && floatingSidebarOpen {
+                floatingSidebarOverlay
+            }
+        }
         .overlay {
             if rename.presentation == .speakers {
                 ZStack {
@@ -214,6 +228,14 @@ struct LibraryView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: MeetingNavigation.returnToLibrarySelection)) { _ in
             openSelection(userInitiated: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cassiniToggleSidebar)) { _ in
+            guard !showsFirstRun else { return }
+            if isNarrowWindow {
+                floatingSidebarOpen.toggle()
+            } else {
+                columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+            }
         }
         .onChange(of: store.selectedKeys) { _, _ in
             sessionPlayback.stop()
@@ -291,8 +313,11 @@ struct LibraryView: View {
                 Spacer()
                 if trash.unsupported {
                     Button(UXText.text("meeting.showInFiles")) { NSWorkspace.shared.activateFileViewerSelecting([meeting.folder]) }
+                        .buttonStyle(PageSecondaryButtonStyle())
                 } else {
-                    Button(UXText.text("common.tryAgain")) { trash.move(meeting,undoManager:undoManager) }.disabled(!trash.canTrash(meeting))
+                    Button(UXText.text("common.tryAgain")) { trash.move(meeting,undoManager:undoManager) }
+                        .buttonStyle(PageSecondaryButtonStyle())
+                        .disabled(!trash.canTrash(meeting))
                 }
             }.padding(12).foregroundStyle(CassiniTheme.warnInk).background(CassiniTheme.warnTint)
                 .accessibilityIdentifier("trash-failure")
@@ -311,7 +336,7 @@ struct LibraryView: View {
     }
     private var split: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            sidebarColumn
+            sidebarColumn(isFloating: false)
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { sidebarWidth = $0 }
                 .toolbar {
                     sidebarToolbar
@@ -343,11 +368,6 @@ struct LibraryView: View {
             isPresented: $sidebarSearchPresented,
             prompt: UXText.text("search.field.placeholder")
         ))
-        .overlay(alignment: .leading) {
-            if isNarrowWindow && floatingSidebarOpen {
-                floatingSidebarOverlay
-            }
-        }
     }
 
     private func handleSidebarSearchFocusRequest() {
@@ -395,12 +415,7 @@ struct LibraryView: View {
 
     private var floatingSidebarOverlay: some View {
         let overlayWidth = min(390, max(280, toolbarWidth - 60))
-        return ZStack(alignment: .leading) {
-            Color.black.opacity(0.001)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture { floatingSidebarOpen = false }
-                .accessibilityHidden(true)
+        return HStack(spacing: 0) {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
                     Button {
@@ -425,9 +440,9 @@ struct LibraryView: View {
                 }
                 .padding(.leading, 76)
                 .padding(.trailing, 10)
-                .padding(.top, 10)
-                .padding(.bottom, 6)
-                sidebarColumn
+                .padding(.top, 14)
+                .padding(.bottom, 8)
+                sidebarColumn(isFloating: true)
             }
             .frame(width: overlayWidth)
             .frame(maxHeight: .infinity)
@@ -440,6 +455,13 @@ struct LibraryView: View {
             .onExitCommand { floatingSidebarOpen = false }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("floating-sidebar")
+
+            Color.black.opacity(0.001)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { floatingSidebarOpen = false }
+                .accessibilityHidden(true)
         }
     }
 
@@ -818,13 +840,14 @@ struct LibraryView: View {
         }
     }
 
-    private var sidebarColumn: some View {
-        VStack(spacing: 0) {
+    private func sidebarColumn(isFloating: Bool) -> some View {
+        let activeFloating = isNarrowWindow && floatingSidebarOpen
+        return VStack(spacing: 0) {
             if showsEmbeddedSidebarSearch {
                 LibrarySearchField(
                     text: $search.query,
                     large: false,
-                    focusRequest: search.focusRequest,
+                    focusRequest: isFloating == activeFloating ? search.focusRequest : 0,
                     onChange: {
                         if !search.query.isEmpty {
                             if !search.visible { search.open() }
@@ -868,19 +891,11 @@ struct LibraryView: View {
         let firstGroupIsToday = store.groups.first?.title == todayTitle
         return VStack(spacing: 0) {
             HStack {
-                Picker(UXText.text("library.filters.a11y"), selection: $store.preferences.filter) {
-                    Text(UXText.text("library.filter.all")).tag(LibraryPreferences.Filter.all)
-                    Text(UXText.text("library.filter.starred")).tag(LibraryPreferences.Filter.starred)
-                }
-                .pickerStyle(.segmented)
-                .controlSize(.regular)
-                .tint(nil)
-                .labelsHidden()
-                .fixedSize()
-                .accessibilityIdentifier("library-filters")
-                .onChange(of: store.preferences.filter) { _, _ in
-                    store.selectedKeys.formIntersection(Set(store.visibleMeetings.map(\.libraryKey)))
-                }
+                LibraryFilterSegmentedControl(selection: $store.preferences.filter)
+                    .fixedSize()
+                    .onChange(of: store.preferences.filter) { _, _ in
+                        store.selectedKeys.formIntersection(Set(store.visibleMeetings.map(\.libraryKey)))
+                    }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)

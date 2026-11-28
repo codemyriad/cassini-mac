@@ -212,9 +212,7 @@ struct MeetingView: View {
                     Button(UXText.text("common.writeDown")) {
                         TranscriptionQueue.shared.writeDown(model)
                     }
-                    .buttonStyle(.bordered)
-                    .contentShape(RoundedRectangle(cornerRadius: 6))
-                    .clipped()
+                    .buttonStyle(PageSecondaryButtonStyle())
                     .disabled(LibraryMoveCoordinator.shared.busy || TranscriptionQueue.shared.isStopping(meeting.folder))
                     .accessibilityIdentifier("meeting-write-down")
                 }
@@ -522,9 +520,8 @@ struct NoSpeechTranscriptLine: View {
                     .fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,alignment:.leading)
                     .accessibilityIdentifier("transcript-no-speech")
                 if let action {
-                    Button(UXText.text("transcript.writeDownAgain"),action:action).buttonStyle(.bordered)
-                        .contentShape(RoundedRectangle(cornerRadius: 6))
-                        .clipped()
+                    Button(UXText.text("transcript.writeDownAgain"),action:action)
+                        .buttonStyle(PageSecondaryButtonStyle())
                         .disabled(LibraryMoveCoordinator.shared.busy)
                         .accessibilityIdentifier("transcript-write-down-again")
                 }
@@ -535,9 +532,7 @@ struct NoSpeechTranscriptLine: View {
                         .fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,alignment:.leading)
                         .accessibilityIdentifier("transcript-no-speech-permission-hint")
                     Button(UXText.text("errors.othersPermission.action")) { CaptureSettings.open(.others) }
-                        .buttonStyle(.bordered)
-                        .contentShape(RoundedRectangle(cornerRadius: 6))
-                        .clipped()
+                        .buttonStyle(PageSecondaryButtonStyle())
                         .accessibilityIdentifier("transcript-no-speech-permission-settings")
                 }
             }
@@ -568,7 +563,7 @@ struct InlineMeetingLine: View {
         HStack(spacing: 12) {
             Image(systemName: info ? "info.circle" : "exclamationmark.triangle")
             Text(UXText.text(id)).fontWeight(.semibold).frame(maxWidth: .infinity, alignment: .leading)
-            if let actionID, let action { Button(UXText.text(actionID), action: action).buttonStyle(.bordered) }
+            if let actionID, let action { Button(UXText.text(actionID), action: action).buttonStyle(PageSecondaryButtonStyle()) }
         }.padding(12).foregroundStyle(info ? CassiniTheme.accentInk : CassiniTheme.inlineWarnInk)
             .background(info ? CassiniTheme.accentTint : CassiniTheme.inlineWarnTint, in: RoundedRectangle(cornerRadius: 7))
     }

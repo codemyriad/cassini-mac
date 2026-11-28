@@ -88,7 +88,7 @@ struct PlayerBar: View {
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .frame(minWidth: 36)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(PageSecondaryButtonStyle())
             .controlSize(.small)
             .help(UXText.text("player.speed.a11y",["rate":speedLabel]))
             .accessibilityLabel(UXText.text("player.speed.a11y",["rate":speedLabel]))

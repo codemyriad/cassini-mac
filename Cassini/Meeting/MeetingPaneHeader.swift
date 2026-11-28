@@ -28,12 +28,22 @@ struct MeetingPaneHeader: View {
 
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 6) {
+                let canInlineRename: Bool = {
+                    if rename.canRename(meeting) { return true }
+                    #if DEBUG
+                    if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
+                       meeting.state.lifecycle == .saved, !meeting.metadataReadOnly {
+                        return true
+                    }
+                    #endif
+                    return false
+                }()
                 InlineEditableTitle(
                     title: title,
                     fontSize: 24,
                     weight: .bold,
                     singleLine: false,
-                    canRename: rename.canRename(meeting),
+                    canRename: canInlineRename,
                     identifier: "meeting-inline-title",
                     editorIdentifier: "meeting-inline-title-editor",
                     editing: $editingTitle,
@@ -295,20 +305,9 @@ private struct InlineTitleTextField: NSViewRepresentable {
 
     final class FocusableInlineField: NSTextField {
         private var didFocus = false
-        private var outsideClickMonitor: Any?
-
-        deinit {
-            if let monitor = outsideClickMonitor {
-                NSEvent.removeMonitor(monitor)
-            }
-        }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            if window == nil {
-                removeMonitor()
-                return
-            }
             guard !didFocus, let window else { return }
             didFocus = true
             DispatchQueue.main.async { [weak self, weak window] in
@@ -321,28 +320,7 @@ private struct InlineTitleTextField: NSViewRepresentable {
                         ]
                         editor.selectAll(nil)
                     }
-                    self.installMonitor()
                 }
-            }
-        }
-
-        private func installMonitor() {
-            removeMonitor()
-            outsideClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-                guard let self, let window = self.window, event.window === window else { return event }
-                let point = self.convert(event.locationInWindow, from: nil)
-                if !self.bounds.contains(point) {
-                    self.removeMonitor()
-                    window.makeFirstResponder(nil)
-                }
-                return event
-            }
-        }
-
-        func removeMonitor() {
-            if let monitor = outsideClickMonitor {
-                NSEvent.removeMonitor(monitor)
-                outsideClickMonitor = nil
             }
         }
     }
@@ -369,14 +347,12 @@ private struct InlineTitleTextField: NSViewRepresentable {
             if commandSelector == #selector(NSResponder.insertNewline(_:)) {
                 guard !finished else { return true }
                 finished = true
-                (control as? FocusableInlineField)?.removeMonitor()
                 onCommit(control.stringValue)
                 return true
             }
             if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
                 guard !finished else { return true }
                 finished = true
-                (control as? FocusableInlineField)?.removeMonitor()
                 onCancel()
                 return true
             }
@@ -386,7 +362,6 @@ private struct InlineTitleTextField: NSViewRepresentable {
         func controlTextDidEndEditing(_ obj: Notification) {
             guard !finished, let field = obj.object as? NSTextField else { return }
             finished = true
-            (field as? FocusableInlineField)?.removeMonitor()
             onCommit(field.stringValue)
         }
     }

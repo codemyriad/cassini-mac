@@ -2,6 +2,10 @@
 import SwiftUI
 import CassiniLibrary
 
+extension Notification.Name {
+    static let cassiniToggleSidebar = Notification.Name("CassiniToggleSidebar")
+}
+
 struct AppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
@@ -82,7 +86,12 @@ struct AppCommands: Commands {
                 if trash.commandEnabled, let meeting = trash.commandMeeting { trash.move(meeting,undoManager:NSApp.keyWindow?.undoManager) }
             }.keyboardShortcut(.delete,modifiers:.command).disabled(speakerDialog || !MeetingTrashCoordinator.shared.commandEnabled)
         }
-        CommandGroup(after: .sidebar) {
+        CommandGroup(replacing: .sidebar) {
+            Button(UXText.text("library.listPane.a11y")) {
+                NotificationCenter.default.post(name: .cassiniToggleSidebar, object: nil)
+            }
+            .keyboardShortcut("s", modifiers: [.command, .control])
+            .disabled(speakerDialog)
             Button(UXText.text("common.backToLibrary")) {
                 if LibrarySearchModel.shared.visible { LibrarySearchModel.shared.close() } else {
                     MeetingNavigation.shared.back()

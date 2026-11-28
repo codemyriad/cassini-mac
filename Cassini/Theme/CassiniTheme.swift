@@ -7,8 +7,13 @@ import SwiftUI
 /// Native macOS sidebar material (`HARMONY 10.14`, `L-42`: Mac keeps the native sidebar material;
 /// `sidebar` / `sidebar-mac` are reference values for mocks and tests, never a sidebar fill).
 struct NativeSidebarMaterial: NSViewRepresentable {
+    final class BackdropView: NSVisualEffectView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func isAccessibilityElement() -> Bool { false }
+    }
+
     func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
+        let view = BackdropView()
         view.material = .sidebar
         view.blendingMode = .behindWindow
         view.state = .followsWindowActiveState
@@ -271,6 +276,32 @@ struct ToastButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(fillBase.opacity(configuration.isPressed ? 0.22 : 0.12))
             )
+            .opacity(isEnabled ? 1 : 0.45)
+    }
+}
+
+/// Secondary button style for page actions ("Transcribe again", "Open System Settings",
+/// "Try again", "Check", etc.; D-1197 item 15). Drawn by the app using fixed token colours
+/// so it stays identical in active and inactive windows in both light and dark mode.
+struct PageSecondaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.controlSize) private var controlSize
+
+    func makeBody(configuration: Configuration) -> some View {
+        let small = controlSize == .small || controlSize == .mini
+        let fontSize: CGFloat = small ? 11.5 : 13
+        let horizontalPadding: CGFloat = small ? 10 : 14
+        let height: CGFloat = small ? 24 : 30
+        configuration.label
+            .font(.system(size: fontSize, weight: .semibold))
+            .foregroundStyle(CassiniTheme.accentInk)
+            .padding(.horizontal, horizontalPadding)
+            .frame(minHeight: height)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(CassiniTheme.accent.opacity(configuration.isPressed ? 0.18 : 0.10))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 6))
             .opacity(isEnabled ? 1 : 0.45)
     }
 }
