@@ -321,6 +321,19 @@ private final class CaptureFiles: @unchecked Sendable {
         recordFailed = true
     }
     #endif
+    func dismissRecordFailure() {
+        recordFailed = false
+        attemptRefusals = []
+        failedMeetings = [:]
+        meetingRefusals = [:]
+    }
+    func dismissFailedMeeting(_ key: BrowserMeetingKey) {
+        failedMeetings.removeValue(forKey: key)
+        meetingRefusals.removeValue(forKey: key)
+    }
+    func dismissDiskStopped() {
+        diskStopped = false
+    }
     func record() async throws {
         #if DEBUG
         if RecordingFixture.enabled && !CaptureFixture.enabled {

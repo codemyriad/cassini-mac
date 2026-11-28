@@ -50,40 +50,78 @@ struct CapturePermissionNotice: View {
 struct CaptureFailureBanner: View {
     @State private var captures = CaptureCollection.shared
     var body: some View {
-        if captures.diskStopped || captures.recordFailed || !captures.failedMeetings.isEmpty { VStack(spacing:0) {
-            if captures.diskStopped {
-                Text(UXText.text("errors.diskStopped.line")).font(.system(size:13)).padding(.horizontal,18).padding(.vertical,10).frame(maxWidth:.infinity,alignment:.leading).background(CassiniTheme.warnTint)
-            }
-            if captures.recordFailed {
-                line(UXText.text("errors.recordFailed.line"),captions:captures.attemptRefusals) { Task { try? await captures.record() } }
-            } else {
-                ForEach(captures.failedMeetings.keys.sorted(by:{ $0.peer.uuidString == $1.peer.uuidString ? $0.tabID < $1.tabID : $0.peer.uuidString < $1.peer.uuidString }),id:\.self) { key in
-                    line(UXText.text("errors.recordFailed.meeting",["title":captures.failedMeetings[key] ?? UXText.text("library.untitled")]),
-                         captions:captures.meetingRefusals[key].map { [$0] } ?? []) { captures.retry(key) }
+        if captures.diskStopped || captures.recordFailed || !captures.failedMeetings.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                if captures.diskStopped {
+                    line(UXText.text("errors.diskStopped.line"), retry: nil, dismiss: { captures.dismissDiskStopped() })
+                }
+                if captures.recordFailed {
+                    line(
+                        UXText.text("errors.recordFailed.line"),
+                        captions: captures.attemptRefusals,
+                        retry: { Task { try? await captures.record() } },
+                        dismiss: { captures.dismissRecordFailure() }
+                    )
+                } else {
+                    ForEach(captures.failedMeetings.keys.sorted(by: { $0.peer.uuidString == $1.peer.uuidString ? $0.tabID < $1.tabID : $0.peer.uuidString < $1.peer.uuidString }), id: \.self) { key in
+                        line(
+                            UXText.text("errors.recordFailed.meeting", ["title": captures.failedMeetings[key] ?? UXText.text("library.untitled")]),
+                            captions: captures.meetingRefusals[key].map { [$0] } ?? [],
+                            retry: { captures.retry(key) },
+                            dismiss: { captures.dismissFailedMeeting(key) }
+                        )
+                    }
                 }
             }
-        }.accessibilityElement(children:.contain).accessibilityIdentifier("capture-failure-banner") }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("capture-failure-banner")
+        }
     }
     /// D58 captions: busy, noSources, and no answer (startFailed timeout or disconnected).
     static func caption(_ refusal: CaptureRefusal) -> String? {
-        switch (refusal.code,refusal.detail) {
-        case (_,"busy"?): return "errors.refusal.busy"
-        case (_,"noSources"?): return "errors.refusal.noSources"
-        case (CaptureRefusal.startFailed,"timeout"?),(CaptureRefusal.startFailed,"disconnected"?): return "errors.refusal.noAnswer"
+        switch (refusal.code, refusal.detail) {
+        case (_, "busy"?): return "errors.refusal.busy"
+        case (_, "noSources"?): return "errors.refusal.noSources"
+        case (CaptureRefusal.startFailed, "timeout"?), (CaptureRefusal.startFailed, "disconnected"?): return "errors.refusal.noAnswer"
         default: return nil
         }
     }
-    private func line(_ message: String, captions refusals: [CaptureRefusal] = [], retry: @escaping () -> Void) -> some View {
-        let captions = refusals.compactMap(Self.caption).reduce(into:[String]()) { if !$0.contains($1) { $0.append($1) } }
-        return HStack(spacing:12) {
-            VStack(alignment:.leading,spacing:2) {
-                Text(message).fixedSize(horizontal:false,vertical:true)
-                ForEach(captions,id:\.self) { Text(UXText.text($0)).font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).fixedSize(horizontal:false,vertical:true) }
+    private func line(_ message: String, captions refusals: [CaptureRefusal] = [], retry: (() -> Void)?, dismiss: @escaping () -> Void) -> some View {
+        let captions = refusals.compactMap(Self.caption).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        return HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(message)
+                    .fontWeight(.semibold)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(captions, id: \.self) {
+                    Text(UXText.text($0))
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(CassiniTheme.ink2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            Spacer(minLength:8)
-            Button(UXText.text("common.tryAgain"),action:retry)
-                .buttonStyle(PageSecondaryButtonStyle())
-                .disabled(captures.starting)
-        }.font(.system(size:13)).padding(.horizontal,18).padding(.vertical,10).background(CassiniTheme.warnTint)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if let retry {
+                Button(UXText.text("common.tryAgain"), action: retry)
+                    .buttonStyle(PageSecondaryButtonStyle())
+                    .disabled(captures.starting)
+            }
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(UXText.text("common.close"))
+            .accessibilityLabel(UXText.text("common.close"))
+            .accessibilityIdentifier("capture-failure-close")
+        }
+        .font(.system(size: 13))
+        .padding(12)
+        .foregroundStyle(CassiniTheme.inlineWarnInk)
+        .background(CassiniTheme.inlineWarnTint, in: RoundedRectangle(cornerRadius: 7))
     }
 }

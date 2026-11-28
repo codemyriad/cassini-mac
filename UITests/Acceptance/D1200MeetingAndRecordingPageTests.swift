@@ -38,9 +38,7 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1200 item 8", matching: "[D-1200-item8]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1200-item8] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1200-item8] \(failures.joined(separator: "; "))")
     }
 
     /// Item 9: Renaming in toolbar, big title, and recording title keeps the date visible and sizes field to text + 8 pt.
@@ -72,14 +70,12 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
         editor.typeText("Q4")
         let shortWidth = editor.frame.width
 
-        expectStrictFailure("D-1200 item 9", matching: "[D-1200-item9]") {
-            XCTAssertTrue(dateStillExists, "[D-1200-item9] Date element must still exist during rename")
-            if let dateFrameDuring {
-                XCTAssertEqual(dateFrameDuring.minX, dateFrameBefore.minX, accuracy: 1.0, "[D-1200-item9] Date minX must stay unchanged ±1")
-                XCTAssertEqual(dateFrameDuring.minY, dateFrameBefore.minY, accuracy: 1.0, "[D-1200-item9] Date minY must stay unchanged ±1")
-            }
-            XCTAssertLessThan(shortWidth, 120.0, "[D-1200-item9] Rename field for 'Q4' must hug text + 8 pt, not run to the edge")
+        XCTAssertTrue(dateStillExists, "[D-1200-item9] Date element must still exist during rename")
+        if let dateFrameDuring {
+            XCTAssertEqual(dateFrameDuring.minX, dateFrameBefore.minX, accuracy: 1.0, "[D-1200-item9] Date minX must stay unchanged ±1")
+            XCTAssertEqual(dateFrameDuring.minY, dateFrameBefore.minY, accuracy: 1.0, "[D-1200-item9] Date minY must stay unchanged ±1")
         }
+        XCTAssertLessThan(shortWidth, 120.0, "[D-1200-item9] Rename field for 'Q4' must hug text + 8 pt, not run to the edge")
     }
 
     /// Item 10: No grey block under toolbar at 1120, 920, 900 (sidebar open & closed, light & dark),
@@ -121,9 +117,7 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
             _ = attachWindowScreenshot(noticeWin, name: "b19-item10-parakeet-notice-light")
         }
 
-        expectStrictFailure("D-1200 item 10", matching: "[D-1200-item10]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1200-item10] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1200-item10] \(failures.joined(separator: "; "))")
     }
 
     /// Item 11 (recording page): Recording page background matches meeting page background within 2 and differs from sidebar.
@@ -172,9 +166,7 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1200 item 11-recording-bg", matching: "[D-1200-item11-recording-bg]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1200-item11-recording-bg] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1200-item11-recording-bg] \(failures.joined(separator: "; "))")
     }
 
     /// Item 18: Recording page title, date, and source card align with meeting page (±1/±2 pt).
@@ -217,9 +209,7 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1200 item 18", matching: "[D-1200-item18]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1200-item18] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1200-item18] \(failures.joined(separator: "; "))")
     }
 
     /// Item 19: Capture failure notice sits inside meeting pane, doesn't overlap sidebar, has no yellow in toolbar,
@@ -280,8 +270,6 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1200 item 19", matching: "[D-1200-item19]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1200-item19] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1200-item19] \(failures.joined(separator: "; "))")
     }
 }

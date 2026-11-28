@@ -37,8 +37,6 @@ struct RecordingPageView: View {
                     )
                     Text(format.previewSubtitle(meeting.meetingTime,durationMs:nil))
                         .font(.system(size:13)).foregroundStyle(CassiniTheme.ink2)
-                        .opacity(editingTitle ? 0 : 1)
-                        .accessibilityHidden(editingTitle)
                         .accessibilityIdentifier("recording-date")
                 }
                 TimelineView(.periodic(from:.now,by:1)) { _ in
@@ -100,9 +98,13 @@ struct RecordingPageView: View {
                     }.font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).accessibilityIdentifier("recording-source-notice")
                 }
 
-            }.frame(maxWidth:640).padding(.top,28).padding(.horizontal,24).padding(.bottom,40).frame(maxWidth:.infinity)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 44)
+            .padding(.top, 12)
+            .padding(.bottom, 40)
         }.cassiniTopScrollEdge()
-            .background(CassiniTheme.paneGround)
+            .background(CassiniTheme.surface)
             .accessibilityElement(children:.contain).accessibilityIdentifier("recording-page")
             .sheet(isPresented:$changingCapture) { WhatIsRecordedView(model:model) }
             .sheet(isPresented:$explainingFallback) {

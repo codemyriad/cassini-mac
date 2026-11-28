@@ -74,16 +74,15 @@ struct LibraryView: View {
             UpdateReadyFooter(updates:updates)
         }
         .safeAreaInset(edge:.top,spacing:0) {
-            CaptureFailureBanner(); trashFailure
-            VStack(alignment:.leading,spacing:0) {
-                ParakeetRecommendationView(afterFirst:true)
-                ParakeetDefaultNotice()
-            }.padding(.horizontal,18).background(showsFirstRun ? CassiniTheme.surface : CassiniTheme.paneGround)
+            let noticeBackground = showsFirstRun ? CassiniTheme.surface : CassiniTheme.paneGround
+            trashFailure
+            ParakeetRecommendationView(afterFirst: true, horizontalPadding: 18, background: noticeBackground)
+            ParakeetDefaultNotice(horizontalPadding: 18, background: noticeBackground)
 
             if !store.context.screenshot && companionSetup.showLibraryState && showsSplit && !search.visible {
                 BrowserConnectionStateView(identifier:"library-browser-status",presenter:.library)
                     .font(.system(size:11.5)).foregroundStyle(CassiniTheme.ink2).padding(.horizontal,18).padding(.vertical,8)
-                    .background(CassiniTheme.paneGround)
+                    .background(CassiniTheme.paneGround, ignoresSafeAreaEdges: [])
             }
         }
         .task { await speechModels.refresh() }
@@ -330,7 +329,7 @@ struct LibraryView: View {
                         .buttonStyle(PageSecondaryButtonStyle())
                         .disabled(!trash.canTrash(meeting))
                 }
-            }.padding(12).foregroundStyle(CassiniTheme.warnInk).background(CassiniTheme.warnTint)
+            }.padding(12).foregroundStyle(CassiniTheme.warnInk).background(CassiniTheme.warnTint, ignoresSafeAreaEdges: [])
                 .accessibilityIdentifier("trash-failure")
         }
     }
@@ -1051,9 +1050,16 @@ struct LibraryView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(CassiniTheme.paneGround)
         } else {
-            Text(UXText.text("meeting.emptySelection")).foregroundStyle(CassiniTheme.ink2)
-                .frame(maxWidth: .infinity, maxHeight: .infinity).background(CassiniTheme.paneGround)
-                .accessibilityIdentifier("meeting-empty-selection")
+            VStack(spacing: 0) {
+                CaptureFailureBanner()
+                    .padding(.horizontal, 44)
+                    .padding(.top, 12)
+                Text(UXText.text("meeting.emptySelection")).foregroundStyle(CassiniTheme.ink2)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityIdentifier("meeting-empty-selection")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(CassiniTheme.paneGround)
         }
     }
     private func transientImportRow(_ item: LibraryImportCoordinator.TransientItem) -> some View {
