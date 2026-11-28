@@ -2498,10 +2498,21 @@ final class LibraryBoards: XCTestCase {
         XCTAssertEqual(field.value as? String, "Unsaved draft")
     }
 
+    /// Regression test (D-1198 review): Right-clicking an unselected meeting row opens its
+    /// context menu and targets that unselected row (not the currently selected row).
+    @MainActor func testRightClickMenuOnUnselectedRow() throws {
+        try verifyUnselectedRowContextMenu(viaVoiceOverShowMenu: false)
+    }
+
     /// Regression test (D-1198 review): VoiceOver's accessibility Show Menu action (`AXShowMenu`)
     /// must remain available on each meeting row and activate the context menu for an unselected row.
     @MainActor func testVoiceOverShowMenuOnUnselectedRow() throws {
-        let app = try launch("library", fixture: "main", extra: ["--fixture-library-rename", "-CassiniRenameID", UUID().uuidString])
+        try XCTSkipUnless(AXIsProcessTrusted(), "Accessibility not trusted")
+        try verifyUnselectedRowContextMenu(viaVoiceOverShowMenu: true)
+    }
+
+    @MainActor private func verifyUnselectedRowContextMenu(viaVoiceOverShowMenu: Bool) throws {
+        let app = try launch("library", fixture: "main", extra: ["--fixture-library-rename", "-CassiniRenameID", UUID().uuidString, "-CassiniDefaultsID", UUID().uuidString])
         defer { if app.state != .notRunning { app.terminate() } }
         let window = app.windows["cassini-library-window"]
         let menuTargets = window.descendants(matching: .any).matching(
@@ -2529,7 +2540,7 @@ final class LibraryBoards: XCTestCase {
 
         XCTAssertFalse(unselectedTarget.label.isEmpty, "VoiceOver menu anchor \(unselectedMenuId) must expose an accessibility label")
 
-        if AXIsProcessTrusted() {
+        if viaVoiceOverShowMenu {
             var locatedTarget: AXUIElement?
             _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
                 let apps = NSRunningApplication.runningApplications(withBundleIdentifier: "io.codemyriad.cassini")
@@ -2568,10 +2579,6 @@ final class LibraryBoards: XCTestCase {
             let performResult = AXUIElementPerformAction(axMenuTarget, kAXShowMenuAction as CFString)
             XCTAssertEqual(performResult, AXError.success, "AXShowMenu action failed on unselected row \(unselectedMenuId)")
         } else {
-            // Hosted CI runners do not grant TCC Accessibility to the xctest runner process
-            // (`AXIsProcessTrusted() == false`), so raw AXUIElement calls return kAXErrorAPIDisabled.
-            // XCUITest already verified the `meeting-menu-*` AX anchor exists via testmanagerd;
-            // exercise the unselected row's context menu end-to-end via right-click.
             let unselectedRow = window.outlines.firstMatch.outlineRows.containing(
                 NSPredicate(format: "identifier == %@", unselectedMenuId)
             ).firstMatch
@@ -2580,7 +2587,7 @@ final class LibraryBoards: XCTestCase {
         }
 
         let starItem = window.menuItems["library-star"]
-        XCTAssertTrue(starItem.waitForExistence(timeout: 5), "Context menu did not open via AXShowMenu: " + app.debugDescription)
+        XCTAssertTrue(starItem.waitForExistence(timeout: 5), "Context menu did not open for unselected row: " + app.debugDescription)
         starItem.click()
 
         // Switch to the Starred filter to verify the unselected row (and not the selected row)

@@ -967,10 +967,14 @@ struct LibraryView: View {
                                                 )
                                             },
                                             onContextMenuOpenChanged: { open in
-                                                if open {
-                                                    contextMenuMeetingKey = meeting.libraryKey
-                                                } else if contextMenuMeetingKey == meeting.libraryKey {
-                                                    contextMenuMeetingKey = nil
+                                                var transaction = Transaction()
+                                                transaction.disablesAnimations = true
+                                                withTransaction(transaction) {
+                                                    if open {
+                                                        contextMenuMeetingKey = meeting.libraryKey
+                                                    } else if contextMenuMeetingKey == meeting.libraryKey {
+                                                        contextMenuMeetingKey = nil
+                                                    }
                                                 }
                                             }
                                         )

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
+import QuartzCore
 import SwiftUI
 import CassiniLibrary
 
@@ -280,6 +281,17 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
             }
             return true
         }
+        private func flushContextMenuRingRedraw() {
+            var node: NSView? = self
+            while let view = node {
+                view.needsLayout = true
+                view.needsDisplay = true
+                node = view.superview
+            }
+            window?.layoutIfNeeded()
+            window?.displayIfNeeded()
+            CATransaction.flush()
+        }
         @discardableResult
         func presentContextMenu(at point: NSPoint, windowPoint: NSPoint?) -> Bool {
             guard canAcceptInteraction(atWindowPoint: windowPoint),
@@ -287,16 +299,20 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
                 return false
             }
             onContextMenuOpenChanged?(true)
+            flushContextMenuRingRedraw()
             DispatchQueue.main.async { [weak self] in
                 guard let self,
                       self.canAcceptInteraction(atWindowPoint: windowPoint),
                       let currentBuildMenu = self.buildContextMenu else {
                     self?.onContextMenuOpenChanged?(false)
+                    self?.flushContextMenuRingRedraw()
                     return
                 }
                 let menu = currentBuildMenu()
                 let delegate = LibraryContextMenuDelegate { [weak self] in
-                    self?.onContextMenuOpenChanged?(false)
+                    guard let self else { return }
+                    self.onContextMenuOpenChanged?(false)
+                    self.flushContextMenuRingRedraw()
                 }
                 menu.delegate = delegate
                 withExtendedLifetime(delegate) {
