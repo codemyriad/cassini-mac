@@ -328,6 +328,59 @@ class AcceptanceTestCase: XCTestCase {
         return window.searchFields.firstMatch
     }
 
+    /// Returns one OutlineRow per meeting card in the sidebar list.
+    /// LibraryView wraps LibraryRowViews with identifier `meeting-<libraryKey>`,
+    /// so macOS AX exposes `meeting-Recording-*` / `meeting-Received-*` inside each OutlineRow.
+    func meetingCardRows(in window: XCUIElement) -> XCUIElementQuery {
+        window.outlines.firstMatch.outlineRows.containing(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ OR identifier BEGINSWITH %@ OR identifier BEGINSWITH %@",
+                "meeting-card-",
+                "meeting-Recording-",
+                "meeting-Received-"
+            )
+        )
+    }
+
+    /// Returns the inline date element in MeetingPaneHeader (preferring `meeting-inline-date`,
+    /// falling back to the first `meeting-inline-subtitle` StaticText when the parent HStack identifier wins in AX).
+    func inlineDateElement(in window: XCUIElement) -> XCUIElement {
+        let direct = window.descendants(matching: .any)["meeting-inline-date"].firstMatch
+        if direct.exists { return direct }
+        return window.staticTexts["meeting-inline-subtitle"].firstMatch
+    }
+
+    /// Opens the floating sidebar overlay at narrow window widths (< 920 pt).
+    /// Note: `floating-sidebar-toggle` lives inside the overlay to close it; `⌥⌘F` (Search every meeting)
+    /// opens `floatingSidebarOpen` cleanly without leaving search results open when the query is empty.
+    @MainActor func openFloatingSidebar(in app: XCUIApplication, window: XCUIElement) {
+        let overlay = window.descendants(matching: .any)["floating-sidebar"].firstMatch
+        if overlay.exists { return }
+        app.typeKey("f", modifierFlags: [.command, .option])
+        if overlay.waitForExistence(timeout: 5) { return }
+        let editMenu = app.menuBars.menuBarItems["Edit"]
+        if editMenu.exists {
+            editMenu.click()
+            let searchItem = editMenu.menus.menuItems["Search every meeting"]
+            if searchItem.exists {
+                searchItem.click()
+                _ = overlay.waitForExistence(timeout: 5)
+            } else {
+                app.typeKey(.escape, modifierFlags: [])
+            }
+        }
+    }
+
+    /// Launch arguments for a writable, seeded recording fixture that starts idle with existing meetings.
+    func seededRecordingArgs(extra: [String] = []) -> [String] {
+        [
+            "--fixture-library-recording",
+            "-CassiniCaptureID", UUID().uuidString,
+            "-CassiniSeedRecordingFixture", "YES",
+            "-CassiniFixtureActivity", "none",
+        ] + extra
+    }
+
     func visibleText(_ element: XCUIElement) -> String {
         if let value = element.value as? String, !value.isEmpty { return value }
         return element.label

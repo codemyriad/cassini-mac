@@ -9,7 +9,7 @@ final class D1199SidebarAndToolbarTests: AcceptanceTestCase {
         var failures: [String] = []
 
         for size in ["1120x720", "900x720", "560x720"] {
-            let app = try launchAcceptance("meeting", fixture: "main", size: size, dark: false)
+            let app = try launchAcceptance("meeting", fixture: "main", size: size, dark: false, extra: ["-CassiniFixtureActivity", "none"])
             defer { app.terminate() }
             let window = app.windows["cassini-library-window"]
             XCTAssertTrue(window.waitForExistence(timeout: 20), app.debugDescription)
@@ -42,7 +42,7 @@ final class D1199SidebarAndToolbarTests: AcceptanceTestCase {
                 fixture: "main",
                 size: "900x720",
                 dark: false,
-                extra: ["--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString]
+                extra: seededRecordingArgs()
             )
             defer { recApp.terminate() }
             let recWin = recApp.windows["cassini-library-window"]
@@ -78,7 +78,7 @@ final class D1199SidebarAndToolbarTests: AcceptanceTestCase {
         let dockedFilterSize: CGSize
         let dockedShot: XCUIScreenshot
         do {
-            let dockedApp = try launchAcceptance("meeting", fixture: "main", size: "1120x720", dark: false)
+            let dockedApp = try launchAcceptance("meeting", fixture: "main", size: "1120x720", dark: false, extra: ["-CassiniFixtureActivity", "none"])
             defer { dockedApp.terminate() }
             let dockedWin = dockedApp.windows["cassini-library-window"]
             XCTAssertTrue(dockedWin.waitForExistence(timeout: 20), dockedApp.debugDescription)
@@ -94,14 +94,12 @@ final class D1199SidebarAndToolbarTests: AcceptanceTestCase {
         }
 
         for size in ["900x720", "560x720"] {
-            let app = try launchAcceptance("meeting", fixture: "main", size: size, dark: false)
+            let app = try launchAcceptance("meeting", fixture: "main", size: size, dark: false, extra: ["-CassiniFixtureActivity", "none"])
             defer { app.terminate() }
             let win = app.windows["cassini-library-window"]
             XCTAssertTrue(win.waitForExistence(timeout: 20), app.debugDescription)
 
-            let toggle = win.buttons["floating-sidebar-toggle"].firstMatch
-            if toggle.waitForExistence(timeout: 5) { toggle.click() }
-            else { app.typeKey("s", modifierFlags: [.command, .control]) }
+            openFloatingSidebar(in: app, window: win)
 
             let search = sidebarSearchField(in: win)
             XCTAssertTrue(search.waitForExistence(timeout: 10), app.debugDescription)
@@ -146,7 +144,7 @@ final class D1199SidebarAndToolbarTests: AcceptanceTestCase {
 
     /// Item 13: Gap from Import circle right edge to Record (or live pill) left edge is 8 pt ±1.
     @MainActor func testImportRecordGap() throws {
-        let app = try launchAcceptance("library", fixture: "main", size: "1120x720", dark: false)
+        let app = try launchAcceptance("library", fixture: "main", size: "1120x720", dark: false, extra: ["-CassiniFixtureActivity", "none"])
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         let importBtn = window.buttons["toolbar-import"].firstMatch
@@ -227,9 +225,7 @@ final class D1199SidebarAndToolbarTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1199 item sidebar-width", matching: "[D-1199-sidebar-width]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1199-sidebar-width] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1199-sidebar-width] \(failures.joined(separator: "; "))")
     }
 
     /// Item 11 (live pill): toolbar-live-pill always appears reliably in sidebar toolbar across
@@ -244,13 +240,13 @@ final class D1199SidebarAndToolbarTests: AcceptanceTestCase {
                 fixture: "main",
                 size: size,
                 dark: false,
-                extra: ["--fixture-library-recording", "-CassiniCaptureID", UUID().uuidString]
+                extra: seededRecordingArgs()
             )
             defer { app.terminate() }
             let window = app.windows["cassini-library-window"]
             let importBtn = window.buttons["toolbar-import"].firstMatch
             let recordBtn = window.buttons["toolbar-record"].firstMatch
-            let cards = window.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "meeting-card-"))
+            let cards = meetingCardRows(in: window)
             XCTAssertTrue(recordBtn.waitForExistence(timeout: 20), app.debugDescription)
             XCTAssertTrue(importBtn.waitForExistence(timeout: 10), app.debugDescription)
             XCTAssertTrue(waitFor({ cards.count >= 2 }, timeout: 10), "Expected at least 2 meeting cards")

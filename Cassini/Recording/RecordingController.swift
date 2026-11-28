@@ -245,7 +245,18 @@ enum RecordingFixture {
         guard enabled, let key = LibraryLaunchContext.argument("-CassiniCaptureID"), UUID(uuidString: key) != nil else { return nil }
         let parent = SettingsFixture.temporaryDirectory.appendingPathComponent("CassiniLibrary-" + key)
         try? FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        return parent.appendingPathComponent("root")
+        let root = parent.appendingPathComponent("root")
+        if LibraryLaunchContext.argument("-CassiniSeedRecordingFixture") == "YES",
+           !FileManager.default.fileExists(atPath: root.path) {
+            let source = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Fixtures/Library/main/root")
+            if FileManager.default.fileExists(atPath: source.path) {
+                try? FileManager.default.copyItem(at: source, to: root)
+                // Remove the in-progress recording entry so the seeded library starts idle with Record enabled.
+                let live = root.appendingPathComponent("Recording-a0000000-0000-4000-8000-000000000003")
+                try? FileManager.default.removeItem(at: live)
+            }
+        }
+        return root
         #else
         return nil
         #endif

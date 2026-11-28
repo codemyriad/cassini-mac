@@ -49,9 +49,20 @@ enum ScreenshotFixture {
                     "file": "track-output-silent.wav",
                     "sampleRate": 16000,
                     "channels": 1,
+                    "frames": 16000,
+                    "receivedFrames": 16000,
                     "startOffsetMs": 0
                 ]]
                 try JSONSerialization.data(withJSONObject: session).write(to: sessionURL, options: .atomic)
+            }
+            let meetingURL = meetingDir.appendingPathComponent("meeting.json")
+            if var meeting = (try? JSONSerialization.jsonObject(with: Data(contentsOf: meetingURL))) as? [String: Any] {
+                var details = (meeting["recordingDetails"] as? [String: Any]) ?? [:]
+                var writingDown = (details["writingDown"] as? [String: Any]) ?? [:]
+                writingDown["silentTracks"] = ["output"]
+                details["writingDown"] = writingDown
+                meeting["recordingDetails"] = details
+                try JSONSerialization.data(withJSONObject: meeting, options: [.sortedKeys]).write(to: meetingURL, options: .atomic)
             }
             return directory
         } catch { preconditionFailure("Cannot prepare no-speech screenshot fixture: \(error)") }

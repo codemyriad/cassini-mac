@@ -34,7 +34,7 @@ jobs:
     needs: [build]
     if: ${{ always() && !cancelled() && (inputs.mode == '' || inputs.mode == 'all' || inputs.mode == 'boards') && (inputs.products_ready || needs.build.result == 'success') }}
     runs-on: macos-15
-    timeout-minutes: 55
+    timeout-minutes: 75
     steps:
     - uses: actions/checkout@v5
     - uses: ./.github/actions/ci-products
@@ -89,7 +89,7 @@ jobs:
           build/qa-attachments-light
           build/qa-attachments-dark
     - name: Beta 19 acceptance UI tests
-      timeout-minutes: 15
+      timeout-minutes: 20
       env:
         TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
       run: |

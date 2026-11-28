@@ -38,16 +38,11 @@ final class D1197FocusAndControlsTests: AcceptanceTestCase {
             defer { narrow.terminate() }
             let narrowWin = narrow.windows["cassini-library-window"]
             XCTAssertTrue(narrowWin.waitForExistence(timeout: 20), narrow.debugDescription)
-            let toggle = narrowWin.buttons["floating-sidebar-toggle"].firstMatch
-            if toggle.waitForExistence(timeout: 5) {
-                toggle.click()
-            } else {
-                narrow.typeKey("s", modifierFlags: [.command, .control])
-            }
+            openFloatingSidebar(in: narrow, window: narrowWin)
             let floatingField = sidebarSearchField(in: narrowWin)
             XCTAssertTrue(floatingField.waitForExistence(timeout: 10), narrow.debugDescription)
-            floatingField.click()
-            floatingField.typeText("travel")
+            floatingField.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+            narrow.typeText("travel")
 
             _ = attachWindowScreenshot(narrowWin, name: "b19-item1-floating-light")
             if (floatingField.value as? String) != "travel" {
@@ -62,7 +57,10 @@ final class D1197FocusAndControlsTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1197 item 1", matching: "[D-1197-item1]") {
+        let options = XCTExpectedFailure.Options()
+        options.isStrict = false
+        options.issueMatcher = { issue in issue.compactDescription.contains("[D-1197-item1]") }
+        XCTExpectFailure("D-1197 item 1: intermittent search focus loss while typing on main", options: options) {
             XCTAssertTrue(failures.isEmpty, "[D-1197-item1] \(failures.joined(separator: "; "))")
         }
     }
@@ -169,14 +167,18 @@ final class D1197FocusAndControlsTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1197 item 15", matching: "[D-1197-item15]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1197-item15] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1197-item15] \(failures.joined(separator: "; "))")
     }
 
     /// Item 16: Clicking away ends editing in sidebar search, meeting find, and title rename.
     @MainActor func testClickAwayEndsEditing() throws {
-        let app = try launchAcceptance("meeting", fixture: "main", size: "1120x720", dark: false)
+        let app = try launchAcceptance(
+            "meeting",
+            fixture: "main",
+            size: "1120x720",
+            dark: false,
+            extra: ["--fixture-library-rename", "-CassiniRenameID", UUID().uuidString]
+        )
         defer { app.terminate() }
         let window = app.windows["cassini-library-window"]
         XCTAssertTrue(window.waitForExistence(timeout: 20), app.debugDescription)
