@@ -142,7 +142,7 @@ struct LibraryTransientImportRowView: View {
         }
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+        .listRowInsets(EdgeInsets(top: 3, leading: 4, bottom: 3, trailing: 4))
         .accessibilityIdentifier((isFailed ? "failed-import-" : "importing-") + item.fileName)
     }
 }

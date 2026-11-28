@@ -891,7 +891,7 @@ struct LibraryView: View {
             .padding(.bottom, 6)
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+            .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
             .selectionDisabled(true)
     }
 
@@ -988,7 +988,7 @@ struct LibraryView: View {
                                     })
                                     .listRowSeparator(.hidden)
                                     .listRowBackground(Color.clear)
-                                    .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+                                    .listRowInsets(EdgeInsets(top: 3, leading: 4, bottom: 3, trailing: 4))
                                     .accessibilityIdentifier("meeting-" + meeting.libraryKey)
                             }
                         }
