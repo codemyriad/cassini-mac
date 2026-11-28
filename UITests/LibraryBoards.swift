@@ -2523,7 +2523,12 @@ final class LibraryBoards: XCTestCase {
         let unselectedMenuId = unselectedTarget.identifier
         XCTAssertTrue(unselectedMenuId.hasPrefix("meeting-menu-"), "Unexpected identifier: \(unselectedMenuId)")
         let unselectedKey = String(unselectedMenuId.dropFirst("meeting-menu-".count))
-        let starBadge = window.descendants(matching: .any)["library-starred-" + unselectedKey].firstMatch
+        let unselectedRow = window.outlines.firstMatch.outlineRows.containing(
+            NSPredicate(format: "identifier == %@", unselectedMenuId)
+        ).firstMatch
+        let starBadge = unselectedRow.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier == %@ OR label == %@", "library-starred-" + unselectedKey, "Starred")
+        ).firstMatch
         let wasStarred = starBadge.exists
 
         guard let pid = NSRunningApplication.runningApplications(withBundleIdentifier: "io.codemyriad.cassini").first?.processIdentifier else {

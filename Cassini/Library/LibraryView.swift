@@ -944,7 +944,9 @@ struct LibraryView: View {
                                 }
                             }
                             ForEach(group.meetings, id: \.libraryKey) { meeting in
-                                row(meeting).tag(meeting.libraryKey).id(meeting.libraryKey)
+                                row(meeting)
+                                    .accessibilityIdentifier("meeting-" + meeting.libraryKey)
+                                    .tag(meeting.libraryKey).id(meeting.libraryKey)
                                     .background {
                                         LibraryRowOpenAnchor(
                                             rowKey: meeting.libraryKey,
@@ -971,6 +973,7 @@ struct LibraryView: View {
                                                 }
                                             }
                                         )
+                                        .accessibilityIdentifier("meeting-menu-" + meeting.libraryKey)
                                         if store.primarySelectedKey == meeting.libraryKey { LibraryMenuAnchor() }
                                     }
                                     .accessibilityAction(named: UXText.text("meeting.moreActions")) {
@@ -988,7 +991,6 @@ struct LibraryView: View {
                                     .listRowSeparator(.hidden)
                                     .listRowBackground(Color.clear)
                                     .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
-                                    .accessibilityIdentifier("meeting-" + meeting.libraryKey)
                             }
                         }
                         if !store.meetings.isEmpty, store.meetings.allSatisfy({ $0.state.origin == .received }) {
