@@ -239,6 +239,12 @@ enum RecordingFixture {
         simulatedStartFailureConsumed = true
         return true
     }
+    @MainActor private static var simulatedPartialFailureConsumed = false
+    @MainActor static func consumeSimulatedPartialCaptureFailure() -> Bool {
+        guard enabled, LibraryLaunchContext.argument("-CassiniPartialCaptureFailure") == "YES", !simulatedPartialFailureConsumed else { return false }
+        simulatedPartialFailureConsumed = true
+        return true
+    }
     #endif
     static var root: URL? {
         #if DEBUG

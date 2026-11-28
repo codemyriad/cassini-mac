@@ -189,8 +189,7 @@ struct MeetingView: View {
         }
     }
     private var hasCaptureFailure: Bool {
-        let captures = CaptureCollection.shared
-        return captures.diskStopped || captures.recordFailed || !captures.failedMeetings.isEmpty
+        CaptureCollection.shared.hasFailure
     }
     private var hasMeetingNotices: Bool {
         hasCaptureFailure || RecordingOverview.libraryDiskLine != nil || isTranscribing || issueLine != nil

@@ -11,6 +11,7 @@ struct RecordingPageView: View {
     let format: LibraryFormat
     @State private var model: RecordingPageModel
     @State private var recorder = RecordingController.shared
+    @State private var captures = CaptureCollection.shared
     @State private var editingTitle = false
     init(meeting: LibraryMeeting, format: LibraryFormat) {
         self.meeting = meeting; self.format = format
@@ -57,6 +58,9 @@ struct RecordingPageView: View {
                         }.buttonStyle(.plain).disabled(model.saving || meeting.state.lifecycle == .saving || (!model.canStop && !model.frozen))
                             .allowsHitTesting(!model.frozen).accessibilityIdentifier("recording-page-stop")
                     }
+                }
+                if captures.hasFailure {
+                    CaptureFailureBanner()
                 }
                 if let line = model.owned?.diskMinutes.map({ UXText.text("errors.diskLow.line",["n":String($0)]) }) ?? (model.native ? recorder.diskLine : nil) { Text(line).foregroundStyle(CassiniTheme.warningNotice).fixedSize(horizontal:false,vertical:true) }
                 if let owned = model.owned, owned.presentation.failedSides.contains(.me) { CapturePermissionNotice(side:.me,refusal:owned.presentation.refusedSides[.me]) }

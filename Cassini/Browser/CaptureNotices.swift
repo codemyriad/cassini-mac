@@ -50,7 +50,7 @@ struct CapturePermissionNotice: View {
 struct CaptureFailureBanner: View {
     @State private var captures = CaptureCollection.shared
     var body: some View {
-        if captures.diskStopped || captures.recordFailed || !captures.failedMeetings.isEmpty {
+        if captures.hasFailure {
             VStack(alignment: .leading, spacing: 8) {
                 if captures.diskStopped {
                     line(UXText.text("errors.diskStopped.line"), retry: nil, dismiss: { captures.dismissDiskStopped() })
@@ -107,6 +107,7 @@ struct CaptureFailureBanner: View {
                 Button(UXText.text("common.tryAgain"), action: retry)
                     .buttonStyle(PageSecondaryButtonStyle())
                     .disabled(captures.starting)
+                    .accessibilityIdentifier("capture-failure-retry")
             }
             Button(action: dismiss) {
                 Image(systemName: "xmark")

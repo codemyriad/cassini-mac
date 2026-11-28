@@ -1038,9 +1038,23 @@ struct LibraryView: View {
         } else if let meeting = store.selected, meeting.state.lifecycle != .saved {
             RecordingPageView(meeting: meeting, format: store.format).id(meeting.libraryKey)
         } else if navigation.loading {
-            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 0) {
+                if CaptureCollection.shared.hasFailure {
+                    CaptureFailureBanner()
+                        .padding(.horizontal, 44)
+                        .padding(.top, 12)
+                }
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(CassiniTheme.paneGround)
         } else if store.selectedKeys.count > 1 {
-            VStack {
+            VStack(spacing: 0) {
+                if CaptureCollection.shared.hasFailure {
+                    CaptureFailureBanner()
+                        .padding(.horizontal, 44)
+                        .padding(.top, 12)
+                }
                 Spacer()
                 Button(UXText.text("export.zip.selected")) { bulkExporter.exportSelected() }
                     .buttonStyle(.borderedProminent)
@@ -1053,9 +1067,11 @@ struct LibraryView: View {
             .background(CassiniTheme.paneGround)
         } else {
             VStack(spacing: 0) {
-                CaptureFailureBanner()
-                    .padding(.horizontal, 44)
-                    .padding(.top, 12)
+                if CaptureCollection.shared.hasFailure {
+                    CaptureFailureBanner()
+                        .padding(.horizontal, 44)
+                        .padding(.top, 12)
+                }
                 Text(UXText.text("meeting.emptySelection")).foregroundStyle(CassiniTheme.ink2)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityIdentifier("meeting-empty-selection")

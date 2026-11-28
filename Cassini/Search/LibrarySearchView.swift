@@ -173,6 +173,7 @@ struct LibrarySearchSidebarContent: View {
 
 struct LibrarySearchPreviewPane: View {
     @State private var model = LibrarySearchModel.shared
+    @State private var captures = CaptureCollection.shared
     let hit: SearchHit
     let meeting: LibraryMeeting
     let format: LibraryFormat
@@ -184,6 +185,9 @@ struct LibrarySearchPreviewPane: View {
                 VStack(alignment:.leading,spacing:6) {
                     Text(meeting.title ?? UXText.text("library.untitled")).font(.system(size:22,weight:.bold))
                     Text(format.searchContext(meeting.meetingTime,durationMs:meeting.durationMs,positionMs:hit.positionMs)).foregroundStyle(CassiniTheme.ink2)
+                }
+                if captures.hasFailure {
+                    CaptureFailureBanner()
                 }
                 VStack(alignment:.leading,spacing:18) {
                     ForEach(hit.context,id:\.index) { index,turn in
