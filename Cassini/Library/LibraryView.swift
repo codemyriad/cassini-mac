@@ -164,11 +164,17 @@ struct LibraryView: View {
                 #endif
             })
             .disabled(rename.presentation == .speakers)
-            .accessibilityHidden(rename.presentation == .speakers)
+            .allowsHitTesting(!(isNarrowWindow && floatingSidebarOpen))
+            .accessibilityHidden(rename.presentation == .speakers || (isNarrowWindow && floatingSidebarOpen))
     }
 
     var body: some View {
         chromeWrappedSurface
+        .overlay(alignment: .leading) {
+            if isNarrowWindow && floatingSidebarOpen {
+                floatingSidebarOverlay
+            }
+        }
         .overlay {
             if rename.presentation == .speakers {
                 ZStack {
@@ -329,8 +335,7 @@ struct LibraryView: View {
         return nil
     }
     private var split: some View {
-        ZStack(alignment: .leading) {
-            NavigationSplitView(columnVisibility: $columnVisibility) {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebarColumn
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { sidebarWidth = $0 }
                 .toolbar {
@@ -363,13 +368,6 @@ struct LibraryView: View {
             isPresented: $sidebarSearchPresented,
             prompt: UXText.text("search.field.placeholder")
         ))
-        .allowsHitTesting(!(isNarrowWindow && floatingSidebarOpen))
-        .accessibilityHidden(isNarrowWindow && floatingSidebarOpen)
-        if isNarrowWindow && floatingSidebarOpen {
-            floatingSidebarOverlay
-                .zIndex(10)
-        }
-        }
     }
 
     private func handleSidebarSearchFocusRequest() {
