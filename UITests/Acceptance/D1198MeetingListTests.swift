@@ -44,9 +44,7 @@ final class D1198MeetingListTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1198 item 2", matching: "[D-1198-item2]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1198-item2] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1198-item2] \(failures.joined(separator: "; "))")
     }
 
     /// Item 3: Visible cards align horizontally with the search field (±1 pt) and day headings align with card titles.
@@ -80,9 +78,7 @@ final class D1198MeetingListTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1198 item 3", matching: "[D-1198-item3]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1198-item3] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1198-item3] \(failures.joined(separator: "; "))")
     }
 
     /// Item 12: Context-menu ring only wraps the card (grown by 4 pt) and clears on Esc / click away / action.
@@ -115,9 +111,7 @@ final class D1198MeetingListTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1198 item 12", matching: "[D-1198-item12]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1198-item12] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1198-item12] \(failures.joined(separator: "; "))")
     }
 
     /// Item 17: List fades under footer at 1120 and 900 floating sidebar, light and dark.
@@ -155,9 +149,7 @@ final class D1198MeetingListTests: AcceptanceTestCase {
             }
         }
 
-        expectStrictFailure("D-1198 item 17", matching: "[D-1198-item17]") {
-            XCTAssertTrue(failures.isEmpty, "[D-1198-item17] \(failures.joined(separator: "; "))")
-        }
+        XCTAssertTrue(failures.isEmpty, "[D-1198-item17] \(failures.joined(separator: "; "))")
     }
 
     /// Regression guard (unwrapped): basic list selection, keyboard navigation, and VoiceOver labels must pass before and after.
