@@ -224,9 +224,17 @@ private struct RecordingPillControls: NSViewRepresentable {
     let noSleep: Bool, dark: Bool
     let height: CGFloat
     let open: () -> Void, stop: () -> Void
-    func makeNSView(context: Context) -> RecordingPillControlView { RecordingPillControlView() }
+    func makeNSView(context: Context) -> RecordingPillControlView {
+        let view = RecordingPillControlView()
+        view.update(self)
+        return view
+    }
     func updateNSView(_ view: RecordingPillControlView, context: Context) {
         view.update(self)
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: RecordingPillControlView, context: Context) -> CGSize? {
+        nsView.update(self)
+        return nsView.intrinsicContentSize
     }
 }
 private final class RecordingPillControlView: NSView {
@@ -241,6 +249,10 @@ private final class RecordingPillControlView: NSView {
     override init(frame: NSRect) {
         super.init(frame:frame)
         wantsLayer = true; layer?.cornerRadius = 16
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentHuggingPriority(.required, for: .vertical)
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .vertical)
         setAccessibilityElement(true); setAccessibilityRole(.group)
         setAccessibilityIdentifier("toolbar-live-pill")
         for button in [openButton,stopButton] {

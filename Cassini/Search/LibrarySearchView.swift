@@ -295,41 +295,44 @@ struct LibrarySearchField: NSViewRepresentable {
     final class BrandedSearchFieldCell: NSSearchFieldCell {
         override func searchButtonRect(forBounds rect: NSRect) -> NSRect {
             let base = super.searchButtonRect(forBounds: rect)
-            return NSRect(x: 6, y: base.minY, width: base.width, height: base.height)
+            return NSRect(x: 8, y: base.minY, width: base.width, height: base.height)
         }
         override func cancelButtonRect(forBounds rect: NSRect) -> NSRect {
             guard !stringValue.isEmpty else { return .zero }
             let base = super.cancelButtonRect(forBounds: rect)
-            return NSRect(x: rect.maxX - base.width - 6, y: base.minY, width: base.width, height: base.height)
+            return NSRect(x: rect.maxX - base.width - 8, y: base.minY, width: base.width, height: base.height)
         }
         override func searchTextRect(forBounds rect: NSRect) -> NSRect {
             let minX = searchButtonRect(forBounds: rect).maxX + 4
             let cancel = cancelButtonRect(forBounds: rect)
-            let maxX = cancel.width > 0 ? cancel.minX - 4 : rect.maxX - 8
+            let maxX = cancel.width > 0 ? cancel.minX - 4 : rect.maxX - 10
             let h: CGFloat = 16
             return NSRect(x: minX, y: floor((rect.height - h) / 2), width: max(0, maxX - minX), height: h)
         }
         override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
+            let isDark = controlView.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             let isFocused: Bool = {
                 guard let window = controlView.window, let first = window.firstResponder else { return false }
                 if first === controlView { return true }
                 if let editor = (controlView as? NSControl)?.currentEditor(), first === editor { return true }
                 return false
             }()
-            let radius: CGFloat = controlSize == .large ? 7 : 6
+            let radius: CGFloat = cellFrame.height / 2
             if isFocused {
-                let focusPath = NSBezierPath(roundedRect: cellFrame.insetBy(dx: 1, dy: 1), xRadius: radius, yRadius: radius)
+                let focusRect = cellFrame.insetBy(dx: 1, dy: 1)
+                let focusRadius = focusRect.height / 2
+                let focusPath = NSBezierPath(roundedRect: focusRect, xRadius: focusRadius, yRadius: focusRadius)
                 CassiniTheme.nsField.setFill()
                 focusPath.fill()
-                CassiniTheme.nsAccent.setStroke()
+                NSColor.keyboardFocusIndicatorColor.setStroke()
                 focusPath.lineWidth = 2
                 focusPath.stroke()
             } else {
                 let path = NSBezierPath(roundedRect: cellFrame.insetBy(dx: 0.5, dy: 0.5), xRadius: radius, yRadius: radius)
-                CassiniTheme.nsField.setFill()
+                CassiniTokens.inkEntry.resolvedNSColor(dark: isDark).withAlphaComponent(0.06).setFill()
                 path.fill()
-                CassiniTheme.nsFieldLine.setStroke()
-                path.lineWidth = 1
+                CassiniTokens.lineEntry.resolvedNSColor(dark: isDark).setStroke()
+                path.lineWidth = 0.5
                 path.stroke()
             }
             drawInterior(withFrame: cellFrame, in: controlView)

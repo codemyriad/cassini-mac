@@ -17,12 +17,9 @@ struct LibraryView: View {
     @State private var screenshotTestSheet = false
     #endif
     private static let narrowSidebarThreshold: CGFloat = 920
-    private static var usesNativeSidebarSearch: Bool {
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) { return true }
-        #endif
-        return false
-    }
+    /// D-1199 item 7 (L-108): docked and floating sidebars share one `sidebarColumn`
+    /// and one `LibrarySearchField` component so both presentations match identically.
+    private static let usesNativeSidebarSearch = false
     @State private var toolbarWidth: CGFloat = 1120
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var userHidSidebar = false
@@ -33,9 +30,8 @@ struct LibraryView: View {
     @State private var sidebarSearchPresented = false
     @State private var sidebarWidth: CGFloat = 390
     private var isNarrowWindow: Bool { toolbarWidth < Self.narrowSidebarThreshold }
-    private var showsEmbeddedSidebarSearch: Bool {
-        !Self.usesNativeSidebarSearch || (isNarrowWindow && floatingSidebarOpen)
-    }
+    private var isFloatingSidebarVisible: Bool { isNarrowWindow && floatingSidebarOpen }
+    private var showsEmbeddedSidebarSearch: Bool { true }
     @State private var recordCoordinator = RecordCoordinator.shared
     @State private var recorder = RecordingController.shared
     @State private var companionSetup = CompanionSetup.shared
@@ -413,39 +409,20 @@ struct LibraryView: View {
         return HStack(spacing: 0) {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
-                    Button {
-                        floatingSidebarOpen = false
-                    } label: {
-                        Image(systemName: "sidebar.left")
-                            .font(.system(size: 14))
-                            .foregroundStyle(CassiniTheme.ink)
-                            .frame(width: 24, height: 24)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help(UXText.text("library.listPane.a11y"))
-                    .accessibilityIdentifier("floating-sidebar-toggle")
                     Spacer(minLength: 0)
-                    sidebarImportButton
-                    if showsLiveToolbarPill {
-                        liveRecordingToolbarControl(height: 24)
-                    } else {
-                        sidebarRecordButton(height: 24)
-                    }
+                    sidebarToolbarActions
                 }
-                .padding(.leading, 76)
+                .padding(.leading, 118)
                 .padding(.trailing, 10)
-                .padding(.top, 14)
-                .padding(.bottom, 8)
+                .padding(.top, 10)
+                .padding(.bottom, 6)
                 sidebarColumn(isFloating: true)
             }
             .frame(width: overlayWidth)
             .frame(maxHeight: .infinity)
-            .cassiniSidebarBackground()
-            .overlay(alignment: .trailing) {
-                Rectangle().fill(CassiniTheme.cardStroke).frame(width: 1)
-            }
-            .shadow(color: CassiniTheme.shadow, radius: 18, x: 4, y: 0)
+            .modifier(FloatingSidebarGlassModifier(cornerRadius: 16))
+            .shadow(color: CassiniTheme.shadow, radius: 18, x: 0, y: 6)
+            .padding(8)
             .ignoresSafeArea(edges: .top)
             .onExitCommand { floatingSidebarOpen = false }
             .accessibilityElement(children: .contain)
@@ -465,6 +442,18 @@ struct LibraryView: View {
     private var showsLiveToolbarPill: Bool {
         RecordingOverview.active || RecordingOverview.saving
             || store.meetings.contains(where: { $0.state.lifecycle == .recording })
+    }
+
+    private var sidebarToolbarActions: some View {
+        HStack(spacing: 8) {
+            sidebarImportButton
+            if showsLiveToolbarPill {
+                liveRecordingToolbarControl(height: 24)
+            } else {
+                sidebarRecordButton(height: 24)
+            }
+        }
+        .fixedSize()
     }
 
     private var sidebarImportButton: some View {
@@ -487,53 +476,37 @@ struct LibraryView: View {
 
     @ToolbarContentBuilder
     private var sidebarToolbar: some ToolbarContent {
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
-            ToolbarItem(placement: .primaryAction) {
-                sidebarImportButton
-            }
-            .sharedBackgroundVisibility(.hidden)
-            ToolbarSpacer(.fixed, placement: .primaryAction)
-            ToolbarItem(placement: .primaryAction) {
-                if showsLiveToolbarPill {
-                    liveRecordingToolbarControl(height: 24)
-                } else {
-                    sidebarRecordButton(height: 24)
+        if columnVisibility != .detailOnly {
+            #if compiler(>=6.2)
+            if #available(macOS 26.0, *) {
+                ToolbarItem(placement: .primaryAction) {
+                    sidebarToolbarActions
                 }
-            }
-            .sharedBackgroundVisibility(.hidden)
-        } else {
-            ToolbarItem(placement: .primaryAction) {
-                sidebarImportButton
-            }
-            ToolbarItem(placement: .primaryAction) {
-                if showsLiveToolbarPill {
-                    liveRecordingToolbarControl(height: 24)
-                } else {
-                    sidebarRecordButton(height: 24)
-                }
-            }
-        }
-        #else
-        ToolbarItem(placement: .primaryAction) {
-            sidebarImportButton
-        }
-        ToolbarItem(placement: .primaryAction) {
-            if showsLiveToolbarPill {
-                liveRecordingToolbarControl(height: 24)
+                .sharedBackgroundVisibility(.hidden)
             } else {
-                sidebarRecordButton(height: 24)
+                ToolbarItem(placement: .primaryAction) {
+                    sidebarToolbarActions
+                }
             }
+            #else
+            ToolbarItem(placement: .primaryAction) {
+                sidebarToolbarActions
+            }
+            #endif
         }
-        #endif
     }
 
     @ViewBuilder
     private func liveRecordingToolbarControl(height: CGFloat) -> some View {
         let compact = height <= 24
         let innerHeight = max(18, height - 6)
-        if RecordingOverview.active, let started = RecordingOverview.startedAt {
-            LiveRecordingPill(started: started, microphone: RecordingOverview.levels["microphone", default: 0], output: RecordingOverview.levels["output", default: 0], height: height)
+        if RecordingOverview.active {
+            LiveRecordingPill(
+                started: RecordingOverview.startedAt ?? Date(),
+                microphone: RecordingOverview.levels["microphone", default: 0],
+                output: RecordingOverview.levels["output", default: 0],
+                height: height
+            )
         } else if RecordingOverview.saving {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
@@ -651,12 +624,14 @@ struct LibraryView: View {
 
     @ToolbarContentBuilder
     private var detailToolbar: some ToolbarContent {
-        let target = detailToolbarTarget
-        detailSidebarCollapsedToolbarItem
-        detailCompactHeaderToolbarItem(for: target)
-        detailToolbarSpacer
-        detailFindToolbarItem(for: target)
-        detailActionToolbarItem(for: target)
+        if !isFloatingSidebarVisible {
+            let target = detailToolbarTarget
+            detailSidebarCollapsedToolbarItem
+            detailCompactHeaderToolbarItem(for: target)
+            detailToolbarSpacer
+            detailFindToolbarItem(for: target)
+            detailActionToolbarItem(for: target)
+        }
     }
 
     @ToolbarContentBuilder
@@ -855,9 +830,15 @@ struct LibraryView: View {
                             search.refresh()
                         }
                     },
-                    onCancel: { search.close() }
+                    onCancel: {
+                        let hadQueryOrSearch = !search.query.isEmpty || search.visible
+                        search.close()
+                        if isFloating && !hadQueryOrSearch {
+                            floatingSidebarOpen = false
+                        }
+                    }
                 )
-                .frame(height: 28)
+                .frame(height: 26)
                 .padding(.horizontal, 10)
                 .padding(.top, 6)
                 .padding(.bottom, 6)
