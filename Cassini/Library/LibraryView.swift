@@ -417,12 +417,7 @@ struct LibraryView: View {
 
     private var floatingSidebarOverlay: some View {
         let overlayWidth = min(390, max(280, toolbarWidth - 60))
-        return ZStack(alignment: .leading) {
-            Color.black.opacity(0.001)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture { floatingSidebarOpen = false }
-                .accessibilityHidden(true)
+        return HStack(spacing: 0) {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
                     Button {
@@ -462,6 +457,13 @@ struct LibraryView: View {
             .onExitCommand { floatingSidebarOpen = false }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("floating-sidebar")
+
+            Color.black.opacity(0.001)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { floatingSidebarOpen = false }
+                .accessibilityHidden(true)
         }
     }
 

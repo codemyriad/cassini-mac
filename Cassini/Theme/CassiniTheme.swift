@@ -7,8 +7,13 @@ import SwiftUI
 /// Native macOS sidebar material (`HARMONY 10.14`, `L-42`: Mac keeps the native sidebar material;
 /// `sidebar` / `sidebar-mac` are reference values for mocks and tests, never a sidebar fill).
 struct NativeSidebarMaterial: NSViewRepresentable {
+    final class BackdropView: NSVisualEffectView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func isAccessibilityElement() -> Bool { false }
+    }
+
     func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
+        let view = BackdropView()
         view.material = .sidebar
         view.blendingMode = .behindWindow
         view.state = .followsWindowActiveState
