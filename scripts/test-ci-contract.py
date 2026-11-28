@@ -411,7 +411,7 @@ class RentedRunnerRouting(unittest.TestCase):
             for route in re.findall(r'^    runs-on: (.+)$',path.read_text(),re.M):
                 if 'vars.CM_MAC' in route:
                     routes.append((path.name,route))
-        self.assertEqual(len(routes),10)
+        self.assertEqual(len(routes),11)
         events=['push','schedule','workflow_dispatch','pull_request',
                 'pull_request_target','workflow_run','issue_comment','workflow_call',
                 'release','repository_dispatch','deployment_status','check_run','unknown']
@@ -420,7 +420,7 @@ class RentedRunnerRouting(unittest.TestCase):
                 fallback_match=re.search(r"\|\| (matrix\.runner|'([^']+)') \}\}$",route)
                 self.assertIsNotNone(fallback_match,route)
                 fallback=runner if fallback_match.group(1)=='matrix.runner' else fallback_match.group(2)
-                self.assertIn(fallback,['macos-15','macos-15-intel'])
+                self.assertIn(fallback,['macos-15','macos-15-intel','macos-26'])
                 for event in events:
                     for head in ['codemyriad/cassini-mac','fork/repo','']:
                         for label in ['cm-mac-m4','']:
@@ -506,10 +506,11 @@ class RentedRunnerRouting(unittest.TestCase):
             self.assertNotIn('CM_MAC_RUNNER',gui,name)
 
         boards=(ROOT/'.github/workflows/ux-boards.yml').read_text()
-        board_job=boards.split('  boards:',1)[1].split('  spectrogram:',1)[0]
+        ux_jobs=dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)',boards.split('\njobs:\n',1)[1],re.M|re.S))
+        board_job,native,diagnostics,macos26=ux_jobs['boards'],ux_jobs['spectrogram'],ux_jobs['spectrogram_diagnostics'],ux_jobs['acceptance_macos26']
         self.assertNotIn('CM_MAC_GUI_RUNNER',board_job)
         self.assertIn('runs-on: macos-15',board_job)
-        native,diagnostics=boards.split('  spectrogram:',1)[1].split('  spectrogram_diagnostics:',1)
+        self.assertIn('name: b19-acceptance-screenshots-macos15',board_job)
         self.assertIn('vars.CM_MAC_GUI_RUNNER',native)
         self.assertIn('python3 scripts/gui_session.py',native)
         self.assertEqual("runner.environment == 'github-hosted'",step_condition(native,'- uses: actions/setup-python'))
@@ -517,6 +518,15 @@ class RentedRunnerRouting(unittest.TestCase):
         self.assertIn('command -v displayplacer',native)
         self.assertIn('Clean interrupted profiling DerivedData',diagnostics)
         self.assertIn('Clean profiling DerivedData after artifact upload',diagnostics)
+        for req in ['vars.CM_MAC_GUI_RUNNER',"|| 'macos-26' }}",'needs: [build]',
+                    "CI_XCODE_PREFER: '27'",'bash scripts/ci-select-xcode.sh',
+                    'python3 scripts/gui_session.py','python3 scripts/hosted-display.py',
+                    'D1196BluetoothUITests','D1197FocusAndControlsTests','D1198MeetingListTests',
+                    'D1199SidebarAndToolbarTests','D1200MeetingAndRecordingPageTests',
+                    'scripts/check-acceptance-screenshots.py','name: b19-acceptance-screenshots-macos26',
+                    'Clean interrupted Beta 19 macOS 26 DerivedData','Clean Beta 19 macOS 26 DerivedData after artifact upload']:
+            self.assertIn(req,macos26)
+        self.assertEqual("runner.environment == 'github-hosted'",step_condition(macos26,'- uses: actions/setup-python'))
         body=(ROOT/'.github/workflows/ux-whistle.yml').read_text().split('  bundle:',1)[1]
         self.assertIn('runs-on: macos-15',body)
         producer=(ROOT/'.github/workflows/ci-build.yml').read_text()
@@ -1352,6 +1362,7 @@ class PullRequestFourJobBudget(unittest.TestCase):
             'boards': ['build'],
             'spectrogram': ['build', 'release'],
             'spectrogram_diagnostics': ['build', 'release'],
+            'acceptance_macos26': ['build'],
         })
 
         def active_callee_jobs(products_ready, mode, build_ok=True, release_ok=True):
@@ -1387,18 +1398,18 @@ class PullRequestFourJobBudget(unittest.TestCase):
                     ran[jname] = 'skipped'
             return out
 
-        self.assertEqual(active_callee_jobs(True, 'boards'), ['boards'])
+        self.assertEqual(active_callee_jobs(True, 'boards'), ['boards', 'acceptance_macos26'])
         self.assertEqual(active_callee_jobs(True, 'spectrogram'), ['spectrogram', 'spectrogram_diagnostics'])
         self.assertEqual(active_callee_jobs(True, 'invalid'), [])
-        self.assertEqual(active_callee_jobs(False, 'boards'), ['build', 'boards'])
+        self.assertEqual(active_callee_jobs(False, 'boards'), ['build', 'boards', 'acceptance_macos26'])
         for default_mode in ['', 'all']:
             self.assertEqual(
                 active_callee_jobs(False, default_mode, release_ok=True),
-                ['build', 'release', 'boards', 'spectrogram', 'spectrogram_diagnostics'],
+                ['build', 'release', 'boards', 'spectrogram', 'spectrogram_diagnostics', 'acceptance_macos26'],
             )
             self.assertEqual(
                 active_callee_jobs(False, default_mode, release_ok=False),
-                ['build', 'release', 'boards'],
+                ['build', 'release', 'boards', 'acceptance_macos26'],
             )
 
     def test_execution_tier_and_label_parsing_fail_open_on_malformed_input(self):

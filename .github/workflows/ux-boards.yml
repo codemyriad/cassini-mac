@@ -115,7 +115,7 @@ jobs:
       continue-on-error: true
       with:
         retention-days: 14
-        name: b19-acceptance-screenshots
+        name: b19-acceptance-screenshots-macos15
         path: |
           build/b19-acceptance-attachments
           build/b19-acceptance.log
@@ -424,3 +424,112 @@ jobs:
     - name: Clean profiling DerivedData after artifact upload
       if: always()
       run: rm -rf -- "$RUNNER_TEMP/cassini-native-profiling-derived-data"
+  # D-1203: Run the Beta 19 acceptance suites (UITests/Acceptance/) on macOS 26+
+  # built with the same Xcode as the nightly (Xcode 27), keeping the macOS 15 run
+  # in `boards` alongside it so both OS/SDK paths stay verified.
+  acceptance_macos26:
+    name: Beta 19 acceptance (macOS 26, Xcode 27)
+    needs: [build]
+    if: ${{ always() && !cancelled() && (inputs.mode == '' || inputs.mode == 'all' || inputs.mode == 'boards') && (inputs.products_ready || needs.build.result == 'success') }}
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && vars.CM_MAC_GUI_RUNNER || 'macos-26' }}
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: python3 "${{ github.workspace }}/scripts/ci-heavy.py" /bin/bash --noprofile --norc -eo pipefail {0}
+    steps:
+    - name: Clean interrupted Beta 19 macOS 26 DerivedData
+      shell: bash
+      run: rm -rf -- "$RUNNER_TEMP/cassini-b19-macos26-derived-data"
+    - uses: actions/checkout@v5
+    - uses: ./.github/actions/ci-products
+      if: runner.environment != 'github-hosted'
+      with:
+        assets: 'true'
+        runtime: 'true'
+    - name: Select nightly Xcode (Xcode 27)
+      id: xcode27
+      env:
+        CI_XCODE_PREFER: '27'
+      run: |
+        bash scripts/ci-select-xcode.sh
+        sw_vers
+        swift --version
+    - name: Require qualified GUI session
+      run: python3 scripts/gui_session.py
+    - name: Install build and display tools
+      run: |
+        command -v displayplacer >/dev/null || brew install displayplacer
+        command -v xcodegen >/dev/null || brew install xcodegen
+    - uses: actions/setup-python@v5
+      if: runner.environment == 'github-hosted'
+      with:
+        python-version: '3.12'
+    - name: Prepare qualified display
+      run: python3 scripts/hosted-display.py
+    - name: Prepare bundled fixtures and Xcode project
+      run: |
+        python3 scripts/fetch-sparkle.py
+        python3 scripts/fetch-sparkle.py --spm-cache "$HOME/Library/Caches/org.swift.swiftpm/artifacts"
+        python3 Tests/CassiniLibraryTests/LibraryVectors/make.py UITests/Fixtures/Library
+        python3 - <<'PY'
+        from pathlib import Path
+        import shutil
+        for case in Path('UITests/Fixtures/Library').iterdir():
+            if case.name not in ('main', 'empty', 'first-record', 'received-only'): shutil.rmtree(case)
+        PY
+        xcodegen generate
+    - name: Build CassiniScreenshots with nightly Xcode
+      timeout-minutes: 15
+      env:
+        CASSINI_CI_ASSETS: ${{ runner.environment != 'github-hosted' && format('{0}/build', github.workspace) || '' }}
+      run: |
+        set -o pipefail
+        mkdir -p build
+        xcodebuild build-for-testing -project Cassini.xcodeproj -scheme CassiniScreenshots -configuration Debug \
+          -destination 'platform=macOS' \
+          -derivedDataPath "$RUNNER_TEMP/cassini-b19-macos26-derived-data" \
+          ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+          CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CASSINI_APP_HARDENED_RUNTIME=NO \
+          2>&1 | tee build/b19-macos26-build.log
+    - name: Beta 19 acceptance UI tests (macOS 26)
+      timeout-minutes: 20
+      env:
+        TEST_RUNNER_CASSINI_HOSTED_SCREENSHOTS: '1'
+      run: |
+        set -o pipefail
+        xcodebuild test-without-building \
+          -xctestrun "$(find "$RUNNER_TEMP/cassini-b19-macos26-derived-data/Build/Products" -maxdepth 1 -name '*.xctestrun' -print -quit)" \
+          -destination 'platform=macOS' -parallel-testing-enabled NO \
+          -derivedDataPath "$RUNNER_TEMP/cassini-b19-macos26-derived-data" \
+          -only-testing:CassiniWindowScreenshots/D1196BluetoothUITests \
+          -only-testing:CassiniWindowScreenshots/D1197FocusAndControlsTests \
+          -only-testing:CassiniWindowScreenshots/D1198MeetingListTests \
+          -only-testing:CassiniWindowScreenshots/D1199SidebarAndToolbarTests \
+          -only-testing:CassiniWindowScreenshots/D1200MeetingAndRecordingPageTests \
+          -resultBundlePath build/B19AcceptanceMacOS26.xcresult \
+          2>&1 | tee build/b19-acceptance-macos26.log
+    - name: Export and verify Beta 19 acceptance screenshots (macOS 26)
+      if: ${{ !cancelled() }}
+      run: |
+        if [ -d build/B19AcceptanceMacOS26.xcresult ]; then
+          xcrun xcresulttool export attachments --path build/B19AcceptanceMacOS26.xcresult \
+            --output-path build/b19-acceptance-attachments-macos26
+          python3 scripts/check-acceptance-screenshots.py build/b19-acceptance-attachments-macos26
+        else
+          echo "Missing build/B19AcceptanceMacOS26.xcresult" >&2
+          exit 1
+        fi
+    - uses: actions/upload-artifact@v5
+      if: always()
+      continue-on-error: true
+      with:
+        retention-days: 14
+        name: b19-acceptance-screenshots-macos26
+        path: |
+          build/b19-acceptance-attachments-macos26
+          build/b19-acceptance-macos26.log
+          build/b19-macos26-build.log
+    - name: Clean Beta 19 macOS 26 DerivedData after artifact upload
+      if: always()
+      shell: bash
+      run: rm -rf -- "$RUNNER_TEMP/cassini-b19-macos26-derived-data"
