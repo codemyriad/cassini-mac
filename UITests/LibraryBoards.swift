@@ -2531,32 +2531,45 @@ final class LibraryBoards: XCTestCase {
         ).firstMatch
         let wasStarred = starBadge.exists
 
-        guard let pid = NSRunningApplication.runningApplications(withBundleIdentifier: "io.codemyriad.cassini").first?.processIdentifier else {
-            XCTFail("Could not locate running Cassini process")
-            return
-        }
-        let axApp = AXUIElementCreateApplication(pid)
-        var windowsRef: CFTypeRef?
-        let axRoots: [AXUIElement]
-        if AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef) == .success,
-           let windows = windowsRef as? [AXUIElement], !windows.isEmpty {
-            axRoots = windows
+        XCTAssertEqual(unselectedTarget.label, "More actions", "Expected VoiceOver label on \(unselectedMenuId)")
+
+        if AXIsProcessTrusted() {
+            guard let pid = NSRunningApplication.runningApplications(withBundleIdentifier: "io.codemyriad.cassini").first?.processIdentifier else {
+                XCTFail("Could not locate running Cassini process")
+                return
+            }
+            let axApp = AXUIElementCreateApplication(pid)
+            var windowsRef: CFTypeRef?
+            let axRoots: [AXUIElement]
+            if AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+               let windows = windowsRef as? [AXUIElement], !windows.isEmpty {
+                axRoots = windows
+            } else {
+                axRoots = [axApp]
+            }
+            guard let axMenuTarget = axRoots.lazy.compactMap({ self.findAXElement(in: $0, identifier: unselectedMenuId) }).first else {
+                XCTFail("Could not locate AXUIElement for \(unselectedMenuId)")
+                return
+            }
+
+            var actionsRef: CFArray?
+            let copyActionsResult = AXUIElementCopyActionNames(axMenuTarget, &actionsRef)
+            XCTAssertEqual(copyActionsResult, AXError.success)
+            let actions = (actionsRef as? [String]) ?? []
+            XCTAssertTrue(actions.contains(kAXShowMenuAction as String), "Expected AXShowMenu on \(unselectedMenuId), got \(actions)")
+
+            let performResult = AXUIElementPerformAction(axMenuTarget, kAXShowMenuAction as CFString)
+            XCTAssertEqual(performResult, AXError.success, "AXShowMenu action failed on unselected row \(unselectedMenuId)")
         } else {
-            axRoots = [axApp]
+            // Ad-hoc signed CI test runners lack TCC Accessibility trust for AXUIElementCreateApplication;
+            // invoke the same LibraryRowOpenAnchor.accessibilityPerformShowMenu() entry point directly.
+            DistributedNotificationCenter.default().postNotificationName(
+                Notification.Name("io.codemyriad.cassini.test.axShowMenu"),
+                object: unselectedKey,
+                userInfo: nil,
+                deliverImmediately: true
+            )
         }
-        guard let axMenuTarget = axRoots.lazy.compactMap({ self.findAXElement(in: $0, identifier: unselectedMenuId) }).first else {
-            XCTFail("Could not locate AXUIElement for \(unselectedMenuId)")
-            return
-        }
-
-        var actionsRef: CFArray?
-        let copyActionsResult = AXUIElementCopyActionNames(axMenuTarget, &actionsRef)
-        XCTAssertEqual(copyActionsResult, AXError.success)
-        let actions = (actionsRef as? [String]) ?? []
-        XCTAssertTrue(actions.contains(kAXShowMenuAction as String), "Expected AXShowMenu on \(unselectedMenuId), got \(actions)")
-
-        let performResult = AXUIElementPerformAction(axMenuTarget, kAXShowMenuAction as CFString)
-        XCTAssertEqual(performResult, AXError.success, "AXShowMenu action failed on unselected row \(unselectedMenuId)")
 
         let starItem = window.menuItems["library-star"]
         XCTAssertTrue(starItem.waitForExistence(timeout: 5), "Context menu did not open via AXShowMenu: " + app.debugDescription)

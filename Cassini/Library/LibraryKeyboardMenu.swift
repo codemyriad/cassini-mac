@@ -212,6 +212,26 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
         return view.accessibilityPerformShowMenu()
     }
 
+    #if DEBUG
+    @MainActor private static var testAXShowMenuObserver: NSObjectProtocol?
+    @MainActor static func installTestAXShowMenuObserverIfNeeded() {
+        guard testAXShowMenuObserver == nil,
+              ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1" else { return }
+        testAXShowMenuObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("io.codemyriad.cassini.test.axShowMenu"),
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let rowKey = notification.object as? String else { return }
+            MainActor.assumeIsolated {
+                guard let view = anchorsByKey[rowKey]?.value,
+                      view.isAccessibilityElement() else { return }
+                _ = view.accessibilityPerformShowMenu()
+            }
+        }
+    }
+    #endif
+
     final class View: NSView {
         private final class Monitor: @unchecked Sendable {
             let value: Any
@@ -395,6 +415,9 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
     }
     func makeNSView(context: Context) -> View { View() }
     func updateNSView(_ view: View, context: Context) {
+        #if DEBUG
+        Self.installTestAXShowMenuObserverIfNeeded()
+        #endif
         if let oldKey = view.rowKey, oldKey != rowKey,
            Self.anchorsByKey[oldKey]?.value === view {
             Self.anchorsByKey.removeValue(forKey: oldKey)
