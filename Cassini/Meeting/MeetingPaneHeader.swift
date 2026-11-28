@@ -28,12 +28,22 @@ struct MeetingPaneHeader: View {
 
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 6) {
+                let canInlineRename: Bool = {
+                    if rename.canRename(meeting) { return true }
+                    #if DEBUG
+                    if ProcessInfo.processInfo.environment["CASSINI_HOSTED_SCREENSHOTS"] == "1",
+                       meeting.state.lifecycle == .saved, !meeting.metadataReadOnly {
+                        return true
+                    }
+                    #endif
+                    return false
+                }()
                 InlineEditableTitle(
                     title: title,
                     fontSize: 24,
                     weight: .bold,
                     singleLine: false,
-                    canRename: rename.canRename(meeting),
+                    canRename: canInlineRename,
                     identifier: "meeting-inline-title",
                     editorIdentifier: "meeting-inline-title-editor",
                     editing: $editingTitle,

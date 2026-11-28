@@ -73,7 +73,8 @@ struct LibraryFilterSegmentedControl: NSViewRepresentable {
 
         private var allTitle: String { UXText.text("library.filter.all") }
         private var starredTitle: String { UXText.text("library.filter.starred") }
-        private var cachedChildren: [FilterSegmentAccessibilityElement]?
+        private lazy var allAccessibilityElement = FilterSegmentAccessibilityElement(parent: self, filter: .all)
+        private lazy var starredAccessibilityElement = FilterSegmentAccessibilityElement(parent: self, filter: .starred)
 
         override init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
@@ -94,7 +95,8 @@ struct LibraryFilterSegmentedControl: NSViewRepresentable {
             let changed = selection != newSelection
             selection = newSelection
             setAccessibilityLabel(UXText.text("library.filters.a11y"))
-            cachedChildren = nil
+            allAccessibilityElement.refreshTitles()
+            starredAccessibilityElement.refreshTitles()
             invalidateIntrinsicContentSize()
             needsDisplay = true
             if changed {
@@ -189,7 +191,6 @@ struct LibraryFilterSegmentedControl: NSViewRepresentable {
         func select(_ value: LibraryPreferences.Filter) {
             guard selection != value else { return }
             selection = value
-            cachedChildren = nil
             needsDisplay = true
             onSelect?(value)
             NSAccessibility.post(element: self, notification: .valueChanged)
@@ -220,32 +221,21 @@ struct LibraryFilterSegmentedControl: NSViewRepresentable {
         }
 
         override func accessibilityChildren() -> [Any]? {
-            let rects = segmentRects()
-            let allEl = FilterSegmentAccessibilityElement(
-                parent: self,
-                filter: .all,
-                title: allTitle,
-                localRect: rects.all
-            )
-            let starredEl = FilterSegmentAccessibilityElement(
-                parent: self,
-                filter: .starred,
-                title: starredTitle,
-                localRect: rects.starred
-            )
-            let list = [allEl, starredEl]
-            cachedChildren = list
-            return list
+            allAccessibilityElement.refreshTitles()
+            starredAccessibilityElement.refreshTitles()
+            return [allAccessibilityElement, starredAccessibilityElement]
         }
 
         override func accessibilityHitTest(_ point: NSPoint) -> Any? {
             guard let window else { return super.accessibilityHitTest(point) }
             let windowPoint = window.convertPoint(fromScreen: point)
             let localPoint = convert(windowPoint, from: nil)
-            if let children = accessibilityChildren() as? [FilterSegmentAccessibilityElement] {
-                for child in children where child.localRect.contains(localPoint) {
-                    return child
-                }
+            let rects = segmentRects()
+            if rects.all.contains(localPoint) {
+                return allAccessibilityElement
+            }
+            if rects.starred.contains(localPoint) {
+                return starredAccessibilityElement
             }
             return self
         }
@@ -253,24 +243,27 @@ struct LibraryFilterSegmentedControl: NSViewRepresentable {
         final class FilterSegmentAccessibilityElement: NSAccessibilityElement {
             weak var owner: FilterSegmentedView?
             let filter: LibraryPreferences.Filter
-            let title: String
-            let localRect: NSRect
 
-            init(parent: FilterSegmentedView, filter: LibraryPreferences.Filter, title: String, localRect: NSRect) {
+            init(parent: FilterSegmentedView, filter: LibraryPreferences.Filter) {
                 self.owner = parent
                 self.filter = filter
-                self.title = title
-                self.localRect = localRect
                 super.init()
                 setAccessibilityParent(parent)
                 setAccessibilityRole(.radioButton)
+                setAccessibilityEnabled(true)
+                refreshTitles()
+            }
+
+            func refreshTitles() {
+                let title = filter == .all ? UXText.text("library.filter.all") : UXText.text("library.filter.starred")
                 setAccessibilityTitle(title)
                 setAccessibilityLabel(title)
-                setAccessibilityEnabled(true)
             }
 
             override func accessibilityFrame() -> NSRect {
                 guard let owner, let window = owner.window else { return .zero }
+                let rects = owner.segmentRects()
+                let localRect = filter == .all ? rects.all : rects.starred
                 let inWindow = owner.convert(localRect, to: nil)
                 return window.convertToScreen(inWindow)
             }

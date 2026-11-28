@@ -223,6 +223,14 @@ struct LibraryView: View {
         .onReceive(NotificationCenter.default.publisher(for: MeetingNavigation.returnToLibrarySelection)) { _ in
             openSelection(userInitiated: true)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .cassiniToggleSidebar)) { _ in
+            guard !showsFirstRun else { return }
+            if isNarrowWindow {
+                floatingSidebarOpen.toggle()
+            } else {
+                columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+            }
+        }
         .onChange(of: store.selectedKeys) { _, _ in
             sessionPlayback.stop()
             openSelection()
