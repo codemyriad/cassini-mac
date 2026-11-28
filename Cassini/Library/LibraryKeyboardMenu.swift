@@ -221,6 +221,7 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
         var open: (() -> Void)?
         var isInteractionEnabled = true
         var menuAccessibilityLabel = ""
+        var menuAccessibilityIdentifier = ""
         var buildContextMenu: (() -> NSMenu)?
         var onContextMenuOpenChanged: ((Bool) -> Void)?
         private var monitor: Monitor?
@@ -233,6 +234,9 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
         override func accessibilityRole() -> NSAccessibility.Role? { .group }
         override func accessibilityLabel() -> String? {
             menuAccessibilityLabel.isEmpty ? nil : menuAccessibilityLabel
+        }
+        override func accessibilityIdentifier() -> String {
+            menuAccessibilityIdentifier.isEmpty ? super.accessibilityIdentifier() : menuAccessibilityIdentifier
         }
         override func accessibilityPerformShowMenu() -> Bool {
             guard canAcceptInteraction(atWindowPoint: nil), buildContextMenu != nil else { return false }
@@ -400,6 +404,7 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
         view.open = open
         view.isInteractionEnabled = isEnabled && context.environment.isEnabled
         view.menuAccessibilityLabel = menuAccessibilityLabel
+        view.menuAccessibilityIdentifier = menuAccessibilityIdentifier
         view.setAccessibilityIdentifier(menuAccessibilityIdentifier)
         view.buildContextMenu = buildContextMenu
         view.onContextMenuOpenChanged = onContextMenuOpenChanged
