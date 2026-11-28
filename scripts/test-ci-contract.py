@@ -128,7 +128,7 @@ class NativeSpectrogramScheduling(unittest.TestCase):
         body = (ROOT/'.github/workflows/ux-boards.yml').read_text()
         jobs = dict(re.findall(r'^  (\w+):\n(.*?)(?=^  \S|^\S|\Z)',body.split('\njobs:\n',1)[1],re.M|re.S))
         boards, native, diagnostics = jobs['boards'], jobs['spectrogram'], jobs['spectrogram_diagnostics']
-        self.assertIn('timeout-minutes: 55',boards)
+        self.assertIn('timeout-minutes: 75',boards)
         self.assertIn('timeout-minutes: 35',boards)
         self.assertIn('timeout-minutes: 12',boards)
         self.assertIn('needs: [build]\n',boards)
