@@ -329,7 +329,8 @@ struct LibraryView: View {
         return nil
     }
     private var split: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        ZStack(alignment: .leading) {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebarColumn
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { sidebarWidth = $0 }
                 .toolbar {
@@ -362,10 +363,12 @@ struct LibraryView: View {
             isPresented: $sidebarSearchPresented,
             prompt: UXText.text("search.field.placeholder")
         ))
-        .overlay(alignment: .leading) {
-            if isNarrowWindow && floatingSidebarOpen {
-                floatingSidebarOverlay
-            }
+        .allowsHitTesting(!(isNarrowWindow && floatingSidebarOpen))
+        .accessibilityHidden(isNarrowWindow && floatingSidebarOpen)
+        if isNarrowWindow && floatingSidebarOpen {
+            floatingSidebarOverlay
+                .zIndex(10)
+        }
         }
     }
 
