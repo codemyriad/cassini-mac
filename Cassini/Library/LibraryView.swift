@@ -444,8 +444,8 @@ struct LibraryView: View {
                 }
                 .padding(.leading, 76)
                 .padding(.trailing, 10)
-                .padding(.top, 10)
-                .padding(.bottom, 6)
+                .padding(.top, 14)
+                .padding(.bottom, 8)
                 sidebarColumn
             }
             .frame(width: overlayWidth)
