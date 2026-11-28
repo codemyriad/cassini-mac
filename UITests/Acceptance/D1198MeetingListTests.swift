@@ -63,18 +63,23 @@ final class D1198MeetingListTests: AcceptanceTestCase {
         XCTAssertGreaterThan(cards.count, 0, "Expected meeting-card-* elements")
 
         let sidebarGround = img.color(atPoint: CGPoint(x: 4, y: searchRect.maxY + 6))
+        let searchBounds = img.drawnHorizontalBounds(inPointRect: searchRect, against: sidebarGround, threshold: 6)
+        let searchLeft = searchBounds?.left ?? searchRect.minX
+        let searchRight = searchBounds?.right ?? searchRect.maxX
         var failures: [String] = []
         for i in 0..<min(cards.count, 4) {
             let card = cards.element(boundBy: i)
             let cardRect = img.windowRect(for: card.frame)
-            let bounds = img.drawnHorizontalBounds(inPointRect: cardRect, against: sidebarGround, threshold: 6)
+            // Threshold 18 sits above the selected card's soft drop shadow (<=12)
+            // and well below both unselected (>=26) and selected (>=118) card borders.
+            let bounds = img.drawnHorizontalBounds(inPointRect: cardRect, against: sidebarGround, threshold: 18)
             let left = bounds?.left ?? cardRect.minX
             let right = bounds?.right ?? cardRect.maxX
-            if abs(left - searchRect.minX) > 1.0 {
-                failures.append("Card \(i) left \(left) != search left \(searchRect.minX) ±1")
+            if abs(left - searchLeft) > 1.0 {
+                failures.append("Card \(i) left \(left) != search left \(searchLeft) ±1")
             }
-            if abs(right - searchRect.maxX) > 1.0 {
-                failures.append("Card \(i) right \(right) != search right \(searchRect.maxX) ±1")
+            if abs(right - searchRight) > 1.0 {
+                failures.append("Card \(i) right \(right) != search right \(searchRight) ±1")
             }
         }
 
@@ -104,9 +109,22 @@ final class D1198MeetingListTests: AcceptanceTestCase {
             }
 
             window.typeKey(.escape, modifierFlags: [])
+            _ = waitFor({ app.menus.count == 0 }, timeout: 5)
             let escShot = attachWindowScreenshot(window, name: "b19-item12-after-esc-\(scheme)")
             let escImg = try PixelImage(screenshot: escShot, windowFrame: window.frame)
-            if escImg.containsAccentBlue(inPointRect: cardRect.insetBy(dx: -6, dy: -6)) {
+            // Sample only the card perimeter strips so interior status spinners/stars
+            // do not cause false positives while any lingering focus ring is caught.
+            let sidebarGround = escImg.color(atPoint: CGPoint(x: 4, y: cardRect.midY))
+            let drawn = escImg.drawnHorizontalBounds(inPointRect: cardRect, against: sidebarGround, threshold: 18)
+            let cardLeft = drawn?.left ?? cardRect.minX
+            let cardRight = drawn?.right ?? cardRect.maxX
+            let perimeterRects = [
+                CGRect(x: max(0, cardLeft - 4), y: max(0, cardRect.minY - 4), width: (cardRight - cardLeft) + 8, height: 8),
+                CGRect(x: max(0, cardLeft - 4), y: max(0, cardRect.maxY - 4), width: (cardRight - cardLeft) + 8, height: 8),
+                CGRect(x: max(0, cardLeft - 4), y: max(0, cardRect.minY - 4), width: 8, height: cardRect.height + 8),
+                CGRect(x: max(0, cardRight - 4), y: max(0, cardRect.minY - 4), width: 8, height: cardRect.height + 8),
+            ]
+            if perimeterRects.contains(where: { escImg.containsAccentBlue(inPointRect: $0) }) {
                 failures.append("Context menu ring did not clear after Esc (\(scheme))")
             }
         }
@@ -162,8 +180,11 @@ final class D1198MeetingListTests: AcceptanceTestCase {
 
         let first = cards.element(boundBy: 0)
         first.click()
+        XCTAssertTrue(window.descendants(matching: .any)["recording-title"].waitForExistence(timeout: 10))
+        window.typeKey(.downArrow, modifierFlags: [])
         window.typeKey(.downArrow, modifierFlags: [])
         window.typeKey(.upArrow, modifierFlags: [])
+        window.typeKey(.downArrow, modifierFlags: [])
         window.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(window.descendants(matching: .any)["meeting-page"].waitForExistence(timeout: 10))
         _ = attachWindowScreenshot(window, name: "b19-item-list-guard-light")

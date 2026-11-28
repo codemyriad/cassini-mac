@@ -314,17 +314,28 @@ struct LibraryRowOpenAnchor: NSViewRepresentable {
                     }
                 }
                 if let table = view as? NSTableView {
+                    var needsColumnLayout = false
                     if table.selectionHighlightStyle != .none {
                         table.selectionHighlightStyle = .none
                     }
-                    if table.style != .fullWidth {
-                        table.style = .fullWidth
+                    if table.style != .plain {
+                        table.style = .plain
+                        needsColumnLayout = true
                     }
                     if table.intercellSpacing != .zero {
                         table.intercellSpacing = .zero
+                        needsColumnLayout = true
                     }
                     if let outline = table as? NSOutlineView, outline.indentationPerLevel != 0 {
                         outline.indentationPerLevel = 0
+                        needsColumnLayout = true
+                    }
+                    if let scrollView = table.enclosingScrollView, scrollView.scrollerStyle != .overlay {
+                        scrollView.scrollerStyle = .overlay
+                        needsColumnLayout = true
+                    }
+                    if needsColumnLayout {
+                        table.sizeLastColumnToFit()
                     }
                 }
                 node = view.superview
