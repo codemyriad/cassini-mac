@@ -56,13 +56,15 @@ struct MeetingPaneHeader: View {
                         } label: {
                             Text(subtitleParts.date)
                                 .foregroundStyle(CassiniTheme.ink2)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(hoveringDate ? CassiniTheme.ink.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+                                .background {
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(hoveringDate ? CassiniTheme.ink.opacity(0.08) : Color.clear)
+                                        .padding(.horizontal, -4)
+                                        .padding(.vertical, -1)
+                                }
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .padding(.horizontal, -4)
                         .onHover { hoveringDate = $0 }
                         .help(UXText.text("meeting.setDateTimeEllipsis"))
                         .accessibilityLabel(subtitleParts.date)
@@ -71,6 +73,7 @@ struct MeetingPaneHeader: View {
                     } else {
                         Text(subtitleParts.date)
                             .foregroundStyle(CassiniTheme.ink2)
+                            .accessibilityIdentifier("meeting-inline-date")
                     }
                     if !subtitleParts.suffix.isEmpty {
                         Text(subtitleParts.suffix)
@@ -79,6 +82,7 @@ struct MeetingPaneHeader: View {
                 }
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("meeting-inline-subtitle")
             }
             if let badge = LibraryBadgeCatalog.presentation(for: meeting),
