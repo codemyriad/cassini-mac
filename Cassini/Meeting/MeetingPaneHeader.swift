@@ -98,7 +98,7 @@ struct MeetingPaneHeader: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.bottom, 14)
         .overlay(alignment: .bottom) {
-            Rectangle().fill(CassiniTheme.cardStroke).frame(height: 0.5)
+            Rectangle().fill(CassiniTheme.cardStroke).frame(height: 1)
         }
         .padding(.bottom, 6)
         .foregroundStyle(CassiniTheme.ink)

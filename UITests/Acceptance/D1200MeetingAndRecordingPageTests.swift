@@ -15,14 +15,18 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
                 defer { app.terminate() }
                 let window = app.windows["cassini-library-window"]
                 let transcript = window.descendants(matching: .any)["meeting-transcript"].firstMatch
+                let heading = window.descendants(matching: .any)["meeting-heading"].firstMatch
                 let date = inlineDateElement(in: window)
                 XCTAssertTrue(transcript.waitForExistence(timeout: 20), app.debugDescription)
+                XCTAssertTrue(heading.waitForExistence(timeout: 10), app.debugDescription)
                 XCTAssertTrue(date.waitForExistence(timeout: 10), app.debugDescription)
 
                 let noSpeakersShot = attachWindowScreenshot(window, name: "b19-item8-no-speakers-\(size)-\(scheme)")
                 let img1 = try PixelImage(screenshot: noSpeakersShot, windowFrame: window.frame)
                 let tRect = img1.windowRect(for: transcript.frame)
+                let hRect = img1.windowRect(for: heading.frame)
                 let dRect = img1.windowRect(for: date.frame)
+                let expectedColumnWidth = tRect.width - 88.0 // MeetingView horizontal padding is 44 pt per side
                 let ground = img1.color(atPoint: CGPoint(x: tRect.minX + 4, y: dRect.minY))
 
                 var bestNoSpeakers: CGFloat = 0
@@ -32,8 +36,11 @@ final class D1200MeetingAndRecordingPageTests: AcceptanceTestCase {
                     }
                     if run > bestNoSpeakers { bestNoSpeakers = run }
                 }
-                if abs(bestNoSpeakers - tRect.width) > 2.0 {
-                    failures.append("No-speakers hairline \(bestNoSpeakers) != transcript width \(tRect.width) ±2 (\(size) \(scheme))")
+                if abs(hRect.width - expectedColumnWidth) > 2.0 {
+                    failures.append("No-speakers heading width \(hRect.width) != column width \(expectedColumnWidth) ±2 (\(size) \(scheme))")
+                }
+                if abs(bestNoSpeakers - expectedColumnWidth) > 2.0 {
+                    failures.append("No-speakers hairline \(bestNoSpeakers) != column width \(expectedColumnWidth) ±2 (\(size) \(scheme))")
                 }
             }
         }

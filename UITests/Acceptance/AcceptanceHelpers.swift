@@ -345,6 +345,7 @@ class AcceptanceTestCase: XCTestCase {
     /// Returns the inline date element in MeetingPaneHeader (preferring `meeting-inline-date`,
     /// falling back to the first `meeting-inline-subtitle` StaticText when the parent HStack identifier wins in AX).
     func inlineDateElement(in window: XCUIElement) -> XCUIElement {
+        _ = window.descendants(matching: .any)["meeting-heading"].firstMatch.waitForExistence(timeout: 20)
         let direct = window.descendants(matching: .any)["meeting-inline-date"].firstMatch
         if direct.exists { return direct }
         return window.staticTexts["meeting-inline-subtitle"].firstMatch
