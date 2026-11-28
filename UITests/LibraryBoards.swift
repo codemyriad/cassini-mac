@@ -2453,7 +2453,7 @@ final class LibraryBoards: XCTestCase {
     /// sidebar card while the speaker editor is open must not open a context menu or
     /// discard unsaved speaker drafts.
     @MainActor func testContextMenuBlockedDuringSpeakerEditing() throws {
-        let app = try launch("library", fixture: "main", extra: ["--fixture-library-rename", "-CassiniRenameID", UUID().uuidString])
+        let app = try launch("library", fixture: "main", extra: ["--fixture-library-rename", "-CassiniRenameID", UUID().uuidString, "-CassiniDefaultsID", UUID().uuidString])
         defer { if app.state != .notRunning { app.terminate() } }
         let window = app.windows["cassini-library-window"]
         let budget = window.outlines.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", "Budget review", "Budget review")).firstMatch
@@ -2513,18 +2513,19 @@ final class LibraryBoards: XCTestCase {
             app.debugDescription
         )
 
-        // Select the first row so the second row is guaranteed unselected.
-        let firstRow = window.outlines.firstMatch.outlineRows.containing(
-            NSPredicate(format: "identifier BEGINSWITH %@", "meeting-menu-")
-        ).element(boundBy: 0)
-        firstRow.click()
-
+        let firstMenuId = menuTargets.element(boundBy: 0).identifier
         let unselectedTarget = menuTargets.element(boundBy: 1)
         let unselectedMenuId = unselectedTarget.identifier
+        XCTAssertTrue(firstMenuId.hasPrefix("meeting-menu-"), "Unexpected identifier: \(firstMenuId)")
         XCTAssertTrue(unselectedMenuId.hasPrefix("meeting-menu-"), "Unexpected identifier: \(unselectedMenuId)")
+        XCTAssertNotEqual(firstMenuId, unselectedMenuId)
         let unselectedKey = String(unselectedMenuId.dropFirst("meeting-menu-".count))
-        let starBadge = window.descendants(matching: .any)["library-starred-" + unselectedKey].firstMatch
-        let wasStarred = starBadge.exists
+
+        // Select the first row so the second row is guaranteed unselected.
+        let firstRow = window.outlines.firstMatch.outlineRows.containing(
+            NSPredicate(format: "identifier == %@", firstMenuId)
+        ).firstMatch
+        firstRow.click()
 
         XCTAssertFalse(unselectedTarget.label.isEmpty, "VoiceOver menu anchor \(unselectedMenuId) must expose an accessibility label")
 
@@ -2582,10 +2583,20 @@ final class LibraryBoards: XCTestCase {
         XCTAssertTrue(starItem.waitForExistence(timeout: 5), "Context menu did not open via AXShowMenu: " + app.debugDescription)
         starItem.click()
 
-        XCTAssertEqual(
-            XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in starBadge.exists != wasStarred }, object: nil)], timeout: 5),
-            .completed,
-            "AXShowMenu action must target the unselected row (\(unselectedKey)), not the selected row"
+        // Switch to the Starred filter to verify the unselected row (and not the selected row)
+        // was starred; row-level `.accessibilityIdentifier("meeting-...")` intentionally owns child
+        // view identifiers inside the card, while the Starred filter reflects LibraryStore state.
+        let starredFilter = window.descendants(matching: .any)["library-filters"].radioButtons["Starred"]
+        XCTAssertTrue(starredFilter.waitForExistence(timeout: 5), app.debugDescription)
+        starredFilter.click()
+
+        XCTAssertTrue(
+            window.descendants(matching: .any)[unselectedMenuId].waitForExistence(timeout: 5),
+            "Context menu Star action must target the unselected row (\(unselectedKey)), not the selected row: " + app.debugDescription
+        )
+        XCTAssertFalse(
+            window.descendants(matching: .any)[firstMenuId].exists,
+            "Context menu Star action must not star the selected row (\(firstMenuId))"
         )
     }
 
